@@ -1,3 +1,31 @@
+MASCHINENPLANUNG V12.7.4 - RELEASE NOTES
+========================================
+Datum: 25.09.2026 · Basis: V12.7.3
+
+PROJEKTANSICHT
+- Produktionskette oben im Projekt: je Bereich fertig / laeuft / geplant mit Ende-Zeitpunkt und
+  "fruehestens ab" fuer den naechsten Bereich; Warnung, wenn ein Bereich vor Ende des vorherigen
+  startet. Eigener Bereich ist markiert.
+- Abteilungsleitung, Stellvertretung und Lesende sehen jetzt die Projekte (Kundenplan nur fuer
+  PM, AV, GF, Vertrieb, Admin).
+
+URLAUB & KRANKHEIT
+- Neuer Reiter Personal -> Abwesenheit (nur Abteilungsleitung/Stellvertretung/Admin):
+  Urlaub, Krank, Sonstiges mit Zeitraum. Liste mit Loeschen.
+- "Auswirkung auf die Produktion": welche Auftraege durch Abwesenheit spaeter fertig werden
+  (in Arbeitstagen, AV-Termin gefaehrdet). Wirkt mit Personal-Gate.
+- GF sieht Abwesenheiten und Auswirkung aller Bereiche (nur lesen). Andere Rollen sehen nur
+  "Abwesend", nicht den Grund.
+
+AUSWERTUNG & NACHKALKULATION (GF/Admin)
+- Je Bereich: Auftraege, Soll-/Ist-Stunden, Abweichung, Gut, Ausschuss, Minuten je Stueck,
+  Stueck je Stunde, Mitarbeiter. Filter: Zeitraum, Projekt oder Artikel/Bezeichnung/FS.
+- "PDF-Bericht" im Firmen-CI mit allen Auftraegen und Mitarbeiterstunden (Drucken -> Als PDF).
+
+FEHLERBEHEBUNGEN
+- KW-Einsatz: Mitarbeiter im Einsatzbereich lassen sich im Wochenplan zuordnen.
+- Personal-Gate-Schalter war fuer Admin nach dem Anmelden gesperrt (erst nach Neuladen frei).
+
 MASCHINENPLANUNG V12.7.3 - RELEASE NOTES
 ========================================
 Datum: 25.09.2026 · Basis: V12.7.2

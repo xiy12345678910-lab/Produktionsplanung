@@ -25,7 +25,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-APP_VERSION = "12.7.3"
+APP_VERSION = "12.7.4"
 HOST = os.environ.get("MP_HOST", "0.0.0.0")
 PORT = int(os.environ.get("MP_PORT", "8765"))
 BASE = Path(__file__).resolve().parent
@@ -1329,7 +1329,7 @@ def validate_state(old: dict, new: dict) -> tuple[bool, str, str]:
     if not isinstance(absences, list):
         return False, "MP-PERS-001", "Abwesenheitsliste ist ungültig."
     for a in absences:
-        if not isinstance(a, dict) or str(a.get("employeeId", "")) not in eidset or not _valid_date_key(a.get("date")):
+        if not isinstance(a, dict) or str(a.get("employeeId", "")) not in eidset or not _valid_date_key(a.get("date")) or len(str(a.get("label") or "")) > 40:
             return False, "MP-PERS-001", "Ungültige Mitarbeiter-Abwesenheit."
         key = (str(a.get("employeeId")), str(a.get("date")))
         if key in absence_keys:

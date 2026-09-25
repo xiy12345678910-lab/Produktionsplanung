@@ -1,6 +1,6 @@
 # Produktionsplanung
 
-Maschinenplanung V12.7.3 – Wochen-/Ressourcenplanung für CNC, Konfektion, Siebdruck und Tiefziehen.
+Maschinenplanung V12.7.4 – Wochen-/Ressourcenplanung für CNC, Konfektion, Siebdruck und Tiefziehen.
 
 - `server.py` – Python-Server (LAN), `index.html` – Oberfläche
 - Installation unter Windows: siehe `README_Windows.txt` und `BENUTZER_KURZANLEITUNG.txt`
