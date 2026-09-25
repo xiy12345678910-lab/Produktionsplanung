@@ -1,5 +1,7 @@
-AENDERUNGEN NACH V12.7.1 (noch ohne neue Versionsnummer)
+MASCHINENPLANUNG V12.7.2 - RELEASE NOTES
 ========================================
+Datum: 25.09.2026 · Basis: V12.7.1
+
 SCHICHTEN
 - Stammschicht "Auto" besetzt im 2-Schicht-Betrieb jetzt auch die Spaetschicht (erst Frueh bis zur
   Mindestbesetzung, dann Spaet). Vorher galt Auto = Frueh; mit Personal-Gate fiel die Spaetschicht
@@ -22,6 +24,13 @@ PROJEKTMANAGEMENT -> KUNDE -> AV
 - Firmen-CI unter System (Admin): Firmenname (*fett*), Adresse, Fusszeile, Farbe, Schrift, Logo.
 - PM/AV/Vertrieb: eigene Menuepunkte Historie und Report (waren vorher nicht erreichbar).
 - Projekttafel: Bereichsauswahl ausgeblendet (die Tafel filtert nicht nach Bereich).
+
+AUFRAEUMEN / KLEINIGKEITEN
+- Projektansicht: "n parallel" fasst nur noch wirklich gleichzeitige Schritte zusammen (keine Ketten).
+- Projekttafel passt auf 1366-px-Laptops, Spaltentitel mit sauberer Silbentrennung.
+- "+ Auftrag" oben nur noch im Wochenplan und nur mit Planungsrecht (Auftragsliste hat eigenen Knopf).
+- Nicht genutzter Code entfernt: 16 JS-Funktionen/Konstanten (~11 KB), 38 CSS-Klassen (~4 KB),
+  ungenutzte Python-Imports. Keine Funktionsaenderung; Regressionstests 123/123 PASS.
 
 
 MASCHINENPLANUNG V12.7.1 - RELEASE NOTES

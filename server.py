@@ -11,7 +11,6 @@ import hmac
 import json
 import math
 import ipaddress
-import mimetypes
 import os
 import re
 import secrets
@@ -21,13 +20,12 @@ import threading
 import time
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
-from http import HTTPStatus
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-APP_VERSION = "12.7.1"
+APP_VERSION = "12.7.2"
 HOST = os.environ.get("MP_HOST", "0.0.0.0")
 PORT = int(os.environ.get("MP_PORT", "8765"))
 BASE = Path(__file__).resolve().parent
@@ -51,7 +49,6 @@ ROLES = {"admin", "gf", "department_lead", "department_deputy", "viewer", "proje
 WRITE_ROLES = {"admin", "gf", "department_lead", "department_deputy", "project_management", "production_planning", "sales"}
 DEPARTMENT_ROLES = {"department_lead", "department_deputy"}
 USER_MANAGER_ROLES = {"admin", "department_lead", "department_deputy"}
-LOCAL_USER_ROLES = {"department_lead", "department_deputy", "viewer"}
 # Welche Rollen eine Bereichsrolle im eigenen Bereich anlegen/ändern darf.
 # Leitungen verwalten Stellvertretungen und Lesende; Stellvertretungen nur Lesende.
 # Leitungskonten selbst verwaltet ausschließlich der Admin.
