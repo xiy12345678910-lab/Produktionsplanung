@@ -266,7 +266,7 @@ s, code, _ = put(AV, lambda n: (n.update(workSteps=[y for y in n["workSteps"] if
 s, d, _ = req("POST", "/api/users", {"username": "t_av2", "password": "password123", "role": "production_planning"}, cookie=A); check(s == 201, f"Admin legt Arbeitsvorbereitung an ({s})")
 
 # --- V12.7.2: Leiharbeiter-Anfrage (Abteilung fragt mit Zeitraum an, GF entscheidet)
-TEMP = {"id": "e_temp1", "name": "Leiharbeiter (angefragt)", "departmentId": "cnc", "employmentType": "temporary", "weeklyHours": 40, "active": True, "skills": [],
+TEMP = {"id": "e_temp1", "name": "Leiharbeiter", "departmentId": "cnc", "employmentType": "temporary", "weeklyHours": 40, "active": True, "skills": [],
         "tempStatus": "requested", "tempFrom": "2026-10-26", "tempTo": "2026-11-06", "tempBy": "t_lead_cnc", "tempDecidedBy": "", "tempNote": ""}
 def temp_emp(n): return next(e for e in n["employees"] if e["id"] == "e_temp1")
 s, code, _ = put(LC, lambda n: (n["employees"].append({**TEMP, "tempStatus": "approved"}), audit_entry(n, "t_lead_cnc"))); check(s == 403, f"Leih: Abteilung legt NICHT genehmigt an ({s} {code})")

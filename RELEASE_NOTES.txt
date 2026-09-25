@@ -1,3 +1,27 @@
+MASCHINENPLANUNG V12.7.3 - RELEASE NOTES
+========================================
+Datum: 25.09.2026 · Basis: V12.7.2
+
+LEIHARBEITER-ANFRAGE
+- Abteilung legt Leiharbeiter als ANFRAGE an: Zeitraum von/bis statt einer Mitarbeiterzahl
+  (Name optional). GF genehmigt oder lehnt ab (mit Notiz) unter GF -> Leiharbeiter-Anfragen.
+- Leiharbeiter zaehlen nur im genehmigten Zeitraum (Planung, Personal-Gate, Kapazitaet).
+- Zeitraum nach Genehmigung geaendert = neue Anfrage. Server prueft alle Regeln.
+- Die alte KW-Zahlmeldung "Personalbedarf" ist entfernt.
+
+PROJEKTE
+- PM legt Projekte direkt an (keine "Uebergabe an PM"). Nur noch zwei Schritte:
+  "An Produktion uebergeben" (AB + Liefertermin) und "Produktion fertig".
+- Alte Phasen "Eingang Vertrieb"/"Angebot versendet" erscheinen unter Projektmanagement.
+- PM/Admin kann ein Projekt vor der Uebergabe loeschen. Projektfenster deutlich groesser.
+
+SYSTEM / EINSTELLUNGEN
+- Reiter: Maschinen & Schichtkalender | Arbeitszeiten & Feiertage | Benutzer | Firma & System.
+  Jede Rolle sieht nur, was sie aendern darf (GF: Feiertage & Betriebsferien; Konfektion: keine
+  CNC-Einstellungen; Scheduler-Test, Daten und Server-Betrieb nur Admin).
+- "Personal je Schicht" ist eine Spalte bei Maschinen & Linien (eigene Liste entfaellt).
+- Schichtkalender: eine Regel-Zeile (eine KW oder ganzes Jahr) statt zwei Formulare.
+
 MASCHINENPLANUNG V12.7.2 - RELEASE NOTES
 ========================================
 Datum: 25.09.2026 · Basis: V12.7.1
