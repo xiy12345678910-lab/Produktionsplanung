@@ -1,0 +1,283 @@
+AENDERUNGEN NACH V12.7.1 (noch ohne neue Versionsnummer)
+========================================
+SCHICHTEN
+- Stammschicht "Auto" besetzt im 2-Schicht-Betrieb jetzt auch die Spaetschicht (erst Frueh bis zur
+  Mindestbesetzung, dann Spaet). Vorher galt Auto = Frueh; mit Personal-Gate fiel die Spaetschicht
+  weg und Auftraege wurden trotz KW-Regel "2-schichtig" nur mit einer Schicht gerechnet.
+- Wochenplan: Maschinenzeile zeigt die Schicht der angezeigten Woche statt des Standards.
+
+LEIHARBEITER / KW-EINSATZ (Abteilung -> GF)
+- Per KW eingesetzte Mitarbeiter koennen im Einsatzbereich alle Maschinen/Linien besetzen und werden
+  dort vom aufnehmenden Bereich geplant (vorher lehnte der Server das ab).
+- Bedarfsmeldung: Aenderung durch die Abteilung setzt die GF-Bestaetigung wieder auf "offen".
+- GF: Knopf "Bestaetigen" (vorher nur durch Aendern der Zahl moeglich), Status offen/bestaetigt.
+
+PROJEKTMANAGEMENT -> KUNDE -> AV
+- Ablauf rueckwaerts anwenden: "fertig bis" Liefertermin. Knopf "An Liefertermin ausrichten".
+- Aufgaben "nur intern" (Kalkulation/Angebot standardmaessig) erscheinen nicht im Kundenplan.
+- Kundenplan als Excel im Firmen-CI (Logo, Rot #E2382A, Schwarz/Grau nach CD-Guideline), mit
+  Wochenbalken und Liefertermin. Jeder Export speichert einen Stand (V1, V2, ...).
+- Abgleich Kundenplan <-> AV-Plan je Fertigungsbereich (Abweichung in Arbeitstagen), Karte
+  "Kundenplan !" auf der Projekttafel. AV-Termin neuer Auftraege wird aus dem Kundenplan vorbelegt.
+- Firmen-CI unter System (Admin): Firmenname (*fett*), Adresse, Fusszeile, Farbe, Schrift, Logo.
+- PM/AV/Vertrieb: eigene Menuepunkte Historie und Report (waren vorher nicht erreichbar).
+- Projekttafel: Bereichsauswahl ausgeblendet (die Tafel filtert nicht nach Bereich).
+
+
+MASCHINENPLANUNG V12.7.1 - RELEASE NOTES
+========================================
+Datum: 25.09.2026 · Basis: V12.7.0
+- Projekttafel filtert nicht mehr nach dem oben gewaehlten Bereich. Vorher wirkte die Tafel leer,
+  wenn z. B. "Konfektion 2" gewaehlt war und ein neuer Eingang noch keine Konfektions-Aufgabe hatte.
+
+
+MASCHINENPLANUNG V12.7.0 - RELEASE NOTES
+========================================
+Datum: 25.09.2026 · Basis: V12.6.2
+
+ALLE BEREICHE WIE CNC
+- Konfektion, Siebdruck und Tiefziehen haben jetzt denselben Wochenplan, dieselbe Auftragsliste
+  und denselben Produktionsmodus wie CNC (Freigabe, Start, Pause, Fertig, Historie).
+- Ressourcen je Bereich: Maschinen (CNC, Siebdruck, Tiefziehen) oder Linien (Konfektion 1/2/3).
+  Linien haben eine Besetzung: Personenstunden / Besetzung = Durchlaufzeit.
+- Neue Verwaltung "Maschinen & Linien" unter System (anlegen, umbenennen, Besetzung, entfernen).
+- Auftragsdialog fuer alle Bereiche; Takt-Rechner (Menge x Takt / Teile je Takt + Ruesten).
+- Die CNC-Bedienerkapazitaet begrenzt nur noch CNC, nicht die anderen Bereiche.
+
+AV-TERMIN UND FEINPLANUNG
+- Neues Feld "AV-Termin - fertig bis" je Auftrag (Arbeitsvorbereitung/Admin).
+- Die Abteilung plant fein: frueher als der AV-Termin ist erlaubt, spaeter wird abgelehnt
+  (Browser und Server, MP-PLAN-062). Den AV-Termin kann die Abteilung nicht aendern.
+- Wird ein AV-Termin durch Kapazitaet ueberschritten: Karte rot, Hinweisleiste, Kennzahl
+  "Termin gefaehrdet", GF-Kennzahl "Gefaehrdete Termine".
+
+PROJEKTANSICHT (neu)
+- Projekt oeffnen = senkrechter Ablauf: oben violett "1 Entwicklung & Vertrieb" Aufgabe fuer
+  Aufgabe, darunter blau "2 Produktion" mit allen FS live aus der Fertigung (Status, Fortschritt
+  laufender Auftraege, Plan-/Ist-Zeiten, AV-Termin), am Ende die Ziellinie mit Liefertermin.
+- Gleichzeitig laufende Aufgaben/Auftraege werden als "2 parallel" zusammengefasst.
+- Zeile anklicken = bearbeiten (Status, Verantwortlich, Termine, Notiz) bzw. Details +
+  "Im Wochenplan zeigen". Stammdaten/Angebot und Verlauf sind aufklappbar.
+- Ein Knopf "+ Auftrag fuer dieses Projekt" fuer alle Bereiche.
+
+PERSONAL (nur Oberflaeche)
+- Reiter "Wochenplan" und "Mitarbeiter". Pro Tag nur Auswahl + Zeitzeile, Zeiten/Pausen ueber ✎.
+- Gruppiert nach Bereich; Besetzung zeigt nur Luecken. Mitarbeiter als kompakte Zeilen,
+  Anlegen-Formular aufklappbar. Personal-Gate nur fuer Admin sichtbar.
+- Migration: Konfektions-Mitarbeiter erhalten die Freigabe fuer die Linie ihres Bereichs.
+
+OBERFLAECHE
+- Kopfleiste ohne "Planstand sichern", "Backup oeffnen/speichern", "Status pruefen"
+  (Backups laufen automatisch auf dem Server; JSON-Export bleibt unter System).
+- Wochenplan: Bereichsgruppen, Legende, Wochenende schmal, "heute" markiert, kein
+  "1-schichtig"-Rauschen, AB/WT ohne Doppelung, Wochenplan passt auf 1366-px-Laptops.
+- Eigener Menuepunkt "Auftraege" (Liste), Liste entschlackt (AV-Termin-Spalte).
+- GF-Ansicht nur fuer GF und Admin. Projekt-Ansicht fuer GF, PM, AV, Vertrieb und Admin.
+
+MIGRATION (automatisch beim ersten Start, vorher im Updater an einer Datenkopie getestet)
+- Bereiche mit Stunden-/Prozess-/Taktplanung werden auf Ressourcenplanung umgestellt.
+- Offene Arbeitsgaenge -> Wochenplan-Auftraege (Planwoche -> Startwunsch Montag 06:30,
+  erledigte Stunden werden abgezogen). Erledigte/entfallene -> Historie.
+- Datenstand wird normalisiert (Maschinen-Typ/Besetzung, Sperrzeiten-Liste). Behebt u. a.,
+  dass die Arbeitsvorbereitung bei Installationen ohne Sperrzeiten nicht speichern konnte.
+
+SICHERHEIT
+- Arbeitsvorbereitung kann keine Produktionsmengen (Gut/Ausschuss) melden.
+
+TESTS: tests/test_regression.py 123/123 PASS; Scheduler-Selbsttest PASS; Browser-Durchlauf
+AV -> Abteilungsleiter (Feinplanung, Freigabe, Start, Fertig) und 7 Rollen ohne Fehler.
+
+
+MASCHINENPLANUNG V12.6.2 - RELEASE NOTES
+========================================
+Datum: 24.09.2026 · Basis: V12.6.1 (fachlich identisch)
+
+UPDATE-/BETRIEBSSICHERHEIT
+- Vorabtest im Updater: Die neue Version wird vor dem Stopp des Live-Servers mit einer Kopie
+  der Datenbank auf einem Ersatzport gestartet. Schlaegt das fehl, bricht das Update ab, ohne
+  das Live-System zu veraendern, und zeigt die Fehlerausgabe.
+- Server-Log: Der Task schreibt Start, Migrationen, Fehler und Fehlerantworten nach
+  logs\server_<Datum>.log (30 Tage). Server_Status.ps1 zeigt die letzten Zeilen.
+- Updater wartet, bis die alte Task-Instanz beendet ist, und gibt dem Start 90 s; bei einem
+  Fehlschlag zeigt er vor dem Rollback die letzten Log-Zeilen.
+- Python laeuft im UTF-8-Modus (-X utf8), unabhaengig von der Windows-Codepage.
+
+
+MASCHINENPLANUNG V12.6.1 - RELEASE NOTES
+========================================
+Datum: 24.09.2026 · Basis: V12.6.0
+
+ROLLEN: PM UND AV PLANEN TERMINE UND VERWALTEN
+- Projektmanagement: legt Prozesse an, weist sie Abteilungen zu, setzt Start/Faelligkeit,
+  Liefertermin und Angebot. Den Status von Abteilungsprozessen (Fertigung, Vertrieb) meldet
+  die Abteilung; das PM setzt ihn nur fuer Bereiche ohne eigenes Konto (Konstruktion,
+  Kalkulation, Einkauf, QS, PM).
+- Arbeitsvorbereitung: FS anlegen/verknuepfen, Planwochen, Termine von Fertigungsprozessen,
+  Fertigungsprozesse im Ablauf anlegen/entfernen (offene). Keine Statusmeldung, keine
+  erledigten Stunden, kein "Fertig" - das meldet die Abteilung. Serverseitig erzwungen.
+
+GESPEICHERTE PROZESSABLAEUFE
+- PM und AV speichern eigene Ablaeufe aus einem Projekt ("Als Ablauf speichern"):
+  Abteilungen, Aufgaben und Terminabstaende. Anwenden mit Startdatum rechnet alle Termine.
+- Bisher fest eingebaute Workflows sind jetzt normale PM-Ablaeufe (Wiederholteil, Neuteil,
+  Entwicklung/Muster) und koennen geloescht oder durch eigene ersetzt werden.
+
+TERMINE
+- Prozesse mit Start und Faelligkeit; ueberfaellige Prozesse rot (Tafel, Projekt, Abteilung).
+- Zeitstrahl je Projekt: Prozesse und FS gegen heute und den Liefertermin, FS ohne Termin
+  als "noch zu verplanen".
+
+TESTS: tests/test_regression.py 118/118 PASS; Chromium-Durchlauf 5 Rollen ohne Fehler.
+
+
+MASCHINENPLANUNG V12.6.0 - RELEASE NOTES
+========================================
+Datum: 24.09.2026 · Basis: V12.4.5
+
+PROJEKT-LEBENSZYKLUS (neu, ersetzt die AB-Tabelle "Projektmanagement")
+- Ein Projekt existiert ab dem Eingang im Vertrieb und bleibt dasselbe Projekt bis zum
+  Abschluss: Eingang Vertrieb -> Projektmanagement -> Angebot versendet -> Angenommen
+  (AB + Liefertermin) -> Arbeitsvorbereitung -> In Produktion -> Produziert -> Abgeschlossen.
+  Verloren/abgesagt mit Pflicht-Grund, Reaktivieren moeglich.
+- Bis zur Annahme manuell (Vertrieb/Projektmanagement), danach automatisch: Stufe und
+  Fortschritt (erledigte / geplante Stunden) werden aus den verknuepften FS abgeleitet,
+  Termin-Ampel vergleicht Planende mit Liefertermin.
+- Parallele Prozesse je Abteilung (Konstruktion, Kalkulation, Einkauf, QS, Vertrieb, PM,
+  AV sowie alle Produktionsbereiche). Vorlagen: Wiederholteil, Neuteil, Entwicklung/Muster.
+- Abteilungen sehen ihre Projekt-Prozesse in "Produktionsbereiche" und pflegen Status,
+  Notiz, Verantwortlichen. Fertigungsprozesse werden per "In Fertigung uebernehmen" zu einem
+  Arbeitsgang, der mit dem Prozess verknuepft bleibt - auch vor der Annahme (Muster).
+- Neue Rolle Vertrieb. Rechte je Feld und Phasenwechsel serverseitig (MP-PM-031).
+- Unveraenderbarer Projektverlauf (wer, wann, was).
+- Bestehende AB-Datensaetze werden zu angenommenen Projekten mit Projektnummer P-JJJJ-NNNN.
+
+FERTIGUNG OHNE TERMIN
+- Bereichs-Arbeitsgaenge koennen ohne Planwoche angelegt werden ("noch zu verplanen");
+  Bereichskarte zeigt diesen Vorrat separat. Planwoche leeren = zurueck in den Vorrat.
+
+WEITERES
+- Navigation: "Projekte" fuer alle Rollen; CNC-Auftragsliste per Knopf in der Kopfzeile.
+- Abgebrochene Browserverbindungen erzeugen keine Fehler-Stacktraces mehr im Server-Log.
+
+TESTS
+- tests/test_regression.py: 103/103 PASS (u. a. 30 neue Projekt-/Rollenpruefungen).
+- Chromium Ende-zu-Ende mit 5 Rollen: Vertrieb legt Eingang an und uebergibt, PM uebernimmt
+  Vorlage und versendet Angebot, Konfektion uebernimmt Muster-Prozess ohne Termin in die
+  Fertigung, Vertrieb meldet Annahme, AV legt FS an - ohne JavaScript-Fehler.
+
+
+MASCHINENPLANUNG V12.4.5 - RELEASE NOTES
+========================================
+Datum: 24.09.2026 · Basis: V12.4.4 · Grundlage: Deep Audit Konfektion/Tiefziehen/PM, Schritt 1
+
+NEUE ROLLE ARBEITSVORBEREITUNG (Produktionsplanung)
+- Legt Auftraege/Arbeitsgaenge in allen Bereichen an (CNC und Bereiche), plant sie, loescht
+  geplante und verknuepft freie FS mit einer AB (schliesst MP-AUD-006 fuer diese Rolle).
+- Serverseitig begrenzt auf geplante Arbeitsgaenge: keine Freigabe, Stornierung, Produktion,
+  Fertigmeldung, Personal, Maschinen, Einstellungen (MP-AV-030). Anlegen nur durch den Admin.
+- Ansichten: Wochenplan, Auftraege, Bereiche (Bereichswahl oben), AB-Auftraege, GF-Uebersicht,
+  Historie, Report.
+- Die Benutzertabelle wird beim ersten Start migriert; alle Benutzer melden sich einmal neu an.
+
+KORREKTUREN KONFEKTION / TIEFZIEHEN (Audit K2, K4, K5, K6, K7, T1)
+- Auslastung der Bereichskarte = offene Stunden der gewaehlten KW / Kapazitaet dieser KW.
+  Vorher: gesamter Rueckstand inkl. erledigter Arbeitsgaenge / eine Woche. Rueckstand separat.
+- Kapazitaet je Mitarbeiter beruecksichtigt Feiertage/Betriebsferien (Kalender-Ausnahme
+  "Betriebsfrei") und verteilt die Wochenstunden nach Schichtvorlage (kurzer Freitag).
+  Beispiel CNC, 3 MA a 40 h, Montag Feiertag: 93,75 h statt 120 h.
+- Planwoche beim Anlegen waehlbar und in der Liste aenderbar.
+- Fortschritt: erledigte Stunden eintragen, "Fertig" melden, wieder oeffnen. Fertige Arbeits-
+  gaenge zaehlen nicht mehr als Bedarf.
+- Eingabemaske zeigt nur die Felder der Planungsart des gewaehlten Bereichs.
+- Tiefziehen: Ruestzeit zaehlt einmal, nur die Laufzeit wird mit der Bedieneranzahl multipliziert.
+
+TESTS
+- tests/test_regression.py: 73/73 PASS auf Kopie des Live-Stands (inkl. Benutzermigration,
+  Arbeitsvorbereitung-Rechte, Fortschritt, Planwoche).
+- Chromium: Arbeitsvorbereitung legt Konfektionsauftrag an, Masken je Bereich, Feiertags-
+  kapazitaet, Fertigmelden/Planwoche, Wochenplan, Schedulertest, 409-Merge, Logout - ohne Fehler.
+
+OFFEN: Schritte 2-5 aus dem Audit-Dokument (brauchen die Antworten auf die offenen Fragen).
+
+
+MASCHINENPLANUNG V12.4.4 - RELEASE NOTES
+========================================
+Datum: 24.09.2026 · Basis: V12.4.3 (Live-Stand Revision 438)
+Grundlage: Audit Person 1 + Deep Audit Person 2 (MP-AUD-xxx)
+
+SICHERHEIT / RECHTE (Server)
+- Bereichsrollen koennen Maschinen, Mitarbeiter, Arbeitsgaenge und Regeln fremder Bereiche
+  nicht mehr durch Umhaengen des Bereichs uebernehmen (alter UND neuer Stand werden geprueft).
+- CNC-Auftraege muessen im Bereich ihrer Haupt-/Alternativmaschine liegen (MP-DEPT-005).
+- GF darf beim Personalbedarf nur bestaetigen; gemeldete Werte und Loeschen sind gesperrt (MP-AUD-002).
+- Bereiche koennen von der GF bestaetigten Personalbedarf nicht loeschen (MP-AUD-003).
+- Benutzerverwaltung: Leitung verwaltet Stellvertretungen + Lesende, Stellvertretung nur Lesende.
+  Leitungskonten verwaltet nur der Admin. Eine Stellvertretung kann das Leitungspasswort nicht
+  mehr zuruecksetzen oder die Leitung sperren.
+- Neu: jeder Benutzer aendert sein eigenes Passwort selbst (🔑 oben rechts; POST /api/password).
+  Andere Sitzungen des Kontos werden dabei beendet.
+- Aenderungsprotokoll ist fuer Nicht-Admins append-only; neue Eintraege muessen den angemeldeten
+  Benutzer tragen (MP-LOG-001).
+- Passwortpruefung beim Login blockiert nicht mehr alle anderen Anfragen; gleiche Rechenzeit fuer
+  unbekannte Benutzer.
+- Nicht unterstuetzte HTTP-Methoden liefern 405 MP-REQ-405 statt 501 (MP-AUD-024).
+
+DATEN / VALIDIERUNG
+- Legacy-Array "orders" wird beim ersten Start einmalig in die Tabelle legacy_orders_archive
+  verschoben und aus dem Live-Stand entfernt (MP-AUD-012/025). Start bricht ab, falls ein
+  Legacy-Auftrag in workSteps fehlt (MP-MIG-002) - dann bleibt alles unveraendert.
+- FS ist fuer alle Arbeitsgaenge Pflicht (MP-AUD-004); Status wird geprueft (MP-STEP-017).
+- Vorgaenger nur innerhalb eines AB-Auftrags; freie FS werden nicht mehr ueber leere
+  Projekt-ID gekoppelt (MP-AUD-009).
+- Unveraenderter Datenstand erzeugt keine neue Revision (MP-AUD-017).
+- Datenbankverbindungen werden sauber geschlossen.
+- Zeitzonen: ohne Paket "tzdata" wird die Windows-Zeitzone verwendet statt Startabbruch.
+
+OBERFLAECHE
+- Wochenplan, Listen und GF-Ansicht zeigen die FS (z. B. "FA 395 · AB … · WT …") statt "—"
+  (MP-AUD-011).
+- Mehrtaegige Auftraege: nur die Karte am ersten Tag ist verschiebbar, Folgetage sind als
+  "↳ Fortsetzung" markiert (MP-AUD-010).
+- Wochenwechsel, Reportmonat usw. werden nur lokal gemerkt und erzeugen keine Server-
+  Revision mehr (bisher ca. 30 % aller Protokolleintraege).
+- Bereichsplanung: freie FS ohne AB moeglich (MP-AUD-005); bei fest zugeordnetem Bereich kein
+  zweiter Bereichswaehler (MP-AUD-023); deutsche Planungsart-Bezeichnungen (MP-AUD-022).
+- Tiefziehen rechnet mit ganzen Takten (MP-AUD-019).
+- Historie: Reaktivieren behaelt die FS und funktioniert auch fuer freie FS (MP-AUD-027).
+- Abmelden loescht die im Browser zwischengespeicherten Plan-/Personaldaten.
+- Personal-Gate ist nur fuer den Admin schaltbar (war fuer Bereichsleitungen sichtbar, aber
+  vom Server abgelehnt).
+- Doppelte Revisionsanzeige und freies "Aktueller Benutzer"-Feld entfernt.
+
+WINDOWS / BETRIEB
+- Neuer versionsunabhaengiger Updater UPDATE_LIVE.ps1 (ersetzt alle UPDATE_LIVE_AUF_V11_*):
+  vollstaendige Dateiliste inkl. release_gates.py, Downgrade-Schutz, Rollback von Code UND
+  Datenbank, entfernt veraltete Dateien aus dem Live-Ordner.
+- Live-Ordner wieder gesperrt: nur SYSTEM/Administratoren duerfen schreiben (vorher konnte der
+  installierende Benutzer - und ueber geerbte ProgramData-Rechte evtl. jeder lokale Benutzer -
+  Code aendern, der als SYSTEM laeuft). Server startet im isolierten Python-Modus (-I).
+- Neuer Task "Maschinenplanung Backup": zweimal taeglich Online-Backup mit Integritaetspruefung,
+  optional Zweitkopie ueber BACKUP_ZIEL.txt.
+- Task/Firewallregeln ohne Versionsnummer im Namen ("Maschinenplanung Server"); alte V11-Namen
+  werden beim Update entfernt.
+- CHECK_LAN_SICHERHEIT.ps1 prueft zusaetzlich Version, Ordnerrechte, Python-Pfad, veraltete
+  Dateien, Backup-Task und Backup-Alter.
+- Gemeinsame Skriptlogik in MP_Common.ps1; Doku und Fehlercodes auf V12.4.4 aktualisiert.
+
+TESTS (Linux-Testumgebung, Kopie des Live-Stands Rev. 438)
+- tests/test_v1244.py: 60/60 PASS (Migration, Rollenmatrix, Validierung, Protokoll,
+  Benutzerverwaltung, Passwort, Concurrency, Backup/WAL, Zeitzonen-Fallback).
+- Chromium-Durchlauf: Login, Wochenplan, Fortsetzungskarten, eingebauter Schedulertest
+  (PASS), Bereichsplanung mit freier FS, Passwortdialog, Logout-Bereinigung, 409-Merge
+  zweier Benutzer - ohne JavaScript-Fehler.
+- V12.4.3-Code laeuft auf der migrierten Datenbank (Rollback-faehig).
+- Alle PowerShell-Skripte syntaktisch geprueft (PowerShell 7 Parser).
+- NICHT praktisch geprueft: Ausfuehrung der PowerShell-Skripte unter Windows (Scheduled Task,
+  Firewall, ACL). Erstes Update daher mit Blick auf die Konsolenausgabe durchfuehren und
+  anschliessend CHECK_LAN_SICHERHEIT.ps1 laufen lassen.
+
+OFFEN (fachliche Entscheidung noetig, nicht in diesem Release)
+- Lesezugriff je Bereich (MP-AUD-001), WT als Elternobjekt (007), Vorgaenger terminwirksam (008),
+  Personalbedarf je Auftrag Konfektion/Siebdruck (020), Trocknung als Zeitabschnitt (021),
+  PM-Funktion "FS einer AB zuordnen" (006), HTTPS (015), versionierte Snapshots (014),
+  Anzeige erst nach Server-Sync (016).
