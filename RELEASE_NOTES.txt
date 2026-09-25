@@ -1,5 +1,7 @@
-AENDERUNGEN NACH V12.7.1 (noch ohne neue Versionsnummer)
+MASCHINENPLANUNG V12.7.2 - RELEASE NOTES
 ========================================
+Datum: 25.09.2026 · Basis: V12.7.1
+
 SCHICHTEN
 - Stammschicht "Auto" besetzt im 2-Schicht-Betrieb jetzt auch die Spaetschicht (erst Frueh bis zur
   Mindestbesetzung, dann Spaet). Vorher galt Auto = Frueh; mit Personal-Gate fiel die Spaetschicht
