@@ -1,3 +1,29 @@
+AENDERUNGEN NACH V12.7.1 (noch ohne neue Versionsnummer)
+========================================
+SCHICHTEN
+- Stammschicht "Auto" besetzt im 2-Schicht-Betrieb jetzt auch die Spaetschicht (erst Frueh bis zur
+  Mindestbesetzung, dann Spaet). Vorher galt Auto = Frueh; mit Personal-Gate fiel die Spaetschicht
+  weg und Auftraege wurden trotz KW-Regel "2-schichtig" nur mit einer Schicht gerechnet.
+- Wochenplan: Maschinenzeile zeigt die Schicht der angezeigten Woche statt des Standards.
+
+LEIHARBEITER / KW-EINSATZ (Abteilung -> GF)
+- Per KW eingesetzte Mitarbeiter koennen im Einsatzbereich alle Maschinen/Linien besetzen und werden
+  dort vom aufnehmenden Bereich geplant (vorher lehnte der Server das ab).
+- Bedarfsmeldung: Aenderung durch die Abteilung setzt die GF-Bestaetigung wieder auf "offen".
+- GF: Knopf "Bestaetigen" (vorher nur durch Aendern der Zahl moeglich), Status offen/bestaetigt.
+
+PROJEKTMANAGEMENT -> KUNDE -> AV
+- Ablauf rueckwaerts anwenden: "fertig bis" Liefertermin. Knopf "An Liefertermin ausrichten".
+- Aufgaben "nur intern" (Kalkulation/Angebot standardmaessig) erscheinen nicht im Kundenplan.
+- Kundenplan als Excel im Firmen-CI (Logo, Rot #E2382A, Schwarz/Grau nach CD-Guideline), mit
+  Wochenbalken und Liefertermin. Jeder Export speichert einen Stand (V1, V2, ...).
+- Abgleich Kundenplan <-> AV-Plan je Fertigungsbereich (Abweichung in Arbeitstagen), Karte
+  "Kundenplan !" auf der Projekttafel. AV-Termin neuer Auftraege wird aus dem Kundenplan vorbelegt.
+- Firmen-CI unter System (Admin): Firmenname (*fett*), Adresse, Fusszeile, Farbe, Schrift, Logo.
+- PM/AV/Vertrieb: eigene Menuepunkte Historie und Report (waren vorher nicht erreichbar).
+- Projekttafel: Bereichsauswahl ausgeblendet (die Tafel filtert nicht nach Bereich).
+
+
 MASCHINENPLANUNG V12.7.1 - RELEASE NOTES
 ========================================
 Datum: 25.09.2026 · Basis: V12.7.0

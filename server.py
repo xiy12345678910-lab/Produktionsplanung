@@ -924,6 +924,18 @@ def validate_projects(old: dict, projects: list) -> tuple[bool, str, str]:
                 return False, "MP-PM-010", f"Projekt '{label}': Prozess hat ein ungültiges Startdatum."
             if _valid_date_key(pr.get("startDate")) and _valid_date_key(pr.get("dueDate")) and str(pr["startDate"]) > str(pr["dueDate"]):
                 return False, "MP-PM-016", f"Projekt '{label}': Prozess „{pr.get('title')}“ startet nach seiner Fälligkeit."
+        cp = project.get("customerPlan")
+        if cp is not None:
+            # Kundenplan = an den Kunden gegebener PM-Terminplan (Stand), Vergleichsbasis für die AV.
+            steps = cp.get("steps") if isinstance(cp, dict) else None
+            version = cp.get("version") if isinstance(cp, dict) else None
+            if (not isinstance(steps, list) or len(steps) > 300 or isinstance(version, bool) or not isinstance(version, int) or version < 1
+                    or (cp.get("dueDate") not in (None, "") and not _valid_date_key(cp.get("dueDate")))):
+                return False, "MP-PM-040", f"Projekt '{label}': Kundenplan ist ungültig."
+            for st in steps:
+                if (not isinstance(st, dict) or not str(st.get("areaId") or "").strip() or len(str(st.get("title") or "")) > 200
+                        or not _valid_date_key(st.get("startDate")) or not _valid_date_key(st.get("dueDate"))):
+                    return False, "MP-PM-040", f"Projekt '{label}': Kundenplan enthält einen ungültigen Termin."
         log = project.get("log") or []
         if not isinstance(log, list) or any(not isinstance(x, dict) or not x.get("id") for x in log):
             return False, "MP-PM-011", f"Projekt '{label}': Verlauf ist ungültig."
@@ -1197,6 +1209,18 @@ def validate_state(old: dict, new: dict) -> tuple[bool, str, str]:
         if not isinstance(e, dict) or not _valid_date_key(date) or str(e.get("mode")) not in {"0", "1", "2"} or date in ex_dates:
             return False, "MP-CAL-014", "Kalender-Ausnahme enthält ungültiges/dupliziertes Datum oder Schichtmodus."
         ex_dates.add(date)
+
+    ci = new.get("ci")
+    if ci is not None:
+        if not isinstance(ci, dict):
+            return False, "MP-CI-001", "Firmen-CI ist ungültig."
+        if any(len(str(ci.get(f) or "")) > 300 for f in ("company", "address", "footer")) or len(str(ci.get("font") or "")) > 60:
+            return False, "MP-CI-001", "Firmen-CI: Text ist zu lang."
+        if ci.get("color") not in (None, "") and not re.fullmatch(r"#[0-9a-fA-F]{6}", str(ci.get("color"))):
+            return False, "MP-CI-001", "Firmen-CI: Farbe muss #RRGGBB sein."
+        logo = ci.get("logo") or ""
+        if logo and (not isinstance(logo, str) or len(logo) > 420_000 or not re.match(r"data:image/(png|jpeg);base64,[A-Za-z0-9+/=]+$", logo)):
+            return False, "MP-CI-002", "Firmen-CI: Logo muss PNG/JPG (max. 300 KB) sein."
 
     employees = new.get("employees") or []
     if not isinstance(employees, list):
@@ -1687,7 +1711,7 @@ PROJECT_TRANSITIONS = {
 PROJECT_BASE_FIELDS = {"customer", "contact", "name", "note", "wt", "workflow"}
 PROJECT_FIELDS = {
     "sales": PROJECT_BASE_FIELDS | {"ab", "dueDate", "phase", "log", "updatedAt", "processes"},
-    "project_management": PROJECT_BASE_FIELDS | {"ab", "dueDate", "phase", "log", "updatedAt", "processes", "offer", "development"},
+    "project_management": PROJECT_BASE_FIELDS | {"ab", "dueDate", "phase", "log", "updatedAt", "processes", "offer", "development", "customerPlan"},
     "production_planning": {"phase", "log", "updatedAt", "processes"},
     "department": {"log", "updatedAt", "processes"},
 }
