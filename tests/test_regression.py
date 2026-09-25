@@ -446,6 +446,61 @@ ts = [threading.Thread(target=racer, args=(i,)) for i in range(10)]
 [t.start() for t in ts]; [t.join() for t in ts]
 check(sorted(results) == [200] + [409] * 9, f"10 parallele Writes: genau 1×200, 9×409 ({sorted(results)})")
 
+# --------------------------------------------------------------------------- Abwesenheitsgrund (Datenschutz)
+def add_absence(n):
+    mid = res_of(n, "cnc")
+    n["employees"].append({"id": "e_abs", "name": "Abwesend Test", "departmentId": "cnc", "skills": [mid], "homeMachineId": mid,
+                           "homeShift": "auto", "employmentType": "permanent", "weeklyHours": 40, "active": True})
+    n["personnelAbsences"].append({"employeeId": "e_abs", "date": "2026-11-02", "label": "Krank"})
+    n["audit"].insert(0, {"id": "a_abs1", "ts": server.now_iso(), "actor": "t_admin", "action": "Krank eingetragen", "detail": "Abwesend Test · 02.11.", "revision": 0})
+s, code, _ = put(A, add_absence); check(s == 200, f"Admin: Krankmeldung anlegen ({s} {code})")
+def abs_label(ck):
+    return next(a["label"] for a in state(ck)[1]["personnelAbsences"] if a["employeeId"] == "e_abs")
+def abs_audit(ck):
+    return next(a["action"] for a in state(ck)[1]["audit"] if a["id"] == "a_abs1")
+check(abs_label(A) == "Krank" and abs_label(G) == "Krank", "Abwesenheit: Admin/GF sehen den Grund")
+check(abs_label(LC) == "Krank" and abs_label(DC) == "Krank", "Abwesenheit: CNC-Leitung/Stellvertretung sehen den Grund im eigenen Bereich")
+check(abs_label(LK) == "Abwesend" and abs_label(V) == "Abwesend" and abs_label(P) == "Abwesend", "Abwesenheit: fremder Bereich/Lesende/PM sehen nur 'Abwesend'")
+check(abs_audit(V) == "Abwesenheit eingetragen" and abs_audit(A) == "Krank eingetragen", "Abwesenheit: Grund auch im Änderungsprotokoll ausgeblendet")
+s, code, _ = put(LK, lambda n: audit_entry(n, "t_lead_k1")); check(s == 200, f"Abwesenheit: Speichern mit ausgeblendetem Stand funktioniert ({s} {code})")
+check(abs_label(A) == "Krank" and abs_audit(A) == "Krank eingetragen", "Abwesenheit: Speichern einer Rolle ohne Einsicht überschreibt den Grund nicht")
+def fake_label(n):
+    next(a for a in n["personnelAbsences"] if a["employeeId"] == "e_abs")["label"] = "Urlaub"; audit_entry(n, "t_lead_k1")
+s, code, _ = put(LK, fake_label); check(s == 403, f"Abwesenheit: fremden ausgeblendeten Eintrag ändern abgelehnt ({s} {code})")
+s, code, _ = put(A, lambda n: n.update(shiftTemplates={**n["shiftTemplates"], "single": {**n["shiftTemplates"]["single"], "end": "16:15"}}) or audit_entry(n, "t_admin"))
+check(s == 200, f"Admin ändert Schichtvorlage ({s} {code})")
+s, code, d = put(LC, lambda n: n.update(shiftTemplates={**n["shiftTemplates"], "single": {**n["shiftTemplates"]["single"], "end": "16:00"}}) or audit_entry(n, "t_lead_cnc"))
+check(s == 403 and "Schicht" in str(d.get("error")), f"Bereichsrolle: Schichtvorlage abgelehnt mit klarer Meldung ({s} {code})")
+
+# --------------------------------------------------------------------------- Historie-Archiv
+with server.db_session() as c:  # ältester Eintrag ohne Projekt, direkt in den Live-Stand
+    _j = json.loads(c.execute("SELECT json FROM state WHERE id=1").fetchone()[0])
+    _j["history"].append({"id": "h_arch_test", "originalOrderId": "ws_arch_test", "recordType": "done", "status": "done", "projectId": "",
+                          "fs": "FS ARCH", "machineId": res_of(_j, "cnc"), "departmentId": "cnc", "hours": 1, "finishedAt": "2025-01-10T10:00:00+00:00"})
+    c.execute("UPDATE state SET json=? WHERE id=1", (json.dumps(_j, ensure_ascii=False),))
+_rev, _st = state(A)
+_open = {p["id"] for p in _st["projects"] if p.get("phase") not in ("closed", "lost")}
+_eligible = [h["id"] for h in _st["history"] if str(h.get("projectId") or "") not in _open]
+check(bool(_eligible), f"Historie-Archiv: Testdaten enthalten archivierbare Einträge ({len(_eligible)})")
+_cap = server.HISTORY_LIVE_CAP
+server.HISTORY_LIVE_CAP = len(_st["history"]) - 1
+s, code, d = put(A, lambda n: audit_entry(n, "t_admin"))
+arch = d.get("archivedHistoryIds") or []
+check(s == 200 and arch == [_eligible[-1]], f"Historie-Archiv: ältester Eintrag über der Grenze archiviert ({arch})")
+_rev2, _st2 = state(A)
+check(len(_st2["history"]) == len(_st["history"]) - 1 and arch[0] not in {h["id"] for h in _st2["history"]}, "Historie-Archiv: Live-Stand verkleinert")
+stale = copy.deepcopy(_st2); stale["history"] = copy.deepcopy(_st["history"]); audit_entry(stale, "t_admin")
+s, _d, _ = req("PUT", "/api/state", {"revision": _rev2, "data": stale, "action": "stale"}, cookie=A)
+check(s == 200 and arch[0] not in {h["id"] for h in state(A)[1]["history"]}, f"Historie-Archiv: veralteter Browser holt archivierte Einträge nicht zurück ({s})")
+s, d, _ = req("GET", "/api/history-archive?limit=10", cookie=V)
+check(s == 200 and arch[0] in {h["id"] for h in d["history"]} and d["total"] >= 1, f"Historie-Archiv: per /api/history-archive lesbar ({s})")
+s, d, _ = req("GET", "/api/history-archive?from=2001-01-01&to=2001-01-31", cookie=V)
+check(s == 200 and d["history"] == [], "Historie-Archiv: Zeitraumfilter")
+s, d, _ = req("GET", "/api/history-archive?from=kaputt", cookie=V); check(s == 400, "Historie-Archiv: ungültiger Zeitraum -> 400")
+s, d, _ = req("GET", "/api/history-archive"); check(s == 401, "Historie-Archiv: ohne Anmeldung -> 401")
+server.HISTORY_LIVE_CAP = _cap
+check(server.validate_state(state(A)[1], state(A)[1])[0], "Historie-Archiv: Live-Stand besteht validate_state")
+
 httpd.shutdown()
 
 # --------------------------------------------------------------------------- backup
