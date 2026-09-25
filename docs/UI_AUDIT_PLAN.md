@@ -2,6 +2,25 @@
 
 Date: 25.09.2026 · Scope: `index.html` (the whole UI: ~405 KB, 994 lines, 71 CSS lines / ~760 JS lines, 82 lines longer than 1,000 characters)
 
+## Status (V12.7.5)
+
+Implemented and covered by `node tests/ui_smoke.mjs` (77 checks, all passing):
+
+| Done | Findings |
+|---|---|
+| Dialogs: `role="dialog"`/`alertdialog`, `aria-modal`, linked title, Escape, focus trap, focus returns to the button that opened them | C2 |
+| In-app confirm/input dialog replaces all 9 `confirm()` and 3 `prompt()` calls; the password field is masked; the long-poll pauses while it is open | E2 |
+| Every visible field labelled, symbol-only buttons named (static attributes plus automatic labelling of dynamically rendered rows) | C1, C3 |
+| Focus and unsaved input kept across re-renders, including a save by another user | E1 |
+| No sideways page scroll at 390 px; the mobile nav has labels and reaches every destination | B1, B2 |
+| ↑/↓ priority buttons in the order list | C4 (order list) |
+| `:focus-visible`, `aria-live` toast, `<nav>` landmark, minimum text 10 px, low-contrast greys fixed, `prefers-reduced-motion` | C6, C7, C8, C10 (part) |
+| Nav reads "Produktion" in production mode; page title "System"; one product name; "+ Neues Projekt"; "Heute" | A1 (part), A3 (part), A4 (part), A6, A7 |
+| Empty and under-staffing states in Personal, outdated hint corrected | E4 (Personal), E5 |
+| Maschinenstillstand row overlap; **machine × delete button was broken** (malformed `data-res-del` attribute) | D3 (part), bug |
+
+Still open (next phases): A2 (the second tab row in System), A5 (hash routing), B3–B5, C5 (tab ARIA), C9 (status icons), D1/D2/D4 (tokens, formatting), D5–D7, E3 (busy states), E6/E7, F1 (file split), and a check of the other roles with real data.
+
 ## How the audit was done
 
 - Ran `server.py` locally with a fresh database and an admin account, then drove the UI with Playwright (Chromium).
