@@ -25,7 +25,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-APP_VERSION = "12.7.2"
+APP_VERSION = "12.7.3"
 HOST = os.environ.get("MP_HOST", "0.0.0.0")
 PORT = int(os.environ.get("MP_PORT", "8765"))
 BASE = Path(__file__).resolve().parent
@@ -858,6 +858,46 @@ def _personnel_assignment_valid(a: dict) -> tuple[bool, str, str]:
     return True, "", ""
 
 
+TEMP_STATUS = {"requested", "approved", "rejected"}
+TEMP_DECISION_FIELDS = {"tempStatus", "tempDecidedBy", "tempNote"}
+
+
+def _temp_request_change(a: dict | None, b: dict | None, role: str) -> tuple[bool, str]:
+    """Leiharbeiter-Anfragen: die Abteilung fragt an (Zeitraum), die GF entscheidet."""
+    if b is None:
+        return True, ""
+    name = str(b.get("name") or b.get("id"))
+    if role == "gf":
+        if a is None:
+            return False, "GF legt keine Mitarbeiter an."
+        diff = {k for k in set(a) | set(b) if canonical(a.get(k)) != canonical(b.get(k))}
+        if diff - TEMP_DECISION_FIELDS or str(b.get("employmentType")) != "temporary" or b.get("tempStatus") not in {"approved", "rejected"}:
+            return False, f"GF entscheidet bei '{name}' nur über die Leiharbeiter-Anfrage."
+        return True, ""
+    # Abteilung
+    was_temp = a is not None and str(a.get("employmentType")) == "temporary"
+    if was_temp and str(b.get("employmentType")) != "temporary":
+        return False, f"'{name}': Leiharbeiter in Festangestellte umwandeln darf nur der Admin."
+    if str(b.get("employmentType")) != "temporary":
+        return True, ""
+    old_status = (a or {}).get("tempStatus") if was_temp else None
+    new_status = b.get("tempStatus")
+    if a is None or not was_temp:
+        if new_status != "requested":
+            return False, f"'{name}': Neue Leiharbeiter werden als Anfrage angelegt (GF genehmigt)."
+        return True, ""
+    period_changed = (a.get("tempFrom"), a.get("tempTo")) != (b.get("tempFrom"), b.get("tempTo"))
+    if new_status != old_status:
+        if new_status != "requested" or not period_changed:
+            return False, f"'{name}': Genehmigen/Ablehnen ist Sache der GF."
+    elif old_status == "approved" and period_changed:
+        return False, f"'{name}': Geänderter Zeitraum muss neu angefragt werden."
+    for f in ("tempDecidedBy", "tempNote"):
+        if a.get(f) != b.get(f) and b.get(f):
+            return False, f"'{name}': GF-Entscheidung darf die Abteilung nicht ändern."
+    return True, ""
+
+
 PROJECT_PHASES = ("inquiry", "pm", "offer_sent", "accepted", "lost", "closed")
 PROJECT_POST_ACCEPT = {"accepted", "closed"}
 PROCESS_STATUS = {"open", "in_progress", "waiting", "done", "cancelled"}
@@ -1240,6 +1280,10 @@ def validate_state(old: dict, new: dict) -> tuple[bool, str, str]:
             return False, "MP-PERS-001", f"Stammschicht von '{e.get('name') or eid}' ist ungültig."
         if str(e.get("employmentType", "permanent")) not in {"permanent", "temporary"}:
             return False, "MP-PERS-028", f"Personaltyp von '{e.get('name') or eid}' ist ungültig."
+        if e.get("tempStatus") is not None:
+            if (e.get("tempStatus") not in TEMP_STATUS or not _valid_date_key(e.get("tempFrom")) or not _valid_date_key(e.get("tempTo"))
+                    or str(e["tempFrom"]) > str(e["tempTo"]) or len(str(e.get("tempNote") or "")) > 200):
+                return False, "MP-PERS-033", f"Leiharbeiter-Anfrage von '{e.get('name') or eid}' ist ungültig (Zeitraum/Status)."
         if str(e.get("departmentId") or "") not in dept_ids:
             return False, "MP-PERS-029", f"Mitarbeiter '{e.get('name') or eid}' verweist auf einen unbekannten Bereich."
         weekly = _finite_float(e.get("weeklyHours", 40))
@@ -1657,10 +1701,18 @@ def _need_map(state: dict) -> dict:
 
 
 def gf_change_allowed(old: dict, new: dict) -> tuple[bool, str]:
-    allowed_root = {"departmentStaffNeeds", "weeklyEmployeeDeployments", "exceptions", "audit", "meta", "ui"}
+    allowed_root = {"departmentStaffNeeds", "weeklyEmployeeDeployments", "exceptions", "audit", "meta", "ui", "employees"}
     for key in set(old) | set(new):
         if key not in allowed_root and canonical(old.get(key)) != canonical(new.get(key)):
             return False, f"GF darf operative Produktionsdaten '{key}' nicht ändern."
+    ea, eb = _record_map(old.get("employees")), _record_map(new.get("employees"))
+    if set(ea) != set(eb):
+        return False, "GF legt keine Mitarbeiter an und entfernt keine."
+    for eid in eb:
+        if canonical(ea[eid]) != canonical(eb[eid]):
+            ok, reason = _temp_request_change(ea[eid], eb[eid], "gf")
+            if not ok:
+                return False, reason
     # MP-AUD-002: Die Abteilung meldet (requested), die GF bestätigt (confirmed).
     old_needs, new_needs = _need_map(old), _need_map(new)
     for key in set(old_needs) | set(new_needs):
@@ -1700,9 +1752,8 @@ def sales_change_allowed(old: dict, new: dict) -> tuple[bool, str]:
 # Phasenwechsel je Rolle (Admin: alle). Nach der Annahme wird der Produktionsstand
 # nicht gespeichert, sondern aus den verknüpften FS abgeleitet.
 PROJECT_TRANSITIONS = {
-    "sales": {("inquiry", "pm"), ("inquiry", "lost"), ("offer_sent", "accepted"), ("offer_sent", "lost")},
-    "project_management": {("inquiry", "pm"), ("inquiry", "lost"), ("pm", "offer_sent"), ("pm", "lost"), ("offer_sent", "pm"),
-                           ("offer_sent", "accepted"), ("offer_sent", "lost"), ("lost", "pm"), ("accepted", "closed")},
+    # PM legt an und übergibt an die Produktion; alte Phasen (Eingang/Angebot) gelten als PM.
+    "project_management": {("pm", "accepted"), ("inquiry", "accepted"), ("offer_sent", "accepted"), ("accepted", "closed")},
     "production_planning": {("accepted", "closed")},
 }
 PROJECT_BASE_FIELDS = {"customer", "contact", "name", "note", "wt", "workflow"}
@@ -1749,7 +1800,7 @@ def project_changes_allowed(old: dict, new: dict, role: str, username: str, depa
                 return False, f"Projekt {label}: Verlaufseinträge müssen den angemeldeten Benutzer tragen."
             continue
         if b is None:
-            if role != "project_management" or str(a.get("phase")) not in {"inquiry", "pm", "lost"}:
+            if role != "project_management" or str(a.get("phase")) not in {"inquiry", "pm", "offer_sent", "lost"}:
                 return False, f"Projekt {label} darf von dieser Rolle bzw. in dieser Phase nicht gelöscht werden."
             continue
         changed = {k for k in set(a) | set(b) if canonical(a.get(k)) != canonical(b.get(k))}
@@ -1999,6 +2050,12 @@ def department_change_allowed(old: dict, new: dict, department_id: str) -> tuple
     for rec in changed_records("employees"):
         if str(rec.get("departmentId") or "") != department_id:
             return False, "Mitarbeiter gehört nicht zum eigenen Bereich."
+    old_emps, new_emps = _record_map(old.get("employees")), _record_map(new.get("employees"))
+    for eid, rec in new_emps.items():
+        if canonical(old_emps.get(eid)) != canonical(rec):
+            ok, reason = _temp_request_change(old_emps.get(eid), rec, "department")
+            if not ok:
+                return False, reason
     # KW-Einsatz (nur GF/Admin änderbar, daher aus dem alten Stand): In der Einsatz-KW
     # plant der aufnehmende Bereich den Mitarbeiter, nicht der Stammbereich.
     deployment_old = _deployment_map(old)

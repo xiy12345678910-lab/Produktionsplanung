@@ -265,6 +265,19 @@ s, code, _ = put(AV, lambda n: (next(y for y in n["workSteps"] if y["id"] == "ws
 s, code, _ = put(AV, lambda n: (n.update(workSteps=[y for y in n["workSteps"] if y["id"] != "ws_av_cnc"]), audit_entry(n, "t_av"))); check(s == 200, f"Arbeitsvorbereitung löscht geplanten Auftrag ({s} {code})")
 s, d, _ = req("POST", "/api/users", {"username": "t_av2", "password": "password123", "role": "production_planning"}, cookie=A); check(s == 201, f"Admin legt Arbeitsvorbereitung an ({s})")
 
+# --- V12.7.3: Leiharbeiter-Anfrage (Abteilung fragt mit Zeitraum an, GF entscheidet)
+TEMP = {"id": "e_temp1", "name": "Leiharbeiter", "departmentId": "cnc", "employmentType": "temporary", "weeklyHours": 40, "active": True, "skills": [],
+        "tempStatus": "requested", "tempFrom": "2026-10-26", "tempTo": "2026-11-06", "tempBy": "t_lead_cnc", "tempDecidedBy": "", "tempNote": ""}
+def temp_emp(n): return next(e for e in n["employees"] if e["id"] == "e_temp1")
+s, code, _ = put(LC, lambda n: (n["employees"].append({**TEMP, "tempStatus": "approved"}), audit_entry(n, "t_lead_cnc"))); check(s == 403, f"Leih: Abteilung legt NICHT genehmigt an ({s} {code})")
+s, code, _ = put(LC, lambda n: (n["employees"].append(dict(TEMP)), audit_entry(n, "t_lead_cnc"))); check(s == 200, f"Leih: Abteilung fragt Leiharbeiter mit Zeitraum an ({s} {code})")
+s, code, _ = put(LC, lambda n: (temp_emp(n).update(tempStatus="approved"), audit_entry(n, "t_lead_cnc"))); check(s == 403, f"Leih: Abteilung genehmigt NICHT selbst ({s} {code})")
+s, code, _ = put(G, lambda n: (temp_emp(n).update(tempTo="2026-12-31"), audit_entry(n, "t_gf"))); check(s == 403, f"Leih: GF ändert NICHT den Zeitraum ({s} {code})")
+s, code, _ = put(G, lambda n: (temp_emp(n).update(tempStatus="approved", tempDecidedBy="t_gf"), audit_entry(n, "t_gf"))); check(s == 200, f"Leih: GF genehmigt ({s} {code})")
+s, code, _ = put(LC, lambda n: (temp_emp(n).update(tempTo="2026-11-13"), audit_entry(n, "t_lead_cnc"))); check(s == 403, f"Leih: Verlängerung bleibt NICHT stillschweigend genehmigt ({s} {code})")
+s, code, _ = put(LC, lambda n: (temp_emp(n).update(tempTo="2026-11-13", tempStatus="requested", tempDecidedBy=""), audit_entry(n, "t_lead_cnc"))); check(s == 200, f"Leih: Verlängerung wird neu angefragt ({s} {code})")
+s, code, _ = put(A, lambda n: (temp_emp(n).update(tempFrom="2026-11-20"), audit_entry(n, "t_admin"))); check(s == 400 and code == "MP-PERS-033", f"Leih: von > bis abgelehnt ({s} {code})")
+
 # --- V12.6: Projekt-Lebenszyklus
 def plog(n, pid, actor, text="t"):
     p = next(x for x in n["projects"] if x["id"] == pid); p.setdefault("log", []).append({"id": "l" + os.urandom(5).hex(), "ts": server.now_iso(), "actor": actor, "text": text}); return p
@@ -280,7 +293,7 @@ def dup_number(n):
 s_, code, _ = put(A, dup_number); check(s_ == 400 and code == "MP-PM-006", f"Doppelte Projektnummer abgelehnt ({s_} {code})")
 def to_pm(n):
     p = plog(n, "pj1", "t_sales"); p["phase"] = "pm"; audit_entry(n, "t_sales")
-s_, code, _ = put(SA, to_pm); check(s_ == 200, f"Vertrieb übergibt an Projektmanagement ({s_} {code})")
+s_, code, _ = put(SA, to_pm); check(s_ == 403, f"V12.7.3: keine Übergabe Vertrieb -> PM mehr (Eingang zählt als PM) ({s_} {code})")
 def sales_offer(n):
     p = plog(n, "pj1", "t_sales"); p["phase"] = "offer_sent"; audit_entry(n, "t_sales")
 s_, code, _ = put(SA, sales_offer); check(s_ == 403, f"Vertrieb kann Angebot nicht als versendet setzen ({s_} {code})")
@@ -352,13 +365,16 @@ def sales_link(n):
 s_, code, _ = put(SA, sales_link); check(s_ == 403, f"Vertrieb verknüpft keine Fertigungsprozesse ({s_} {code})")
 def pm_offer(n):
     p = plog(n, "pj1", "t_pm"); p["phase"] = "offer_sent"; p["offer"] = {"number": "ANG-1", "value": "1200"}; audit_entry(n, "t_pm")
-s_, code, _ = put(P, pm_offer); check(s_ == 200, f"PM: Angebot versendet ({s_} {code})")
-def accept_nodate(n):
-    p = plog(n, "pj1", "t_sales"); p["phase"] = "accepted"; p["ab"] = "AB-777"; audit_entry(n, "t_sales")
-s_, code, _ = put(SA, accept_nodate); check(s_ == 400 and code == "MP-PM-009", f"Annahme ohne Liefertermin abgelehnt ({s_} {code})")
-def accept(n):
+s_, code, _ = put(P, pm_offer); check(s_ == 403, f"V12.7.3: 'Angebot versendet' ist kein Schritt mehr ({s_} {code})")
+def sales_accept(n):
     p = plog(n, "pj1", "t_sales"); p["phase"] = "accepted"; p["ab"] = "AB-777"; p["dueDate"] = "2026-11-30"; audit_entry(n, "t_sales")
-s_, code, _ = put(SA, accept); check(s_ == 200, f"Vertrieb: Angebot angenommen mit AB + Liefertermin ({s_} {code})")
+s_, code, _ = put(SA, sales_accept); check(s_ == 403, f"V12.7.3: Vertrieb übergibt NICHT an die Produktion ({s_} {code})")
+def accept_nodate(n):
+    p = plog(n, "pj1", "t_pm"); p["phase"] = "accepted"; p["ab"] = "AB-777"; audit_entry(n, "t_pm")
+s_, code, _ = put(P, accept_nodate); check(s_ == 400 and code == "MP-PM-009", f"Übergabe ohne Liefertermin abgelehnt ({s_} {code})")
+def accept(n):
+    p = plog(n, "pj1", "t_pm"); p["phase"] = "accepted"; p["ab"] = "AB-777"; p["dueDate"] = "2026-11-30"; audit_entry(n, "t_pm")
+s_, code, _ = put(P, accept); check(s_ == 200, f"V12.7.3: PM übergibt an Produktion mit AB + Liefertermin ({s_} {code})")
 def sales_after(n):
     p = plog(n, "pj1", "t_sales"); p["customer"] = "anders"; audit_entry(n, "t_sales")
 s_, code, _ = put(SA, sales_after); check(s_ == 403, f"Vertrieb ändert nach Annahme keine Stammdaten ({s_} {code})")
