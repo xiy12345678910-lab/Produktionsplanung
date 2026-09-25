@@ -20,7 +20,7 @@ import sys
 import threading
 import time
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from http import HTTPStatus
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -686,6 +686,17 @@ def _valid_local_datetime(value, allow_empty: bool = True) -> bool:
     return bool(dt and dt.tzinfo is None)
 
 
+def _week_start_key(date_key: str) -> str:
+    d = datetime.strptime(str(date_key), "%Y-%m-%d")
+    return (d - timedelta(days=d.weekday())).strftime("%Y-%m-%d")
+
+
+def _deployment_map(state: dict) -> dict:
+    """(Mitarbeiter-ID, KW-Montag) -> Einsatzbereich laut GF-KW-Einsatz."""
+    return {(str(x.get("employeeId")), str(x.get("weekStart"))): str(x.get("departmentId") or "")
+            for x in (state.get("weeklyEmployeeDeployments") or []) if isinstance(x, dict)}
+
+
 def _valid_date_key(value) -> bool:
     if not isinstance(value, str) or not _DATE_RE.fullmatch(value):
         return False
@@ -1218,6 +1229,11 @@ def validate_state(old: dict, new: dict) -> tuple[bool, str, str]:
     eidset = set(eids)
 
     assignment_keys = set()
+    machine_dept_new = {str(m.get("id")): str(m.get("departmentId") or "cnc") for m in (new.get("machines") or []) if isinstance(m, dict)}
+    deployment_new = _deployment_map(new)
+    # Unveraenderte Zuordnungen nicht erneut gegen Freigabe/KW-Einsatz pruefen: Nimmt die GF
+    # einen KW-Einsatz zurueck, darf das nicht jeden weiteren Speichervorgang blockieren.
+    old_assignments = {(str(x.get("employeeId")), str(x.get("date"))): x for x in (old.get("personnelAssignments") or []) if isinstance(x, dict)}
     assignments = new.get("personnelAssignments") or []
     if not isinstance(assignments, list):
         return False, "MP-PERS-001", "Personalzuordnungen sind ungültig."
@@ -1228,7 +1244,12 @@ def validate_state(old: dict, new: dict) -> tuple[bool, str, str]:
         if eid not in eidset or mid not in midset or not _valid_date_key(date) or a.get("shift") not in {"single", "early", "late"}:
             return False, "MP-PERS-001", "Personalzuordnung verweist auf ungültige Mitarbeiter-, Maschinen-, Datums- oder Schichtdaten."
         employee = next((e for e in employees if str(e.get("id")) == eid), None)
-        if employee and mid not in {str(x) for x in (employee.get("skills") or [])}:
+        # Per KW in einen anderen Bereich eingesetzte Mitarbeiter (z. B. Leiharbeiter) duerfen
+        # dort jede Ressource des Einsatzbereichs besetzen.
+        deployed = deployment_new.get((eid, _week_start_key(date))) if employee else None
+        deployed_ok = bool(deployed) and deployed != str(employee.get("departmentId") or "") and machine_dept_new.get(mid) == deployed
+        unchanged = canonical(old_assignments.get((eid, str(date)))) == canonical(a)
+        if employee and not unchanged and not deployed_ok and mid not in {str(x) for x in (employee.get("skills") or [])}:
             return False, "MP-PERS-025", f"Mitarbeiter '{employee.get('name') or eid}' ist für Maschine '{mid}' nicht freigegeben."
         key = (eid, str(date))
         if key in assignment_keys:
@@ -1897,7 +1918,9 @@ def department_change_allowed(old: dict, new: dict, department_id: str) -> tuple
         if key[0] != department_id:
             return False, "Personalbedarf eines fremden Bereichs darf nicht geändert werden."
         if a is not None and b is not None and a.get("confirmed") != b.get("confirmed"):
-            return False, "GF-Bestätigung darf die Abteilung nicht ändern."
+            # Neue Meldung -> Bestätigung verfällt (zurück auf offen). Sonst nur GF.
+            if not (b.get("confirmed") is None and a.get("requested") != b.get("requested")):
+                return False, "GF-Bestätigung darf die Abteilung nicht ändern."
         if a is None and b is not None and b.get("confirmed") is not None:
             return False, "Neue Bedarfsmeldung darf keine GF-Bestätigung setzen."
         if a is not None and b is None and a.get("confirmed") is not None:
@@ -1955,11 +1978,23 @@ def department_change_allowed(old: dict, new: dict, department_id: str) -> tuple
     for rec in changed_records("employees"):
         if str(rec.get("departmentId") or "") != department_id:
             return False, "Mitarbeiter gehört nicht zum eigenen Bereich."
+    # KW-Einsatz (nur GF/Admin änderbar, daher aus dem alten Stand): In der Einsatz-KW
+    # plant der aufnehmende Bereich den Mitarbeiter, nicht der Stammbereich.
+    deployment_old = _deployment_map(old)
+
+    def employee_dept_on(rec):
+        eid = str(rec.get("employeeId"))
+        try:
+            wk = _week_start_key(rec.get("date"))
+        except (TypeError, ValueError):
+            wk = ""
+        return deployment_old.get((eid, wk)) or employee_dept.get(eid, "")
+
     for rec in changed_keyed("personnelAssignments", lambda x: f"{x.get('employeeId')}|{x.get('date')}"):
-        if employee_dept.get(str(rec.get("employeeId")), "") != department_id:
+        if employee_dept_on(rec) != department_id:
             return False, "Personalzuordnung gehört nicht zum eigenen Bereich."
     for rec in changed_keyed("personnelAbsences", lambda x: f"{x.get('employeeId')}|{x.get('date')}"):
-        if employee_dept.get(str(rec.get("employeeId")), "") != department_id:
+        if employee_dept_on(rec) != department_id:
             return False, "Abwesenheit gehört nicht zum eigenen Bereich."
     for rec in changed_records("history"):
         oid = str(rec.get("originalOrderId") or "")
