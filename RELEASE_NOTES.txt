@@ -43,6 +43,29 @@ TESTS
 - Neuer UI-Smoketest: node tests/ui_smoke.mjs [--shots <ordner>] (startet eigenen Server mit
   leerer Datenbank; prueft alle Ansichten bei 1440 und 390 px, Dialoge, Beschriftungen).
 
+SERVER (gleiche Version)
+
+HISTORIE-ARCHIV
+- Jeder Speichervorgang uebertraegt den ganzen Datenstand (max. 8 MB). Die Ist-Historie wuchs
+  bisher unbegrenzt und haette nach einigen tausend fertigen Auftraegen jedes Speichern blockiert.
+- Ab 1500 Eintraegen verschiebt der Server die aeltesten in die Tabelle history_archive (beim
+  Speichern und beim Serverstart). Eintraege offener Projekte bleiben immer im Live-Stand.
+- Lesen: GET /api/history-archive?from=JJJJ-MM-TT&to=JJJJ-MM-TT&limit=500&offset=0
+  (angemeldet, nur lesen, neueste zuerst). Browser mit veraltetem Stand holen archivierte
+  Eintraege nicht in den Live-Stand zurueck. Die PUT-Antwort nennt archivedHistoryIds.
+
+DATENSCHUTZ: ABWESENHEITSGRUND
+- Urlaub/Krank/Sonstiges wurde bisher an alle Rollen uebertragen und nur in der Oberflaeche
+  ausgeblendet. Jetzt blendet der Server den Grund aus ("Abwesend") - in personnelAbsences und
+  im Aenderungsprotokoll ("Abwesenheit eingetragen").
+- Grund sichtbar fuer: Admin, GF, Leitung/Stellvertretung des Bereichs, in dem der Mitarbeiter
+  (Stamm- oder KW-Einsatzbereich) geplant wird.
+- Speichern mit ausgeblendetem Stand ueberschreibt den echten Grund nicht.
+
+RECHTE
+- Bereichsrollen: klare Meldung bei Schichtvorlagen/Bedienerkapazitaet, Betriebsferien und
+  KW-Einsatz (vorher allgemeine Meldung; die Rechte selbst sind unveraendert).
+
 MASCHINENPLANUNG V12.7.4 - RELEASE NOTES
 ========================================
 Datum: 25.09.2026 · Basis: V12.7.3

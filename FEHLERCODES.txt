@@ -189,6 +189,7 @@ MP-CAL-014  Kalender-Ausnahme enthaelt ungueltiges/dupliziertes Datum oder Schic
 MP-HIST-005  Eine aktive Auftrag-ID existiert bereits als abgeschlossener/stornierter Auftrag in der Ist-Historie.
 MP-HIST-006  Neuer Historieneintrag enthaelt ungueltige Ist-Zeiten, Mengen, Segmente oder Abbruchdaten.
 MP-HIST-007  Fertig-/Abbruch-/Stornohistorie stimmt nicht mit den unveraenderlichen Identitaetsdaten des entfernten Auftrags ueberein.
+MP-HIST-010  Historie-Archiv: Zeitraum (JJJJ-MM-TT) oder limit/offset ungueltig.
 MP-PERS-027  Personal-Gate muss ein boolescher Wert (true/false) sein.
 MP-PROD-018  Locked-Start bzw. gesperrte Produktionssegmente passen nicht zu den Reststunden.
 MP-PROD-019  Pausenhistorie ist ungueltig oder passt nicht zum Status Laufend/Pausiert.
