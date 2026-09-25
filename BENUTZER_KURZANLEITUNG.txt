@@ -1,4 +1,4 @@
-MASCHINENPLANUNG V12.7.4 - KURZANLEITUNG FUER BENUTZER
+MASCHINENPLANUNG V12.7.5 - KURZANLEITUNG FUER BENUTZER
 ======================================================
 
 ANMELDEN
@@ -30,7 +30,7 @@ ROLLEN
 PROJEKTE (linke Leiste "Projekte")
 - Tafel mit Spalten: Eingang Vertrieb -> Projektmanagement -> Angebot versendet ->
   Arbeitsvorbereitung -> In Produktion -> Produziert. Karte anklicken = Projekt oeffnen.
-- Vertrieb: "+ Neuer Eingang" (Kunde, Teil, Wunschtermin, Workflow). Danach
+- Vertrieb/PM: "+ Neues Projekt" (Kunde, Teil, Wunschtermin, Workflow). Danach
   "An Projektmanagement uebergeben". Kommt die Kundenantwort: AB-Nummer + Liefertermin
   eintragen und "Angebot angenommen" - oder "Angebot verloren" mit Grund.
 - Projektmanagement plant Termine und verwaltet: gespeicherten Ablauf mit Startdatum
@@ -61,7 +61,7 @@ WOCHENPLAN (alle Bereiche - wie CNC)
   Karte am ersten Tag verschiebbar; Folgetage sind gestrichelt.
 - Farben: blau geplant, dunkler blau freigegeben, gelb laeuft, violett pausiert, gruen fertig,
   rot umrandet = AV-Termin wird ueberschritten. Oben erscheint dann eine Liste zum Anklicken.
-- "Aufträge" (linke Leiste) = dieselben Auftraege als Liste; Reihenfolge = Prioritaet (ziehen).
+- "Aufträge" (linke Leiste) = dieselben Auftraege als Liste; Reihenfolge = Prioritaet (ziehen oder Pfeile ↑/↓).
 
 AV-TERMIN UND FEINPLANUNG
 - Die Arbeitsvorbereitung legt den Auftrag mit "AV-Termin - fertig bis" an (z. B. 10.10.).

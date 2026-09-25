@@ -25,7 +25,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-APP_VERSION = "12.7.4"
+APP_VERSION = "12.7.5"
 HOST = os.environ.get("MP_HOST", "0.0.0.0")
 PORT = int(os.environ.get("MP_PORT", "8765"))
 BASE = Path(__file__).resolve().parent
@@ -172,6 +172,13 @@ def init_db() -> None:
               updated_at TEXT NOT NULL,
               updated_by TEXT NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS history_archive(
+              id TEXT PRIMARY KEY,
+              finished_at TEXT NOT NULL,
+              archived_at TEXT NOT NULL,
+              json TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS history_archive_finished ON history_archive(finished_at);
             CREATE TABLE IF NOT EXISTS server_audit(
               id INTEGER PRIMARY KEY AUTOINCREMENT,
               ts TEXT NOT NULL,
@@ -223,6 +230,7 @@ def init_db() -> None:
         migrate_state_v1261(con)
         migrate_state_v1270(con)
         normalize_state_v1270(con)
+        archive_history_on_start(con)
 
 
 def migrate_state_v1242(con: sqlite3.Connection) -> None:
@@ -1968,19 +1976,19 @@ def department_change_allowed(old: dict, new: dict, department_id: str) -> tuple
         return False, "Kein Bereich am Benutzer hinterlegt."
     globally_allowed = {"audit", "meta", "ui", "planVersions", "departmentStaffNeeds"}
     scoped = {"workSteps", "machines", "machineBlocks", "employees", "personnelAssignments", "personnelAbsences", "history", "yearRules", "weekRules", "projects"}
+    # Sprechende Meldungen für häufige Fälle, danach die allgemeine Regel.
+    if canonical(old.get("exceptions")) != canonical(new.get("exceptions")):
+        return False, "Globale Betriebsferien/Kalender-Ausnahmen dürfen nur GF/Admin ändern."
+    for key in ("shiftTemplates", "operatorCapacity"):
+        if canonical(old.get(key)) != canonical(new.get(key)):
+            return False, f"Globale Schicht-Einstellung '{key}' ändert nur der Admin."
+    if canonical(old.get("weeklyEmployeeDeployments")) != canonical(new.get("weeklyEmployeeDeployments")):
+        return False, "Interne KW-Versetzungen dürfen nur GF/Admin ändern."
     for key in set(old) | set(new):
         if key in globally_allowed or key in scoped:
             continue
         if canonical(old.get(key)) != canonical(new.get(key)):
             return False, f"Bereichsrolle darf globale Einstellung '{key}' nicht ändern."
-
-    if canonical(old.get("exceptions")) != canonical(new.get("exceptions")):
-        return False, "Globale Betriebsferien/Kalender-Ausnahmen dürfen nur GF/Admin ändern."
-    for key in ("shiftTemplates", "operatorCapacity"):
-        if canonical(old.get(key)) != canonical(new.get(key)) and department_id != "cnc":
-            return False, f"Globale CNC-Einstellung '{key}' darf dieser Bereich nicht ändern."
-    if canonical(old.get("weeklyEmployeeDeployments")) != canonical(new.get("weeklyEmployeeDeployments")):
-        return False, "Interne KW-Versetzungen dürfen nur GF/Admin ändern."
     old_needs = {(str(x.get("departmentId")), str(x.get("weekStart"))): x for x in (old.get("departmentStaffNeeds") or []) if isinstance(x, dict)}
     new_needs = {(str(x.get("departmentId")), str(x.get("weekStart"))): x for x in (new.get("departmentStaffNeeds") or []) if isinstance(x, dict)}
     for key in set(old_needs) | set(new_needs):
@@ -2081,6 +2089,174 @@ def department_change_allowed(old: dict, new: dict, department_id: str) -> tuple
         if did != department_id:
             return False, "Historieneintrag gehört nicht zum eigenen Bereich."
     return True, ""
+
+
+# --------------------------------------------------------------------------- Historie-Archiv
+# Die Ist-Historie wächst mit jedem fertigen Auftrag. Weil jeder Speichervorgang den ganzen
+# Datenstand überträgt (MAX_BODY), wandern ältere Einträge in die Tabelle history_archive.
+# Einträge offener Projekte bleiben im Live-Stand (Produktionskette/Projektstatus).
+HISTORY_LIVE_CAP = 1500
+
+
+def _history_finished_at(h: dict) -> str:
+    return str(h.get("finishedAt") or h.get("cancelledAt") or h.get("actualFinishedAt") or "")
+
+
+def archive_excess_history(con: sqlite3.Connection, state: dict) -> list[str]:
+    """Verschiebt die ältesten Historieneinträge über HISTORY_LIVE_CAP ins Archiv.
+
+    Ändert ``state`` in place und gibt die archivierten IDs zurück. Muss in derselben
+    Transaktion laufen, die den neuen Live-Stand schreibt.
+    """
+    history = state.get("history")
+    if not isinstance(history, list) or len(history) <= HISTORY_LIVE_CAP:
+        return []
+    open_projects = {str(p.get("id")) for p in (state.get("projects") or [])
+                     if isinstance(p, dict) and str(p.get("phase") or "") not in {"closed", "lost"}}
+    excess = len(history) - HISTORY_LIVE_CAP
+    # Neueste Einträge stehen vorne (unshift): von hinten archivieren.
+    move: set[int] = set()
+    for i in range(len(history) - 1, -1, -1):
+        if len(move) >= excess:
+            break
+        h = history[i]
+        if isinstance(h, dict) and h.get("id") and str(h.get("projectId") or "") not in open_projects:
+            move.add(i)
+    if not move:
+        return []
+    ts = now_iso()
+    moved = []
+    for i in sorted(move):
+        h = history[i]
+        con.execute("INSERT OR REPLACE INTO history_archive(id,finished_at,archived_at,json) VALUES(?,?,?,?)",
+                    (str(h["id"]), _history_finished_at(h), ts, json.dumps(h, ensure_ascii=False, separators=(",", ":"))))
+        moved.append(str(h["id"]))
+    state["history"] = [h for i, h in enumerate(history) if i not in move]
+    return moved
+
+
+def archive_history_on_start(con: sqlite3.Connection) -> None:
+    row = con.execute("SELECT json FROM state WHERE id=1").fetchone()
+    if not row:
+        return
+    state = json.loads(row["json"])
+    if len(state.get("history") or []) <= HISTORY_LIVE_CAP:
+        return
+    con.execute("BEGIN IMMEDIATE")
+    try:
+        moved = archive_excess_history(con, state)
+        if moved:
+            con.execute("UPDATE state SET json=?,updated_at=?,updated_by=? WHERE id=1",
+                        (json.dumps(state, ensure_ascii=False, separators=(",", ":")), now_iso(), "Historie-Archiv"))
+        con.execute("COMMIT")
+    except Exception:
+        con.execute("ROLLBACK")
+        raise
+    if moved:
+        print(f"DB-WARTUNG: {len(moved)} ältere Historieneinträge ins Archiv verschoben")
+
+
+def strip_archived_history(con: sqlite3.Connection, old: dict, incoming: dict) -> None:
+    """Browser, die noch archivierte Einträge im Speicher haben, schicken sie nicht zurück in den Live-Stand."""
+    history = incoming.get("history")
+    if not isinstance(history, list):
+        return
+    live = {str(h.get("id")) for h in (old.get("history") or []) if isinstance(h, dict)}
+    candidates = [str(h.get("id")) for h in history if isinstance(h, dict) and h.get("id") and str(h.get("id")) not in live]
+    if not candidates:
+        return
+    archived = set()
+    for i in range(0, len(candidates), 500):
+        chunk = candidates[i:i + 500]
+        archived |= {r[0] for r in con.execute(f"SELECT id FROM history_archive WHERE id IN ({','.join('?' * len(chunk))})", chunk)}
+    if archived:
+        incoming["history"] = [h for h in history if not (isinstance(h, dict) and str(h.get("id")) in archived)]
+
+
+# --------------------------------------------------------------------------- Abwesenheitsgrund
+# Urlaub/Krank/Sonstiges sind Personaldaten (Krankheit = Gesundheitsdaten). Den Grund sehen nur
+# Admin, GF und die Leitung/Stellvertretung des Bereichs, in dem der Mitarbeiter geplant wird.
+# Alle anderen erhalten "Abwesend" – schon vom Server, nicht erst in der Oberfläche.
+ABSENCE_REASONS = ("Urlaub", "Krank", "Sonstiges")
+ABSENCE_MASK = "Abwesend"
+ABSENCE_AUDIT_ACTIONS = {f"{x} eingetragen" for x in ABSENCE_REASONS}
+ABSENCE_FULL_ROLES = {"admin", "gf"}
+
+
+def _absence_visible(state: dict, user: dict):
+    """Liefert eine Funktion rec -> bool (Grund sichtbar)."""
+    role = str(user.get("role") or "")
+    if role in ABSENCE_FULL_ROLES:
+        return lambda rec: True
+    if role not in DEPARTMENT_ROLES or not user.get("department_id"):
+        return lambda rec: False
+    own = str(user.get("department_id"))
+    emp_dept = {str(e.get("id")): str(e.get("departmentId") or "") for e in (state.get("employees") or []) if isinstance(e, dict)}
+    deployments = _deployment_map(state)
+
+    def visible(rec):
+        eid = str(rec.get("employeeId"))
+        if emp_dept.get(eid) == own:
+            return True
+        try:
+            return deployments.get((eid, _week_start_key(rec.get("date")))) == own
+        except (TypeError, ValueError):
+            return False
+    return visible
+
+
+def _masked_absence(rec: dict) -> dict:
+    return {**rec, "label": ABSENCE_MASK} if str(rec.get("label") or "") in ABSENCE_REASONS else rec
+
+
+def _masked_audit(rec: dict) -> dict:
+    if str(rec.get("action") or "") in ABSENCE_AUDIT_ACTIONS:
+        return {**rec, "action": "Abwesenheit eingetragen"}
+    return rec
+
+
+def redact_state(state: dict, user: dict) -> dict:
+    """Kopie des Datenstands für diesen Benutzer (Abwesenheitsgrund ggf. ausgeblendet)."""
+    if str(user.get("role") or "") in ABSENCE_FULL_ROLES:
+        return state
+    visible = _absence_visible(state, user)
+    out = dict(state)
+    out["personnelAbsences"] = [a if not isinstance(a, dict) or visible(a) else _masked_absence(a)
+                                for a in (state.get("personnelAbsences") or [])]
+    out["audit"] = [_masked_audit(a) if isinstance(a, dict) else a for a in (state.get("audit") or [])]
+    return out
+
+
+def unredact_incoming(old: dict, incoming: dict, user: dict) -> None:
+    """Unverändert zurückgeschickte, ausgeblendete Datensätze durch den echten Stand ersetzen.
+
+    Geänderte Datensätze bleiben wie gesendet; darüber entscheiden die Rechteprüfungen.
+    """
+    if str(user.get("role") or "") in ABSENCE_FULL_ROLES:
+        return
+    visible = _absence_visible(old, user)
+    old_abs = {(str(a.get("employeeId")), str(a.get("date"))): a for a in (old.get("personnelAbsences") or []) if isinstance(a, dict)}
+    absences = incoming.get("personnelAbsences")
+    if isinstance(absences, list):
+        restored = []
+        for a in absences:
+            if isinstance(a, dict):
+                before = old_abs.get((str(a.get("employeeId")), str(a.get("date"))))
+                if before is not None and not visible(before) and canonical(_masked_absence(before)) == canonical(a):
+                    a = before
+            restored.append(a)
+        incoming["personnelAbsences"] = restored
+    old_audit = {str(a.get("id")): a for a in (old.get("audit") or []) if isinstance(a, dict) and a.get("id")}
+    audit = incoming.get("audit")
+    if isinstance(audit, list):
+        restored = []
+        for a in audit:
+            if isinstance(a, dict):
+                before = old_audit.get(str(a.get("id")))
+                if before is not None and canonical(_masked_audit(before)) == canonical(a):
+                    a = before
+            restored.append(a)
+        incoming["audit"] = restored
 
 
 def prune_sessions(con: sqlite3.Connection) -> None:
@@ -2232,7 +2408,32 @@ class Handler(BaseHTTPRequestHandler):
                 return
             with DB_LOCK, db_session() as con:
                 row = con.execute("SELECT revision,json,updated_at,updated_by FROM state WHERE id=1").fetchone()
-            return self.json_response(200, {"revision": row["revision"], "data": json.loads(row["json"]), "updatedAt": row["updated_at"], "updatedBy": row["updated_by"]})
+            return self.json_response(200, {"revision": row["revision"], "data": redact_state(json.loads(row["json"]), user), "updatedAt": row["updated_at"], "updatedBy": row["updated_by"]})
+        if path == "/api/history-archive":
+            # Ältere Ist-Historie (nur lesen), neueste zuerst. Filter: from/to (YYYY-MM-DD, Fertigmeldung), limit/offset.
+            user = self.require_user()
+            if not user:
+                return
+            qs = parse_qs(parsed.query)
+            date_from, date_to = qs.get("from", [""])[0], qs.get("to", [""])[0]
+            if (date_from and not _valid_date_key(date_from)) or (date_to and not _valid_date_key(date_to)):
+                return self.json_response(400, mp_error("MP-HIST-010", "Zeitraum muss im Format JJJJ-MM-TT angegeben werden."))
+            try:
+                limit = max(1, min(2000, int(qs.get("limit", ["500"])[0])))
+                offset = max(0, int(qs.get("offset", ["0"])[0]))
+            except ValueError:
+                return self.json_response(400, mp_error("MP-HIST-010", "limit/offset müssen Zahlen sein."))
+            where, args = [], []
+            if date_from:
+                where.append("finished_at >= ?"); args.append(date_from)
+            if date_to:
+                # finished_at ist ein ISO-Zeitstempel; "bis" schließt den ganzen Tag ein.
+                where.append("finished_at < ?"); args.append((datetime.strptime(date_to, "%Y-%m-%d") + timedelta(days=1)).strftime("%Y-%m-%d"))
+            clause = (" WHERE " + " AND ".join(where)) if where else ""
+            with DB_LOCK, db_session() as con:
+                total = con.execute(f"SELECT COUNT(*) FROM history_archive{clause}", args).fetchone()[0]
+                rows = con.execute(f"SELECT json FROM history_archive{clause} ORDER BY finished_at DESC, id LIMIT ? OFFSET ?", [*args, limit, offset]).fetchall()
+            return self.json_response(200, {"total": total, "offset": offset, "history": [json.loads(r["json"]) for r in rows]})
         if path == "/api/revision":
             user = self.require_user()
             if not user:
@@ -2464,6 +2665,8 @@ class Handler(BaseHTTPRequestHandler):
                 con.execute("ROLLBACK")
                 return self.json_response(409, mp_error("MP-SYNC-001", "Revision veraltet.", revision=row["revision"]))
             old = json.loads(row["json"])
+            unredact_incoming(old, incoming, user)
+            strip_archived_history(con, old, incoming)
             # Legacy-Schattenkopie (V12.4.3 und älter) nie wieder in den Live-State übernehmen.
             incoming.pop("orders", None)
             valid, error_code, reason = validate_state(old, incoming)
@@ -2513,12 +2716,13 @@ class Handler(BaseHTTPRequestHandler):
             # MP-AUD-017: fachlich unveränderter Stand erzeugt keine neue Revision.
             if canonical({k: v for k, v in incoming.items() if k != "meta"}) == canonical({k: v for k, v in old.items() if k != "meta"}):
                 con.execute("ROLLBACK")
-                return self.json_response(200, {"ok": True, "revision": row["revision"], "data": old, "unchanged": True})
+                return self.json_response(200, {"ok": True, "revision": row["revision"], "data": redact_state(old, user), "unchanged": True})
             new_revision = row["revision"] + 1
             incoming.setdefault("meta", {})
             incoming["meta"]["serverRevision"] = new_revision
             incoming["meta"]["actor"] = user["username"]
             incoming["meta"]["storage"] = "server"
+            archived_ids = archive_excess_history(con, incoming)
             raw = json.dumps(incoming, ensure_ascii=False, separators=(",", ":"))
             ts = now_iso()
             con.execute("UPDATE state SET revision=?,json=?,updated_at=?,updated_by=? WHERE id=1", (new_revision, raw, ts, user["username"]))
@@ -2526,7 +2730,7 @@ class Handler(BaseHTTPRequestHandler):
             con.execute("COMMIT")
         with REVISION_CONDITION:
             REVISION_CONDITION.notify_all()
-        return self.json_response(200, {"ok": True, "revision": new_revision, "data": incoming})
+        return self.json_response(200, {"ok": True, "revision": new_revision, "data": redact_state(incoming, user), "archivedHistoryIds": archived_ids})
 
 
 def main() -> None:

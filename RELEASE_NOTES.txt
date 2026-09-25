@@ -1,3 +1,71 @@
+MASCHINENPLANUNG V12.7.5 - RELEASE NOTES
+========================================
+Datum: 25.09.2026 · Basis: V12.7.4 · Oberflaeche (siehe docs/UI_AUDIT_PLAN.md)
+
+BEDIENUNG & DIALOGE
+- Alle Dialoge schliessen mit Escape; die Tab-Taste bleibt im offenen Dialog, danach springt der
+  Fokus zurueck auf den ausloesenden Knopf.
+- Eigene Bestaetigungs- und Eingabedialoge statt der Browser-Fenster (Loeschen, Entfernen,
+  Produktionsabbruch, neue Maschine/Linie, Backup-Import, Zuruecksetzen). Gefaehrliche Aktionen
+  sind rot. "Passwort setzen" (Benutzerverwaltung) zeigt das Passwort nicht mehr im Klartext.
+- Waehrend ein Dialog offen ist, wird der Stand nicht nachgeladen (keine Aenderung "unter" der
+  Rueckfrage).
+- Tippt man gerade in einem Feld und ein anderer Benutzer speichert, bleiben Fokus und die noch
+  nicht gespeicherte Eingabe erhalten.
+- Auftragsliste: Prioritaet auch ohne Maus per Pfeil-Knoepfe ↑/↓ (zusaetzlich zum Ziehen).
+
+MOBIL & TABLET
+- Kein seitliches Verschieben der Seite mehr auf schmalen Bildschirmen (Wochenleiste, Reiter,
+  GF-Auswertung, Maschinen-Tabelle, Schichtkalender, Maschinenstillstand).
+- Navigation auf dem Handy mit Beschriftung; alle Bereiche inkl. GF und System erreichbar.
+
+BARRIEREFREIHEIT & LESBARKEIT
+- Alle Eingabefelder haben eine verknuepfte Beschriftung, Symbol-Knoepfe (‹ › × 🔑 ↪) einen Namen
+  fuer Screenreader; Meldungen (Toast) werden vorgelesen; deutlicher Tastatur-Fokusrahmen.
+- Kleinste Schrift 10 px statt 9 px; schwach lesbare Grautoene abgedunkelt.
+- Weniger Animation bei Systemeinstellung "Bewegung reduzieren".
+
+KLARERE TEXTE
+- Einheitlicher Name "Produktionsplanung" (Anmeldung, Seitenleiste, Druck).
+- Im Produktionsmodus heisst der Navigationspunkt "Produktion" statt "Planung".
+- Seite "System" heisst jetzt auch so (vorher "Einstellungen").
+- "+ Neues Projekt" statt "+ Neuer Eingang"; "Heute" statt "Diese Woche" im Personal.
+- Personal ohne Mitarbeiter: Hinweis "Noch keine Mitarbeiter angelegt" mit Knopf statt 15 roter
+  Unterbesetzungs-Meldungen. Unterbesetzung ist je Maschine/Linie zusammengefasst.
+- Hinweis auf die Mindestbesetzung zeigt auf "System → Maschinen & Linien, Spalte Personal/Schicht".
+
+FEHLERBEHEBUNGEN
+- Maschine/Linie entfernen (×) unter System → Maschinen & Linien funktionierte nicht
+  (fehlerhaftes Attribut im Knopf).
+- Maschinenstillstand: Datumsfelder ueberlappten das Feld "Grund".
+
+TESTS
+- Neuer UI-Smoketest: node tests/ui_smoke.mjs [--shots <ordner>] (startet eigenen Server mit
+  leerer Datenbank; prueft alle Ansichten bei 1440 und 390 px, Dialoge, Beschriftungen).
+
+SERVER (gleiche Version)
+
+HISTORIE-ARCHIV
+- Jeder Speichervorgang uebertraegt den ganzen Datenstand (max. 8 MB). Die Ist-Historie wuchs
+  bisher unbegrenzt und haette nach einigen tausend fertigen Auftraegen jedes Speichern blockiert.
+- Ab 1500 Eintraegen verschiebt der Server die aeltesten in die Tabelle history_archive (beim
+  Speichern und beim Serverstart). Eintraege offener Projekte bleiben immer im Live-Stand.
+- Lesen: GET /api/history-archive?from=JJJJ-MM-TT&to=JJJJ-MM-TT&limit=500&offset=0
+  (angemeldet, nur lesen, neueste zuerst). Browser mit veraltetem Stand holen archivierte
+  Eintraege nicht in den Live-Stand zurueck. Die PUT-Antwort nennt archivedHistoryIds.
+
+DATENSCHUTZ: ABWESENHEITSGRUND
+- Urlaub/Krank/Sonstiges wurde bisher an alle Rollen uebertragen und nur in der Oberflaeche
+  ausgeblendet. Jetzt blendet der Server den Grund aus ("Abwesend") - in personnelAbsences und
+  im Aenderungsprotokoll ("Abwesenheit eingetragen").
+- Grund sichtbar fuer: Admin, GF, Leitung/Stellvertretung des Bereichs, in dem der Mitarbeiter
+  (Stamm- oder KW-Einsatzbereich) geplant wird.
+- Speichern mit ausgeblendetem Stand ueberschreibt den echten Grund nicht.
+
+RECHTE
+- Bereichsrollen: klare Meldung bei Schichtvorlagen/Bedienerkapazitaet, Betriebsferien und
+  KW-Einsatz (vorher allgemeine Meldung; die Rechte selbst sind unveraendert).
+
 MASCHINENPLANUNG V12.7.4 - RELEASE NOTES
 ========================================
 Datum: 25.09.2026 · Basis: V12.7.3
