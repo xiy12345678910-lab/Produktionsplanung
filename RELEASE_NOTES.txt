@@ -7,10 +7,14 @@ PROJEKTFENSTER
   Die Vergroesserung aus V12.7.3 griff nie (fehlerhafte CSS-Regel), das Fenster blieb 640 px breit.
 - Stammdaten & Angebot: Felder ragen nicht mehr ueber den Rand hinaus und stehen buendig.
 
-SERVERSTART
-- Run_Server_LAN.ps1: LAN_ADRESSEN.txt / LAN_CONFIG.json werden bis ca. 10 s wiederholt
-  geschrieben; ist eine Datei dann noch gesperrt (Virenscanner, offenes Programm), startet der
-  Server trotzdem (Warnung im Log). Vorher brach der Start - und damit das Update - ab.
+SERVERSTART & UPDATE
+- Update brach ab, weil Serverstart und Update-Pruefung gleichzeitig auf LAN_CONFIG.json bzw.
+  LAN_ADRESSEN.txt zugriffen ("Datei wird von einem anderen Prozess verwendet").
+- Run_Server_LAN.ps1 schreibt die Dateien ueber eine Temp-Datei und tauscht sie dann aus (Leser
+  sehen nie eine halbe Datei); bei Sperre bis ca. 10 s Wiederholung, danach startet der Server
+  trotzdem (Warnung im Log).
+- UPDATE_LIVE / Server_Status / CHECK_LAN_SICHERHEIT lesen LAN_CONFIG.json ueber Read-MPConfig:
+  kurz gesperrt oder unvollstaendig = "noch nicht bereit" und erneut versuchen, statt Abbruch.
 
 TESTS
 - test_regression.py: Migrationspruefung der Projektphasen und Zeitzonen-Fallback laufen auf

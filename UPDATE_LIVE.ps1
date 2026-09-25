@@ -55,9 +55,8 @@ try {
     if ($LASTEXITCODE -notin @(0, 2)) { throw 'Online-Datenbankbackup fehlgeschlagen.' }
 
     Write-Host '2/9 Vorabtest: neue Version mit einer Datenkopie starten (Live bleibt unberuehrt) ...'
-    $cfgPath = Join-Path $OldBase 'LAN_CONFIG.json'
-    if (Test-Path $cfgPath) {
-        $preCfg = Get-Content $cfgPath -Raw | ConvertFrom-Json
+    $preCfg = Read-MPConfig $OldBase
+    if ($preCfg) {
         $preDb = Get-ChildItem (Join-Path $OldBase 'backups') -File -Filter 'maschinenplanung_*.sqlite3' | Sort-Object LastWriteTime -Descending | Select-Object -First 1
         $pre = Invoke-MPPreflight $NewSource $PythonExe $preDb.FullName $preCfg $NewVersion
         if (-not $pre.Ok) {
@@ -67,7 +66,7 @@ try {
         }
         Write-Host "    PASS: V$NewVersion startet mit Datenkopie (Testport $($pre.Port))." -ForegroundColor Green
     } else {
-        Write-Warning 'LAN_CONFIG.json fehlt - Vorabtest uebersprungen.'
+        Write-Warning 'LAN_CONFIG.json fehlt oder ist nicht lesbar - Vorabtest uebersprungen.'
     }
 
     Write-Host '3/9 Live-Server stoppen ...'

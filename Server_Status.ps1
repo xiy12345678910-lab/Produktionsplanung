@@ -17,7 +17,7 @@ if ($h) {
         $color = if ([string]$h.Health.version -eq $expected) { 'Green' } else { 'Yellow' }
         Write-Host "Server: laeuft V$($h.Health.version) (Paket V$expected)" -ForegroundColor $color
     } else { Write-Host 'Server: NICHT ERREICHBAR' -ForegroundColor Red }
-} else { Write-Host 'LAN_CONFIG.json fehlt.' -ForegroundColor Red }
+} else { Write-Host 'LAN_CONFIG.json fehlt oder ist gerade nicht lesbar.' -ForegroundColor Red }
 $last = Get-ChildItem (Join-Path $Base 'backups') -Filter 'maschinenplanung_*.sqlite3' | Sort-Object LastWriteTime -Descending | Select-Object -First 1
 if ($last) { Write-Host "Letztes Backup: $($last.Name) ($($last.LastWriteTime))" } else { Write-Host 'Letztes Backup: KEINES' -ForegroundColor Red }
 Get-NetFirewallRule -DisplayName 'Maschinenplanung*' | ForEach-Object {

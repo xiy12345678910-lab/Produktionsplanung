@@ -19,10 +19,14 @@ function Write-Log([string]$Text) {
 function Write-InfoFile([string]$Path, [string[]]$Lines) {
     for ($i = 1; $i -le 20; $i++) {
         try {
-            Set-Content -LiteralPath $Path -Value $Lines -Encoding UTF8 -ErrorAction Stop
+            # Erst in eine Temp-Datei, dann austauschen: Leser sehen nie eine halb geschriebene Datei.
+            $tmp = "$Path.tmp"
+            Set-Content -LiteralPath $tmp -Value $Lines -Encoding UTF8 -ErrorAction Stop
+            if (Test-Path -LiteralPath $Path) { [IO.File]::Replace($tmp, $Path, [NullString]::Value) } else { [IO.File]::Move($tmp, $Path) }
             return $true
         } catch {
             if ($i -eq 20) {
+                Remove-Item -LiteralPath "$Path.tmp" -Force -ErrorAction SilentlyContinue
                 Write-Log ("WARNUNG: {0} konnte nicht geschrieben werden ({1}) - Server startet trotzdem." -f (Split-Path -Leaf $Path), $_.Exception.Message)
                 return $false
             }
