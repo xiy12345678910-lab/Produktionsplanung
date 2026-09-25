@@ -1,0 +1,92 @@
+MASCHINENPLANUNG V12.7.1 - KURZANLEITUNG FUER BENUTZER
+======================================================
+
+ANMELDEN
+1. Browser oeffnen (Edge, Chrome oder Firefox).
+2. Adresse oeffnen, die der Admin nennt, z. B. http://192.168.10.89:8765
+3. Benutzername und Passwort eingeben.
+Auf dem Benutzer-PC muss nichts installiert werden.
+
+EIGENES PASSWORT AENDERN
+- Oben rechts auf das Schluessel-Symbol (🔑) klicken.
+- Aktuelles Passwort und zweimal das neue Passwort (mind. 8 Zeichen) eingeben.
+- Andere angemeldete Sitzungen dieses Kontos werden dabei abgemeldet.
+
+ABMELDEN
+- Oben rechts auf ↪ klicken. Beim Abmelden werden die im Browser zwischengespeicherten
+  Plan- und Personaldaten geloescht. Bitte an gemeinsam genutzten PCs immer abmelden.
+
+ROLLEN
+- Lesend: sieht Plan, Auftraege, Historie und Report; aendert nichts.
+- Abteilungsleiter / Stellvertretung: planen den eigenen Bereich.
+  Leitung legt Stellvertretungen und Lesende an, Stellvertretung nur Lesende.
+- Vertrieb: legt Eingaenge an und meldet Annahme oder Verlust.
+- Arbeitsvorbereitung: legt Auftraege (FS) in allen Bereichen mit AV-Termin an, plant sie und
+  verknuepft sie mit AB. Freigabe, Produktion und Fertigmeldung machen die Bereiche.
+- Projektmanagement: pflegt AB-Auftraege.
+- GF: GF-Ansicht (nur GF/Admin), Projekte, bestaetigt den von den Abteilungen gemeldeten Personalbedarf.
+- Admin: alles inkl. Benutzerverwaltung.
+
+PROJEKTE (linke Leiste "Projekte")
+- Tafel mit Spalten: Eingang Vertrieb -> Projektmanagement -> Angebot versendet ->
+  Arbeitsvorbereitung -> In Produktion -> Produziert. Karte anklicken = Projekt oeffnen.
+- Vertrieb: "+ Neuer Eingang" (Kunde, Teil, Wunschtermin, Workflow). Danach
+  "An Projektmanagement uebergeben". Kommt die Kundenantwort: AB-Nummer + Liefertermin
+  eintragen und "Angebot angenommen" - oder "Angebot verloren" mit Grund.
+- Projektmanagement plant Termine und verwaltet: gespeicherten Ablauf mit Startdatum
+  anwenden oder Prozesse einzeln anlegen, jeweils mit Start und Faelligkeit. Jeder Prozess
+  gehoert zu einer Abteilung und laeuft parallel. Den Status meldet die Abteilung selbst
+  (ausser Konstruktion, Kalkulation, Einkauf, QS, PM - die pflegt das PM).
+  Angebotsnummer eintragen, "Angebot versendet".
+- Eigene Ablaeufe: im Projekt Namen eintragen und "Als Ablauf speichern" - Bereiche, Aufgaben
+  und Terminabstaende werden gemerkt. PM und Arbeitsvorbereitung haben je eigene Ablaeufe
+  (Liste unten auf der Projektseite, dort auch loeschen).
+- Projekt oeffnen: oben violett Entwicklung & Vertrieb (Aufgabe fuer Aufgabe), darunter blau
+  Produktion (FS live aus der Fertigung) bis zur Ziellinie mit Liefertermin. Parallele Aufgaben
+  stehen mit "2 parallel" zusammen. Zeile anklicken = bearbeiten bzw. Details.
+- Abteilungen sehen ihre Projekt-Aufgaben unter dem eigenen Wochenplan und setzen den Status.
+  Fertigungsaufgaben (z. B. Muster) mit "Als Auftrag einplanen" anlegen; der Prozess bleibt
+  mit der FS verknuepft.
+- Nach der Annahme plant und verwaltet die Arbeitsvorbereitung: Fertigungsablauf anwenden,
+  FS anlegen (ueber das Projekt oder "+ Auftrag") mit AV-Termin "fertig bis". Start,
+  Fortschritt und "Fertig" melden die Abteilungen. Status "In Produktion" / "Produziert" und der Fortschritt in % kommen
+  automatisch aus den FS. Am Ende "Projekt abschliessen".
+- Jeder Schritt steht mit Name und Uhrzeit im Verlauf des Projekts.
+
+WOCHENPLAN (alle Bereiche - wie CNC)
+- Oben unter "Bereich" waehlen (Leitungen sehen automatisch ihren Bereich).
+- Zeilen = Maschinen bzw. Linien. CNC, Siebdruck, Tiefziehen: Maschinen. Konfektion 1/2/3: je eine
+  Linie. Bei Linien gilt: Personenstunden / Besetzung = Durchlaufzeit (40 h bei 4 Personen = 10 h).
+- Mit < und > oder "Heute" die Woche wechseln. Laeuft ein Auftrag ueber mehrere Tage, ist nur die
+  Karte am ersten Tag verschiebbar; Folgetage sind gestrichelt.
+- Farben: blau geplant, dunkler blau freigegeben, gelb laeuft, violett pausiert, gruen fertig,
+  rot umrandet = AV-Termin wird ueberschritten. Oben erscheint dann eine Liste zum Anklicken.
+- "Aufträge" (linke Leiste) = dieselben Auftraege als Liste; Reihenfolge = Prioritaet (ziehen).
+
+AV-TERMIN UND FEINPLANUNG
+- Die Arbeitsvorbereitung legt den Auftrag mit "AV-Termin - fertig bis" an (z. B. 10.10.).
+  Das Programm plant ihn automatisch fruehestmoeglich ein.
+- Der Abteilungsleiter plant fein: Karte ziehen oder "Termin" (z. B. Start 05.10.).
+  Frueher als der AV-Termin ist immer erlaubt, spaeter nicht - das wird abgelehnt.
+- Den AV-Termin selbst aendert nur die Arbeitsvorbereitung (bzw. Admin).
+- Reicht die Kapazitaet nicht, bleibt der Auftrag eingeplant, wird aber rot und zaehlt unter
+  "Termin gefaehrdet" (auch bei der GF).
+
+MASCHINEN & LINIEN (System -> Einstellungen)
+- Je Bereich "+ Maschine" oder "+ Linie"; Name, Standardbetrieb, Umruestzeit und bei Linien die
+  Besetzung (Personen) pflegen. Leitungen pflegen nur den eigenen Bereich.
+- Entfernen geht nur ohne offene Auftraege.
+
+PLANARTEN / TERMINE
+- AUTO: fruehestmoeglicher freier Platz.
+- STARTWUNSCH / START FIX: Start moeglichst bzw. fest zum gewaehlten Zeitpunkt.
+- FERTIG BIS WUNSCH / FERTIG BIS FIX: rueckwaerts zum Termin.
+- Vor jeder Verschiebung zeigt das Programm ALT/NEU und die Auswirkungen; gespeichert wird erst mit "Uebernehmen".
+
+FREIGABE / PRODUKTION
+- Freigabe friert den Planstand ein. Fuer Aenderungen zuerst die Freigabe zuruecknehmen.
+- Produktion starten, pausieren, fortsetzen, Restzeit korrigieren, fertigmelden oder mit Grund abbrechen.
+
+FEHLERCODES
+- Fehler erscheinen als Klartext plus Code, z. B. MP-PLAN-031.
+- Bei Rueckfragen Code, FS/AB und Uhrzeit nennen. Liste: FEHLERCODES.txt
