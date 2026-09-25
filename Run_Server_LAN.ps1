@@ -13,6 +13,23 @@ $Log = Join-Path $LogDir ('server_' + (Get-Date -Format 'yyyy-MM-dd') + '.log')
 function Write-Log([string]$Text) {
     Add-Content -LiteralPath $Log -Value ("{0} {1}" -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $Text) -Encoding UTF8
 }
+# Info-Dateien mit Wiederholung schreiben: Virenscanner/Indexer (z. B. direkt nach dem Setzen der
+# Ordnerrechte beim Update) oder ein offenes Programm halten sie manchmal Sekunden lang fest.
+# Das ist kein Grund, den Server nicht zu starten.
+function Write-InfoFile([string]$Path, [string[]]$Lines) {
+    for ($i = 1; $i -le 20; $i++) {
+        try {
+            Set-Content -LiteralPath $Path -Value $Lines -Encoding UTF8 -ErrorAction Stop
+            return $true
+        } catch {
+            if ($i -eq 20) {
+                Write-Log ("WARNUNG: {0} konnte nicht geschrieben werden ({1}) - Server startet trotzdem." -f (Split-Path -Leaf $Path), $_.Exception.Message)
+                return $false
+            }
+            Start-Sleep -Milliseconds 500
+        }
+    }
+}
 # Alte Logs nach 30 Tagen entfernen
 Get-ChildItem -LiteralPath $LogDir -Filter 'server_*.log' -ErrorAction SilentlyContinue |
     Where-Object { $_.LastWriteTime -lt (Get-Date).AddDays(-30) } | Remove-Item -Force -ErrorAction SilentlyContinue
@@ -52,15 +69,15 @@ try {
         profile               = $lan.Profile
         updated_at            = (Get-Date).ToString('o')
     }
-    $config | ConvertTo-Json | Set-Content -Path "$Base\LAN_CONFIG.json" -Encoding UTF8
-    @(
+    Write-InfoFile "$Base\LAN_CONFIG.json" @($config | ConvertTo-Json) | Out-Null
+    Write-InfoFile "$Base\LAN_ADRESSEN.txt" @(
         "PC-Name: http://$env:COMPUTERNAME`:$Port",
         "LAN-IP:  http://$($lan.IP)`:$Port",
         "Subnetz: $Subnet",
         "Adapter: $($lan.InterfaceAlias) / $($lan.InterfaceDescription)",
         '',
         'Zugriff ist ausschliesslich aus diesem lokalen Subnetz erlaubt.'
-    ) | Set-Content -Path "$Base\LAN_ADRESSEN.txt" -Encoding UTF8
+    ) | Out-Null
 
     Write-Log "LAN-only Bind: $($lan.IP):$Port / Subnetz $Subnet / Adapter $($lan.InterfaceAlias)"
 } catch {

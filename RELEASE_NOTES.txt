@@ -38,6 +38,10 @@ FEHLERBEHEBUNGEN
 - Maschine/Linie entfernen (×) unter System → Maschinen & Linien funktionierte nicht
   (fehlerhaftes Attribut im Knopf).
 - Maschinenstillstand: Datumsfelder ueberlappten das Feld "Grund".
+- Serverstart (Run_Server_LAN.ps1): LAN_ADRESSEN.txt / LAN_CONFIG.json werden bis ca. 10 s
+  wiederholt geschrieben; ist die Datei dann noch gesperrt (Virenscanner, offenes Programm),
+  startet der Server trotzdem (Warnung im Log). Vorher brach der Start - und damit das Update -
+  ab ("Datei wird von einem anderen Prozess verwendet").
 
 TESTS
 - Neuer UI-Smoketest: node tests/ui_smoke.mjs [--shots <ordner>] (startet eigenen Server mit
