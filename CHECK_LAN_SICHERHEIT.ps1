@@ -22,7 +22,8 @@ function HasProfile($rule, [string]$name) { return ([string]$rule.Profile -split
 
 $configPath = Join-Path $Base 'LAN_CONFIG.json'
 if (-not (Test-Path $configPath)) { Fail 'LAN_CONFIG.json fehlt.'; Write-Host 'ERGEBNIS: NICHT FREIGEGEBEN' -ForegroundColor Red; exit 1 }
-$c = Get-Content $configPath -Raw | ConvertFrom-Json
+$c = Read-MPConfig $Base
+if (-not $c) { Fail 'LAN_CONFIG.json nicht lesbar (gesperrt oder unvollstaendig) - in einigen Sekunden erneut pruefen.'; Write-Host 'ERGEBNIS: NICHT FREIGEGEBEN' -ForegroundColor Red; exit 1 }
 
 # --- Netzwerk ---------------------------------------------------------------------------
 $currentProfile = Get-NetConnectionProfile -InterfaceAlias $c.interface

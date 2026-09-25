@@ -202,10 +202,24 @@ function Stop-MPServer([string]$Base) {
     if ($left.Count -gt 0) { throw "Port $MP_Port ist nach dem Serverstopp noch belegt." }
 }
 
-function Get-MPHealth([string]$Base, [int]$TimeoutSec = 3) {
+function Read-MPConfig([string]$Base) {
+    # LAN_CONFIG.json wird beim Serverstart neu geschrieben. Waehrenddessen kann die Datei kurz
+    # gesperrt oder unvollstaendig sein - dann kurz warten statt abzubrechen; $null = (noch) nicht lesbar.
     $cfg = Join-Path $Base 'LAN_CONFIG.json'
-    if (-not (Test-Path $cfg)) { return $null }
-    $c = Get-Content $cfg -Raw | ConvertFrom-Json
+    for ($i = 1; $i -le 10; $i++) {
+        if (-not (Test-Path -LiteralPath $cfg)) { return $null }
+        try {
+            $c = Get-Content -LiteralPath $cfg -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
+            if ($c -and $c.lan_ip -and $c.port) { return $c }
+        } catch { }
+        Start-Sleep -Milliseconds 300
+    }
+    return $null
+}
+
+function Get-MPHealth([string]$Base, [int]$TimeoutSec = 3) {
+    $c = Read-MPConfig $Base
+    if (-not $c) { return $null }
     try {
         $r = Invoke-RestMethod -Uri "http://$($c.lan_ip):$($c.port)/api/health" -TimeoutSec $TimeoutSec
         return [PSCustomObject]@{ Config = $c; Health = $r }
