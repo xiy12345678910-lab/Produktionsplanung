@@ -1,3 +1,21 @@
+MASCHINENPLANUNG V12.7.6 - RELEASE NOTES
+========================================
+Datum: 25.09.2026 · Basis: V12.7.5
+
+PROJEKTFENSTER
+- Das Projektfenster nutzt jetzt fast den ganzen Bildschirm (96 % Breite bis 1800 px, 94 % Hoehe).
+  Die Vergroesserung aus V12.7.3 griff nie (fehlerhafte CSS-Regel), das Fenster blieb 640 px breit.
+- Stammdaten & Angebot: Felder ragen nicht mehr ueber den Rand hinaus und stehen buendig.
+
+SERVERSTART
+- Run_Server_LAN.ps1: LAN_ADRESSEN.txt / LAN_CONFIG.json werden bis ca. 10 s wiederholt
+  geschrieben; ist eine Datei dann noch gesperrt (Virenscanner, offenes Programm), startet der
+  Server trotzdem (Warnung im Log). Vorher brach der Start - und damit das Update - ab.
+
+TESTS
+- test_regression.py: Migrationspruefung der Projektphasen und Zeitzonen-Fallback laufen auf
+  echten Windows-Daten korrekt (vorher 149/151, jetzt 151/151).
+
 MASCHINENPLANUNG V12.7.5 - RELEASE NOTES
 ========================================
 Datum: 25.09.2026 · Basis: V12.7.4 · Oberflaeche (siehe docs/UI_AUDIT_PLAN.md)
@@ -38,10 +56,6 @@ FEHLERBEHEBUNGEN
 - Maschine/Linie entfernen (×) unter System → Maschinen & Linien funktionierte nicht
   (fehlerhaftes Attribut im Knopf).
 - Maschinenstillstand: Datumsfelder ueberlappten das Feld "Grund".
-- Serverstart (Run_Server_LAN.ps1): LAN_ADRESSEN.txt / LAN_CONFIG.json werden bis ca. 10 s
-  wiederholt geschrieben; ist die Datei dann noch gesperrt (Virenscanner, offenes Programm),
-  startet der Server trotzdem (Warnung im Log). Vorher brach der Start - und damit das Update -
-  ab ("Datei wird von einem anderen Prozess verwendet").
 
 TESTS
 - Neuer UI-Smoketest: node tests/ui_smoke.mjs [--shots <ordner>] (startet eigenen Server mit
