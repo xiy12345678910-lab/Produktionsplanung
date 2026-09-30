@@ -501,6 +501,31 @@ s, d, _ = req("GET", "/api/history-archive"); check(s == 401, "Historie-Archiv: 
 server.HISTORY_LIVE_CAP = _cap
 check(server.validate_state(state(A)[1], state(A)[1])[0], "Historie-Archiv: Live-Stand besteht validate_state")
 
+# --------------------------------------------------------------------------- Audit 2026-09 (Rechte, Robustheit)
+def fake_history(n):
+    n["history"].insert(0, {"id": "h_fake", "recordType": "done", "originalOrderId": "gibt-es-nicht", "machineId": res_of(n, "cnc"), "order": "FAKE"})
+    audit_entry(n, "t_lead_cnc")
+s, code, _ = put(LC, fake_history); check(s == 403, f"Bereich: Historie ohne abgeschlossenen eigenen Auftrag abgelehnt ({s} {code})")
+s, code, _ = put(LC, lambda n: (n.update(planVersions=[{"id": "v_x", "revision": "<img>", "payload": {}}]), audit_entry(n, "t_lead_cnc")))
+check(s == 403, f"Bereich: Planstände ändert nur der Admin ({s} {code})")
+s, code, _ = put(AV, lambda n: (n.update(planVersions=[{"id": "v_x", "payload": {}}]), audit_entry(n, "t_av")))
+check(s == 403, f"Arbeitsvorbereitung: Planstände ändert nur der Admin ({s} {code})")
+s, code, _ = put(A, lambda n: (n.update(planVersions=[{"id": "v_abs", "ts": server.now_iso(), "label": "Test", "payload": {"personnelAbsences": [{"employeeId": "e_abs", "date": "2026-11-02", "label": "Krank"}]}}]), audit_entry(n, "t_admin")))
+check(s == 200, f"Admin: Planstand mit Abwesenheit anlegen ({s} {code})")
+check(state(LK)[1]["planVersions"][0]["payload"]["personnelAbsences"][0]["label"] == "Abwesend", "Abwesenheit: Grund auch in gespeicherten Planständen ausgeblendet")
+s, code, _ = put(LK, lambda n: audit_entry(n, "t_lead_k1")); check(s == 200, f"Speichern mit ausgeblendetem Planstand funktioniert ({s} {code})")
+check(state(A)[1]["planVersions"][0]["payload"]["personnelAbsences"][0]["label"] == "Krank", "Planstand: Grund bleibt nach fremdem Speichern erhalten")
+def sales_rich_project(n):
+    n["projects"].append({"id": "pj_rich", "number": "P-2026-9100", "phase": "inquiry", "customer": "X", "offer": {"price": 1}, "processes": [], "log": []})
+    audit_entry(n, "t_sales")
+s, code, _ = put(SA, sales_rich_project); check(s == 403, f"Vertrieb: neues Projekt nur mit eigenen Feldern ({s} {code})")
+def sales_done_process(n):
+    n["projects"].append({"id": "pj_done", "number": "P-2026-9101", "phase": "inquiry", "customer": "X", "processes": [{"id": "q1", "areaId": "cnc", "title": "Fräsen", "status": "done"}], "log": []})
+    audit_entry(n, "t_sales")
+s, code, _ = put(SA, sales_done_process); check(s == 403, f"Vertrieb: neue Prozesse starten offen ({s} {code})")
+for bad in ({"shiftTemplates": [1]}, {"operatorCapacity": [1]}):
+    s, code, _ = put(A, lambda n, b=bad: n.update(b)); check(s == 400 and code == "MP-DATA-014", f"Falscher Datentyp {list(bad)[0]} -> 400 statt Verbindungsabbruch ({s} {code})")
+
 httpd.shutdown()
 
 # --------------------------------------------------------------------------- backup

@@ -2,7 +2,7 @@
 """Server-side feasibility checks for new CNC releases."""
 from __future__ import annotations
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 # Windows-Python bringt keine IANA-Zeitzonendatenbank mit; ohne das Paket
@@ -174,10 +174,17 @@ def personnel_cover(state,seg):
             if isinstance(a,dict) and str(a.get("date"))==dk}
     assignments={(str(a.get("employeeId")),str(a.get("date"))):a
                  for a in state.get("personnelAssignments") or [] if isinstance(a,dict)}
+    # Wie canStaff() im Browser: Freigabe für die Maschine ODER per KW in deren Bereich eingesetzt.
+    week=(seg["start"]-timedelta(days=seg["start"].weekday())).strftime("%Y-%m-%d")
+    machine_dept=dept_of(state,seg["machineId"])
+    deployed={str(x.get("employeeId")) for x in state.get("weeklyEmployeeDeployments") or []
+              if isinstance(x,dict) and str(x.get("weekStart"))==week and str(x.get("departmentId") or "")==machine_dept}
     pieces=[]
     for e in state.get("employees") or []:
-        if (not isinstance(e,dict) or not e.get("active",True) or str(e.get("id")) in absent
-            or seg["machineId"] not in {str(x) for x in (e.get("skills") or [])}):
+        if not isinstance(e,dict) or not e.get("active",True) or str(e.get("id")) in absent:
+            continue
+        lent_here=str(e.get("id")) in deployed and str(e.get("departmentId") or "")!=machine_dept
+        if seg["machineId"] not in {str(x) for x in (e.get("skills") or [])} and not lent_here:
             continue
         eid=str(e.get("id"))
         a=assignments.get((eid,dk))

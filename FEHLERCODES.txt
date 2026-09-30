@@ -65,6 +65,7 @@ MP-DATA-010  Datenstand ist kein Objekt.
 MP-DATA-011  Mindestens eine Maschine ist erforderlich.
 MP-DATA-012  Auftragsliste fehlt.
 MP-DATA-013  Kontextbezogener Fehler; Klartext wird direkt in der Anwendung angezeigt.
+MP-DATA-014  Datenstand enthält ungültige Datentypen (z. B. Liste statt Text); Speichern abgelehnt.
 
 [MACH - Maschinenstammdaten]
 MP-MACH-001  Maschine ohne gültige ID.

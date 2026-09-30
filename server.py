@@ -1806,6 +1806,17 @@ def project_changes_allowed(old: dict, new: dict, role: str, username: str, depa
                 return False, f"Diese Rolle darf kein Projekt in dieser Phase anlegen ({label})."
             if any(str(x.get("actor") or "") != username for x in (b.get("log") or [])):
                 return False, f"Projekt {label}: Verlaufseinträge müssen den angemeldeten Benutzer tragen."
+            # Beim Anlegen gelten dieselben Feld- und Statusgrenzen wie beim Ändern.
+            extra = set(b) - fields - {"id", "number", "createdAt"}
+            if extra:
+                return False, f"Projekt {label}: Feld '{sorted(extra)[0]}' darf diese Rolle nicht setzen."
+            if kind == "project_management":
+                ok, reason = _pm_process_change({}, b, label)
+            else:
+                ok = all(str(x.get("status") or "open") == "open" for x in (b.get("processes") or []) if isinstance(x, dict))
+                reason = f"Projekt {label}: Neue Prozesse starten mit Status „Offen“."
+            if not ok:
+                return False, reason
             continue
         if b is None:
             if role != "project_management" or str(a.get("phase")) not in {"inquiry", "pm", "offer_sent", "lost"}:
@@ -1945,7 +1956,8 @@ def production_planning_change_allowed(old: dict, new: dict) -> tuple[bool, str]
     löschen, AB-Verknüpfung). Freigabe, Produktion, Fertigmeldung, Personal,
     Maschinen und Einstellungen bleiben bei Bereichen/Admin.
     """
-    allowed_root = {"workSteps", "projects", "processTemplates", "audit", "meta", "ui", "planVersions"}
+    # planVersions: gespeicherte Planstände ändert nur der Admin (Wiederherstellen ersetzt ganze Datenbereiche).
+    allowed_root = {"workSteps", "projects", "processTemplates", "audit", "meta", "ui"}
     for key in set(old) | set(new):
         if key not in allowed_root and canonical(old.get(key)) != canonical(new.get(key)):
             return False, f"Arbeitsvorbereitung darf '{key}' nicht ändern."
@@ -1974,7 +1986,7 @@ def _record_map(items):
 def department_change_allowed(old: dict, new: dict, department_id: str) -> tuple[bool, str]:
     if not department_id:
         return False, "Kein Bereich am Benutzer hinterlegt."
-    globally_allowed = {"audit", "meta", "ui", "planVersions", "departmentStaffNeeds"}
+    globally_allowed = {"audit", "meta", "ui", "departmentStaffNeeds"}
     scoped = {"workSteps", "machines", "machineBlocks", "employees", "personnelAssignments", "personnelAbsences", "history", "yearRules", "weekRules", "projects"}
     # Sprechende Meldungen für häufige Fälle, danach die allgemeine Regel.
     if canonical(old.get("exceptions")) != canonical(new.get("exceptions")):
@@ -2083,8 +2095,12 @@ def department_change_allowed(old: dict, new: dict, department_id: str) -> tuple
         if employee_dept_on(rec) != department_id:
             return False, "Abwesenheit gehört nicht zum eigenen Bereich."
     for rec in changed_records("history"):
+        # Historie entsteht nur beim Fertigmelden/Abbrechen: Sie muss auf einen eigenen Auftrag
+        # verweisen, der im selben Speichervorgang aus der Planung entfernt wird.
         oid = str(rec.get("originalOrderId") or "")
-        source = old_orders.get(oid) or new_orders.get(oid) or {}
+        source = old_orders.get(oid) if oid not in new_orders else None
+        if not source:
+            return False, "Historieneintrag muss zu einem eigenen, jetzt abgeschlossenen Auftrag gehören."
         did = str(source.get("departmentId") or machine_dept.get(str(source.get("machineId")), "cnc"))
         if did != department_id:
             return False, "Historieneintrag gehört nicht zum eigenen Bereich."
@@ -2224,6 +2240,22 @@ def redact_state(state: dict, user: dict) -> dict:
     out["personnelAbsences"] = [a if not isinstance(a, dict) or visible(a) else _masked_absence(a)
                                 for a in (state.get("personnelAbsences") or [])]
     out["audit"] = [_masked_audit(a) if isinstance(a, dict) else a for a in (state.get("audit") or [])]
+    if "planVersions" in state:
+        out["planVersions"] = _masked_plan_versions(state.get("planVersions"), visible)
+    return out
+
+
+def _masked_plan_versions(versions, visible):
+    """Gespeicherte Planstände enthalten eine Kopie der Abwesenheiten: gleiche Ausblendung wie im Live-Stand."""
+    if not isinstance(versions, list):
+        return versions
+    out = []
+    for v in versions:
+        payload = v.get("payload") if isinstance(v, dict) else None
+        if isinstance(payload, dict) and isinstance(payload.get("personnelAbsences"), list):
+            absences = [a if not isinstance(a, dict) or visible(a) else _masked_absence(a) for a in payload["personnelAbsences"]]
+            v = {**v, "payload": {**payload, "personnelAbsences": absences}}
+        out.append(v)
     return out
 
 
@@ -2257,6 +2289,11 @@ def unredact_incoming(old: dict, incoming: dict, user: dict) -> None:
                     a = before
             restored.append(a)
         incoming["audit"] = restored
+    # Planstände ändert nur der Admin: unverändert zurückgeschickt -> echter Stand.
+    if "planVersions" not in old and incoming.get("planVersions") == []:
+        incoming.pop("planVersions")
+    elif "planVersions" in incoming and canonical(incoming.get("planVersions")) == canonical(_masked_plan_versions(old.get("planVersions"), visible)):
+        incoming["planVersions"] = old.get("planVersions")
 
 
 def prune_sessions(con: sqlite3.Connection) -> None:
@@ -2637,6 +2674,49 @@ class Handler(BaseHTTPRequestHandler):
             con.execute("INSERT INTO server_audit(ts,username,action,detail,revision) VALUES(?,?,?,?,NULL)", (now_iso(), user["username"], "Benutzer geändert", target["username"]))
         return self.json_response(200, {"ok": True})
 
+    def check_incoming_state(self, con, old: dict, incoming: dict, user: dict):
+        """Alle Prüfungen vor dem Speichern. None = in Ordnung, sonst (HTTP-Status, Fehlercode, Text)."""
+        unredact_incoming(old, incoming, user)
+        strip_archived_history(con, old, incoming)
+        # Legacy-Schattenkopie (V12.4.3 und älter) nie wieder in den Live-State übernehmen.
+        incoming.pop("orders", None)
+        valid, error_code, reason = validate_state(old, incoming)
+        if not valid:
+            return 400, error_code, reason
+        if user["role"] == "gf":
+            ok, reason = gf_change_allowed(old, incoming)
+            if not ok:
+                return 403, "MP-GF-030", reason
+        elif user["role"] == "project_management":
+            ok, reason = project_management_change_allowed(old, incoming)
+            if not ok:
+                return 403, "MP-PM-030", reason
+        elif user["role"] == "sales":
+            ok, reason = sales_change_allowed(old, incoming)
+            if not ok:
+                return 403, "MP-SALES-030", reason
+        elif user["role"] == "production_planning":
+            ok, reason = production_planning_change_allowed(old, incoming)
+            if not ok:
+                return 403, "MP-AV-030", reason
+        elif user["role"] in DEPARTMENT_ROLES:
+            ok, reason = department_change_allowed(old, incoming, str(user.get("department_id") or ""))
+            if not ok:
+                return 403, "MP-DEPT-030", reason
+        if user["role"] != "admin" and canonical(old.get("processTemplates")) != canonical(incoming.get("processTemplates")):
+            ok, reason = templates_change_allowed(old, incoming, user["role"])
+            if not ok:
+                return 403, "MP-TPL-030", reason
+        if user["role"] != "admin" and canonical(old.get("projects")) != canonical(incoming.get("projects")):
+            ok, reason = project_changes_allowed(old, incoming, user["role"], user["username"], str(user.get("department_id") or ""))
+            if not ok:
+                return 403, "MP-PM-031", reason
+        if user["role"] != "admin":
+            ok, reason = audit_change_allowed(old, incoming, user["username"])
+            if not ok:
+                return 403, "MP-LOG-001", reason
+        return None
+
     def do_PUT(self):
         path = urlparse(self.path).path
         if path != "/api/state":
@@ -2665,54 +2745,15 @@ class Handler(BaseHTTPRequestHandler):
                 con.execute("ROLLBACK")
                 return self.json_response(409, mp_error("MP-SYNC-001", "Revision veraltet.", revision=row["revision"]))
             old = json.loads(row["json"])
-            unredact_incoming(old, incoming, user)
-            strip_archived_history(con, old, incoming)
-            # Legacy-Schattenkopie (V12.4.3 und älter) nie wieder in den Live-State übernehmen.
-            incoming.pop("orders", None)
-            valid, error_code, reason = validate_state(old, incoming)
-            if not valid:
+            try:
+                problem = self.check_incoming_state(con, old, incoming, user)
+            except (TypeError, AttributeError, KeyError, ValueError, RecursionError):
+                # Falsche Datentypen (z. B. Liste statt Text) sauber ablehnen statt die Verbindung abzubrechen.
+                problem = (400, "MP-DATA-014", "Datenstand enthält ungültige Datentypen.")
+            if problem:
                 con.execute("ROLLBACK")
-                return self.json_response(400, mp_error(error_code, reason))
-            if user["role"] == "gf":
-                ok, reason = gf_change_allowed(old, incoming)
-                if not ok:
-                    con.execute("ROLLBACK")
-                    return self.json_response(403, mp_error("MP-GF-030", reason))
-            elif user["role"] == "project_management":
-                ok, reason = project_management_change_allowed(old, incoming)
-                if not ok:
-                    con.execute("ROLLBACK")
-                    return self.json_response(403, mp_error("MP-PM-030", reason))
-            elif user["role"] == "sales":
-                ok, reason = sales_change_allowed(old, incoming)
-                if not ok:
-                    con.execute("ROLLBACK")
-                    return self.json_response(403, mp_error("MP-SALES-030", reason))
-            elif user["role"] == "production_planning":
-                ok, reason = production_planning_change_allowed(old, incoming)
-                if not ok:
-                    con.execute("ROLLBACK")
-                    return self.json_response(403, mp_error("MP-AV-030", reason))
-            elif user["role"] in DEPARTMENT_ROLES:
-                ok, reason = department_change_allowed(old, incoming, str(user.get("department_id") or ""))
-                if not ok:
-                    con.execute("ROLLBACK")
-                    return self.json_response(403, mp_error("MP-DEPT-030", reason))
-            if user["role"] != "admin" and canonical(old.get("processTemplates")) != canonical(incoming.get("processTemplates")):
-                ok, reason = templates_change_allowed(old, incoming, user["role"])
-                if not ok:
-                    con.execute("ROLLBACK")
-                    return self.json_response(403, mp_error("MP-TPL-030", reason))
-            if user["role"] != "admin" and canonical(old.get("projects")) != canonical(incoming.get("projects")):
-                ok, reason = project_changes_allowed(old, incoming, user["role"], user["username"], str(user.get("department_id") or ""))
-                if not ok:
-                    con.execute("ROLLBACK")
-                    return self.json_response(403, mp_error("MP-PM-031", reason))
-            if user["role"] != "admin":
-                ok, reason = audit_change_allowed(old, incoming, user["username"])
-                if not ok:
-                    con.execute("ROLLBACK")
-                    return self.json_response(403, mp_error("MP-LOG-001", reason))
+                status, code, reason = problem
+                return self.json_response(status, mp_error(code, reason))
             # MP-AUD-017: fachlich unveränderter Stand erzeugt keine neue Revision.
             if canonical({k: v for k, v in incoming.items() if k != "meta"}) == canonical({k: v for k, v in old.items() if k != "meta"}):
                 con.execute("ROLLBACK")

@@ -2,6 +2,20 @@ MASCHINENPLANUNG V12.7.5 - RELEASE NOTES
 ========================================
 Datum: 25.09.2026 · Basis: V12.7.4 · Oberflaeche (siehe docs/UI_AUDIT_PLAN.md)
 
+SICHERHEIT & RECHTE (Nachtrag 30.09.2026, Audit siehe docs/SECURITY_AUDIT.md)
+- Aenderungsprotokoll und gespeicherte Planstaende: Die Revisionsangabe wird nicht mehr als HTML
+  eingefuegt. Vorher konnte jede schreibende Rolle damit Skript im Browser z. B. des Admins
+  ausfuehren.
+- Gespeicherte Planstaende aendert nur noch der Admin (vorher auch Bereiche und AV). Der
+  Abwesenheitsgrund ist auch in Planstaenden fuer Rollen ohne Einsicht ausgeblendet.
+- Bereiche koennen Ist-Historie nur noch beim Fertigmelden/Abbrechen eines eigenen Auftrags
+  anlegen (vorher konnte die CNC-Leitung beliebige, danach nicht mehr loeschbare Eintraege anlegen).
+- Neue Projekte: Vertrieb/PM duerfen beim Anlegen nur die Felder setzen, die sie auch aendern
+  duerfen; neue Abteilungsprozesse starten mit Status "Offen".
+- Freigabepruefung (Personal-Gate): Per KW in den Bereich eingesetzte Mitarbeiter zaehlen wie in
+  der Oberflaeche mit. Vorher lehnte der Server solche Freigaben als "personell unterdeckt" ab.
+- Falsche Datentypen im Datenstand fuehren zu MP-DATA-014 statt zu einem Verbindungsabbruch.
+
 BEDIENUNG & DIALOGE
 - Alle Dialoge schliessen mit Escape; die Tab-Taste bleibt im offenen Dialog, danach springt der
   Fokus zurueck auf den ausloesenden Knopf.
