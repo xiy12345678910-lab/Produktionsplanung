@@ -2603,6 +2603,8 @@ class Handler(BaseHTTPRequestHandler):
             return
         if not self.require_current_client():
             return
+        if failed_login_blocked(self.client_address[0]):
+            return self.json_response(429, mp_error("MP-AUTH-003", "Zu viele Fehlversuche. Bitte später erneut versuchen."))
         current = str(body.get("currentPassword", ""))
         new_pw = str(body.get("newPassword", ""))
         if len(new_pw) < 8:
@@ -2642,6 +2644,13 @@ class Handler(BaseHTTPRequestHandler):
             body = self.read_json()
         except Exception:
             return self.json_response(400, mp_error("MP-REQ-002", "Ungültige Anfrage."))
+        new_hash = None
+        if "password" in body:
+            pw = str(body["password"])
+            if len(pw) < 8:
+                return self.json_response(400, mp_error("MP-AUTH-017", "Passwort muss mindestens 8 Zeichen haben."))
+            # Hashen (~0,2 s) vor der globalen DB-Sperre, damit andere Anfragen nicht warten.
+            new_hash = hash_password(pw)
         with DB_LOCK, db_session() as con:
             target = con.execute("SELECT * FROM users WHERE id=?", (uid,)).fetchone()
             if not target:
@@ -2656,15 +2665,13 @@ class Handler(BaseHTTPRequestHandler):
                 manageable = MANAGEABLE_ROLES.get(user["role"], set())
                 if str(target["department_id"] or "") != own or department_id != own or target["role"] not in manageable or role not in manageable:
                     return self.json_response(403, mp_error("MP-AUTH-021", "Benutzerverwaltung ist auf untergeordnete Rollen im eigenen Bereich begrenzt."))
-            if role not in ROLES or (role in DEPARTMENT_ROLES and not department_id):
+            # Altrollen (planner/production) bleiben unverändert erlaubt, damit solche Konten gesperrt werden können.
+            if (role not in ROLES and role != target["role"]) or (role in DEPARTMENT_ROLES and not department_id):
                 return self.json_response(400, mp_error("MP-AUTH-015", "Ungültige Rolle oder Bereich fehlt."))
             fields = ["role=?", "department_id=?", "active=?", "updated_at=?"]
             vals = [role, department_id, active, now_iso()]
-            if "password" in body:
-                pw = str(body["password"])
-                if len(pw) < 8:
-                    return self.json_response(400, mp_error("MP-AUTH-017", "Passwort muss mindestens 8 Zeichen haben."))
-                salt, digest = hash_password(pw)
+            if new_hash:
+                salt, digest = new_hash
                 fields += ["salt=?", "password_hash=?"]
                 vals += [salt, digest]
             vals.append(uid)

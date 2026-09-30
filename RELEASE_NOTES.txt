@@ -2,6 +2,22 @@ MASCHINENPLANUNG V12.7.5 - RELEASE NOTES
 ========================================
 Datum: 25.09.2026 · Basis: V12.7.4 · Oberflaeche (siehe docs/UI_AUDIT_PLAN.md)
 
+OBERFLAECHE & AUSDRUCKE (Nachtrag 30.09.2026, Rundgang mit allen Rollen)
+- Wochenplan-PDF: keine leere erste Seite mehr; Firmenname, gewaehlter Bereich im Titel, Spalten
+  AB/WT und AV-Termin (ueberschritten = rot mit ⚠), Maschinen in Plan-Reihenfolge; Dateiname nennt
+  den Bereich statt immer "CNC".
+- Monatsreport-PDF: Seitenraender, keine doppelten Ueberschriften, Firmenname und Erstellzeit.
+- Datumsangaben in Ausdrucken und Excel einheitlich TT.MM.JJJJ; "AB AB-..." bzw. "WT WT-..." wird
+  nicht mehr doppelt vorangestellt (auch im Excel-Terminplan und Dateinamen).
+- System: Reiter Aenderungen/Historie/Report erscheinen nur fuer Rollen, die sie oeffnen duerfen
+  (Bereichsleitung bekam vorher einen Fehler, die GF sah sie ausgegraut).
+- Historie: Bereich "Aeltere Historie (Archiv)" laedt vom Server archivierte Eintraege nach
+  (Zeitraum, je 200, nur lesen). Vorher waren sie in der Oberflaeche nicht mehr sichtbar.
+- Handy: kein seitliches Verschieben mehr in GF-Auswertung, Abwesenheit, Mitarbeiterliste und
+  Feiertage; Projektkarte zeigt die Projektnummer nur einmal; FS-Nummer bricht nicht mehr um.
+- Konten: "Passwort aendern" sperrt nach 8 Fehlversuchen wie die Anmeldung; Konten mit Altrolle
+  lassen sich sperren; Passwort-Hash blockiert beim Benutzer-Aendern nicht mehr den Server.
+
 SICHERHEIT & RECHTE (Nachtrag 30.09.2026, Audit siehe docs/SECURITY_AUDIT.md)
 - Aenderungsprotokoll und gespeicherte Planstaende: Die Revisionsangabe wird nicht mehr als HTML
   eingefuegt. Vorher konnte jede schreibende Rolle damit Skript im Browser z. B. des Admins

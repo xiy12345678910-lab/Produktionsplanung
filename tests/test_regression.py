@@ -523,6 +523,19 @@ def sales_done_process(n):
     n["projects"].append({"id": "pj_done", "number": "P-2026-9101", "phase": "inquiry", "customer": "X", "processes": [{"id": "q1", "areaId": "cnc", "title": "Fräsen", "status": "done"}], "log": []})
     audit_entry(n, "t_sales")
 s, code, _ = put(SA, sales_done_process); check(s == 403, f"Vertrieb: neue Prozesse starten offen ({s} {code})")
+with server.db_session() as c:  # Konto mit Altrolle (V11) – muss sperrbar sein, ohne neue Rolle zu wählen
+    c.execute("INSERT INTO users(username,salt,password_hash,role,department_id,active,created_at,updated_at) VALUES('t_legacy','x','x','planner','',1,?,?)", (server.now_iso(), server.now_iso()))
+    _legacy_id = c.execute("SELECT id FROM users WHERE username='t_legacy'").fetchone()[0]
+s, d, _ = req("PATCH", f"/api/users/{_legacy_id}", {"active": False}, cookie=A)
+check(s == 200, f"Admin sperrt Konto mit Altrolle ({s} {d})")
+s, d, _ = req("PATCH", f"/api/users/{_legacy_id}", {"role": "production"}, cookie=A)
+check(s == 400, f"Altrolle kann nicht neu vergeben werden ({s})")
+server.clear_failed_login("127.0.0.1")
+for _ in range(8):
+    req("POST", "/api/password", {"currentPassword": "falsch-falsch", "newPassword": "neuesPasswort1"}, cookie=V)
+s, d, _ = req("POST", "/api/password", {"currentPassword": "password123", "newPassword": "neuesPasswort1"}, cookie=V)
+check(s == 429, f"Passwort ändern: nach 8 Fehlversuchen gesperrt ({s})")
+server.clear_failed_login("127.0.0.1")
 for bad in ({"shiftTemplates": [1]}, {"operatorCapacity": [1]}):
     s, code, _ = put(A, lambda n, b=bad: n.update(b)); check(s == 400 and code == "MP-DATA-014", f"Falscher Datentyp {list(bad)[0]} -> 400 statt Verbindungsabbruch ({s} {code})")
 
