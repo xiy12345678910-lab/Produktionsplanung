@@ -32,7 +32,7 @@ BASE = Path(__file__).resolve().parent
 if str(BASE) not in sys.path:
     # Anhängen statt voranstellen: Standardbibliothek hat immer Vorrang vor Dateien im Programmordner.
     sys.path.append(str(BASE))
-from release_gates import validate_release_feasibility
+from release_gates import local_dt, validate_release_feasibility
 
 DATA_DIR = BASE / "data"
 DB_PATH = DATA_DIR / "maschinenplanung.sqlite3"
@@ -2172,6 +2172,104 @@ def archive_history_on_start(con: sqlite3.Connection) -> None:
         print(f"DB-WARTUNG: {len(moved)} ältere Historieneinträge ins Archiv verschoben")
 
 
+# Felder, die der Browser beim Laden in Historieneinträgen ergänzt, falls sie fehlen (migrate()).
+HISTORY_CLIENT_DEFAULTS = {"recordType", "machineName", "actualFinishedAt", "actualStartedAt", "actualSegments", "plannedSegments"}
+
+
+def restore_client_filled_history(old: dict, incoming: dict) -> None:
+    """Ergänzt der Browser in einem bestehenden Historieneintrag nur fehlende Standardfelder,
+    gilt der Eintrag als unverändert: Der gespeicherte Stand wird übernommen.
+
+    Sonst würde z. B. ein Abbruch-Eintrag ohne ``plannedSegments`` jedes weitere Speichern
+    aller anderen Browser mit MP-HIST-003 blockieren. Vorhandene Werte ändern bleibt verboten.
+    """
+    history = incoming.get("history")
+    if not isinstance(history, list):
+        return
+    live = {str(h.get("id")): h for h in (old.get("history") or []) if isinstance(h, dict) and h.get("id")}
+    out = []
+    for h in history:
+        before = live.get(str(h.get("id"))) if isinstance(h, dict) else None
+        if before is not None and canonical(before) != canonical(h):
+            diff = {k for k in set(before) | set(h) if canonical(before.get(k)) != canonical(h.get(k))}
+            if diff <= HISTORY_CLIENT_DEFAULTS and all(before.get(k) in (None, "", []) for k in diff):
+                h = before
+        out.append(h)
+    incoming["history"] = out
+
+
+def _is_empty(v) -> bool:
+    return v is None or v == "" or v == [] or v == {}
+
+
+def _only_added_empty(a, b) -> bool:
+    """b entspricht a, ergänzt höchstens Schlüssel mit leerem Wert (None, "", [], {})."""
+    if isinstance(a, dict) and isinstance(b, dict):
+        return (all(k in b and _only_added_empty(a[k], b[k]) for k in a)
+                and all(_is_empty(b[k]) for k in b if k not in a))
+    if isinstance(a, list) and isinstance(b, list):
+        return len(a) == len(b) and all(_only_added_empty(x, y) for x, y in zip(a, b))
+    return canonical(a) == canonical(b)
+
+
+def restore_client_defaults(old: dict, incoming: dict) -> None:
+    """Der Browser ergänzt beim Laden fehlende Felder mit leeren Standardwerten (migrate()).
+    Solche Datensätze gelten als unverändert und behalten den gespeicherten Stand, damit
+    Rollen ohne Schreibrecht auf den Bereich nicht an einer reinen Formatergänzung scheitern.
+    Echte Änderungen (andere oder neue nicht leere Werte) bleiben unberührt und werden geprüft."""
+    for key, new_val in list(incoming.items()):
+        if key not in old or key == "meta":
+            continue
+        old_val = old[key]
+        if canonical(old_val) == canonical(new_val):
+            continue
+        if _only_added_empty(old_val, new_val):
+            incoming[key] = old_val
+            continue
+        if isinstance(old_val, list) and isinstance(new_val, list):
+            by_id = {str(x.get("id")): x for x in old_val if isinstance(x, dict) and x.get("id")}
+            out = []
+            for i, rec in enumerate(new_val):
+                before = by_id.get(str(rec.get("id"))) if isinstance(rec, dict) and rec.get("id") else None
+                if before is None and not by_id and len(old_val) == len(new_val):
+                    before = old_val[i]  # Listen ohne ID (z. B. Personalbedarf): gleiche Position
+                if before is not None and canonical(before) != canonical(rec) and _only_added_empty(before, rec):
+                    rec = before
+                out.append(rec)
+            incoming[key] = out
+    # Historiengrenze: Ist sie leer, setzt der Browser sie auf das letzte Fertig-Ende der Maschine.
+    old_machines = {str(m.get("id")): m for m in (old.get("machines") or []) if isinstance(m, dict)}
+    if isinstance(incoming.get("machines"), list):
+        done_end: dict[str, datetime] = {}
+        for h in incoming.get("history") or []:
+            if not isinstance(h, dict) or (h.get("recordType") or "done") != "done":
+                continue
+            t = local_dt(h.get("actualFinishedAt") or h.get("finishedAt") or h.get("plannedEnd"))
+            if t is None:
+                continue
+            mid = str(h.get("machineId"))
+            try:
+                if mid not in done_end or t > done_end[mid]:
+                    done_end[mid] = t
+            except TypeError:
+                continue
+        out = []
+        for m in incoming["machines"]:
+            before = old_machines.get(str(m.get("id"))) if isinstance(m, dict) else None
+            if before is not None and not before.get("committedUntil") and m.get("committedUntil"):
+                rest_same = canonical({k: v for k, v in m.items() if k != "committedUntil"}) == canonical({k: v for k, v in before.items() if k != "committedUntil"})
+                derived = done_end.get(str(m.get("id")))
+                got = local_dt(m.get("committedUntil"))
+                try:
+                    same_time = derived is not None and got is not None and abs((got - derived).total_seconds()) < 1
+                except TypeError:
+                    same_time = False
+                if rest_same and same_time:
+                    m = before
+            out.append(m)
+        incoming["machines"] = out
+
+
 def strip_archived_history(con: sqlite3.Connection, old: dict, incoming: dict) -> None:
     """Browser, die noch archivierte Einträge im Speicher haben, schicken sie nicht zurück in den Live-Stand."""
     history = incoming.get("history")
@@ -2685,6 +2783,8 @@ class Handler(BaseHTTPRequestHandler):
         """Alle Prüfungen vor dem Speichern. None = in Ordnung, sonst (HTTP-Status, Fehlercode, Text)."""
         unredact_incoming(old, incoming, user)
         strip_archived_history(con, old, incoming)
+        restore_client_filled_history(old, incoming)
+        restore_client_defaults(old, incoming)
         # Legacy-Schattenkopie (V12.4.3 und älter) nie wieder in den Live-State übernehmen.
         incoming.pop("orders", None)
         valid, error_code, reason = validate_state(old, incoming)

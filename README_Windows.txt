@@ -66,15 +66,15 @@ MASCHINENPLANUNG V12.7.5 - WINDOWS-SERVER (LAN ONLY)
 
 7. ROLLEN
    Admin                   alles, inkl. Benutzerverwaltung und Backup-Import
-   GF                      Gesamtuebersicht; bestaetigt Personalbedarf, KW-Einsaetze, Betriebsferien
+   GF                      Gesamtuebersicht; genehmigt Leiharbeiter, KW-Einsaetze, Betriebsferien
    Abteilungsleiter        plant den eigenen Bereich; verwaltet Stellvertretungen und Lesende
    Stellv. Abteilungsleiter plant den eigenen Bereich; verwaltet Lesende
    Arbeitsvorbereitung     plant Termine und verwaltet die Fertigung: FS anlegen/verknuepfen,
                            Planwochen, Fertigungsprozesse terminieren, eigene Fertigungsablaeufe.
                            Keine Freigabe, keine Fortschrittsmeldung, kein Personal/Einstellungen
    (V12.7) GF-Ansicht: nur GF + Admin. Projekt-Ansicht: GF, PM, AV, Vertrieb, Admin.
-   Vertrieb                legt Eingaenge an, pflegt Kundendaten bis zur Annahme, meldet
-                           Angebot angenommen (AB + Liefertermin) oder verloren
+   Vertrieb                sieht Projekte, pflegt Kundendaten bis zur Annahme, meldet den
+                           Status der Vertriebs-Aufgaben (Projekte legt das PM an)
    Projektmanagement       plant Termine und verwaltet Projekte bis zur Annahme: Prozesse je
                            Abteilung anlegen/terminieren, Angebot, eigene Prozessablaeufe.
                            Status von Abteilungsprozessen meldet die Abteilung.

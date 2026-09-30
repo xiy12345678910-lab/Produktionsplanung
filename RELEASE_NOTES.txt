@@ -2,6 +2,20 @@ MASCHINENPLANUNG V12.7.5 - RELEASE NOTES
 ========================================
 Datum: 25.09.2026 · Basis: V12.7.4 · Oberflaeche (siehe docs/UI_AUDIT_PLAN.md)
 
+SPEICHERN BLOCKIERT - BEHOBEN (Nachtrag 30.09.2026)
+- Nach einem Produktionsabbruch fehlte im Historieneintrag ein Feld, das der Browser beim Laden
+  ergaenzt. Danach lehnte der Server jedes Speichern aller anderen Browser mit MP-HIST-003 ab.
+  Der Abbruch speichert das Feld jetzt mit, und der Server wertet reine Ergaenzungen leerer
+  Standardfelder (sowie die vom Browser berechnete Historiengrenze einer Maschine) nicht mehr als
+  Aenderung. Das loest auch bereits betroffene Datenstaende, ohne Daten zu veraendern.
+- GF kann Feiertage & Betriebsferien wieder selbst pflegen (Eingabe war fuer die GF gesperrt).
+- Projekt-Fenster: Stammdaten-Felder ragen nicht mehr ueber den Rand, Beschriftungen ueberlappen nicht.
+
+ANLEITUNGEN (neu)
+- docs/anleitungen: PDF-Anleitungen mit Bildschirmfotos je Abteilung (CNC, Konfektion, Siebdruck,
+  Tiefziehen), fuer Arbeitsvorbereitung, Projektmanagement und Vertrieb sowie ein
+  Gesamtueberblick fuer GF und fuer Admin. Neu erzeugen mit tools/anleitungen/erstellen.sh.
+
 OBERFLAECHE & AUSDRUCKE (Nachtrag 30.09.2026, Rundgang mit allen Rollen)
 - Wochenplan-PDF: keine leere erste Seite mehr; Firmenname, gewaehlter Bereich im Titel, Spalten
   AB/WT und AV-Termin (ueberschritten = rot mit ⚠), Maschinen in Plan-Reihenfolge; Dateiname nennt

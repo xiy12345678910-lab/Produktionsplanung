@@ -530,6 +530,31 @@ s, d, _ = req("PATCH", f"/api/users/{_legacy_id}", {"active": False}, cookie=A)
 check(s == 200, f"Admin sperrt Konto mit Altrolle ({s} {d})")
 s, d, _ = req("PATCH", f"/api/users/{_legacy_id}", {"role": "production"}, cookie=A)
 check(s == 400, f"Altrolle kann nicht neu vergeben werden ({s})")
+with server.db_session() as c:  # Abbruch-Eintrag wie von V12.7.5 erzeugt: ohne plannedSegments
+    _j = json.loads(c.execute("SELECT json FROM state WHERE id=1").fetchone()[0])
+    _j["history"].insert(0, {"id": "h_abort_old", "originalOrderId": "ws_abort_old", "recordType": "cancelled", "status": "cancelled", "fs": "FS ABORT",
+                             "machineId": res_of(_j, "cnc"), "departmentId": "cnc", "abortReason": "Test", "actualStartedAt": "2026-09-01T06:30:00",
+                             "actualFinishedAt": "2026-09-01T08:00:00", "actualSegments": [], "machineName": "x"})
+    c.execute("UPDATE state SET json=? WHERE id=1", (json.dumps(_j, ensure_ascii=False),))
+def browser_defaults(n):  # was migrate() im Browser ergänzt
+    next(h for h in n["history"] if h["id"] == "h_abort_old")["plannedSegments"] = []; audit_entry(n, "t_lead_cnc")
+s, code, _ = put(LC, browser_defaults); check(s == 200, f"Historie: vom Browser ergänzte Standardfelder blockieren das Speichern nicht ({s} {code})")
+check("plannedSegments" not in next(h for h in state(A)[1]["history"] if h["id"] == "h_abort_old"), "Historie: gespeicherter Eintrag bleibt unverändert")
+s, code, _ = put(LC, lambda n: (next(h for h in n["history"] if h["id"] == "h_abort_old").update(abortReason="anders"), audit_entry(n, "t_lead_cnc")))
+check(s in (400, 403) and code == "MP-HIST-003", f"Historie: vorhandene Werte ändern bleibt verboten ({s} {code})")
+with server.db_session() as c:  # Ressource mit leerer Historiengrenze, aber Fertig-Historie (z. B. nach V12.7-Migration)
+    _j = json.loads(c.execute("SELECT json FROM state WHERE id=1").fetchone()[0])
+    _mk2 = res_of(_j, "konf2"); next(m for m in _j["machines"] if m["id"] == _mk2)["committedUntil"] = ""
+    _j["history"].insert(0, {"id": "h_cu", "originalOrderId": "ws_cu", "recordType": "done", "status": "done", "fs": "FS CU", "machineId": _mk2,
+                             "departmentId": "konf2", "actualStartedAt": "2026-09-02T06:30:00", "actualFinishedAt": "2026-09-02T10:00:00",
+                             "actualSegments": [], "plannedSegments": [], "machineName": "x"})
+    c.execute("UPDATE state SET json=? WHERE id=1", (json.dumps(_j, ensure_ascii=False),))
+def browser_committed(n):
+    next(m for m in n["machines"] if m["id"] == _mk2)["committedUntil"] = server.local_dt("2026-09-02T10:00:00").isoformat(); audit_entry(n, "t_av")
+s, code, _ = put(AV, browser_committed); check(s == 200, f"Historiengrenze: vom Browser abgeleiteter Wert blockiert die AV nicht ({s} {code})")
+check(next(m for m in state(A)[1]["machines"] if m["id"] == _mk2)["committedUntil"] == "", "Historiengrenze: gespeicherter Stand bleibt")
+s, code, _ = put(AV, lambda n: (next(m for m in n["machines"] if m["id"] == _mk2).update(committedUntil="2026-09-20T10:00"), audit_entry(n, "t_av")))
+check(s == 403, f"Historiengrenze: anderer Wert bleibt für die AV gesperrt ({s} {code})")
 server.clear_failed_login("127.0.0.1")
 for _ in range(8):
     req("POST", "/api/password", {"currentPassword": "falsch-falsch", "newPassword": "neuesPasswort1"}, cookie=V)

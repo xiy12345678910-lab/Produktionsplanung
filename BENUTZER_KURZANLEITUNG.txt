@@ -1,6 +1,11 @@
 MASCHINENPLANUNG V12.7.5 - KURZANLEITUNG FUER BENUTZER
 ======================================================
 
+AUSFUEHRLICHE ANLEITUNGEN MIT BILDERN (PDF, Ordner docs\anleitungen)
+- je Bereich: Anleitung_CNC, _Konfektion, _Siebdruck, _Tiefziehen
+- Anleitung_Arbeitsvorbereitung, _Projektmanagement, _Vertrieb
+- Gesamtueberblick_GF und Gesamtueberblick_Admin
+
 ANMELDEN
 1. Browser oeffnen (Edge, Chrome oder Firefox).
 2. Adresse oeffnen, die der Admin nennt, z. B. http://192.168.10.89:8765
@@ -20,19 +25,21 @@ ROLLEN
 - Lesend: sieht Plan, Auftraege, Historie und Report; aendert nichts.
 - Abteilungsleiter / Stellvertretung: planen den eigenen Bereich.
   Leitung legt Stellvertretungen und Lesende an, Stellvertretung nur Lesende.
-- Vertrieb: legt Eingaenge an und meldet Annahme oder Verlust.
+- Vertrieb: sieht alle Projekte, pflegt Kundendaten bis zur Annahme und meldet den Status der
+  Vertriebs-Aufgaben. Projekte legt das Projektmanagement an.
 - Arbeitsvorbereitung: legt Auftraege (FS) in allen Bereichen mit AV-Termin an, plant sie und
   verknuepft sie mit AB. Freigabe, Produktion und Fertigmeldung machen die Bereiche.
-- Projektmanagement: pflegt AB-Auftraege.
-- GF: GF-Ansicht (nur GF/Admin), Projekte, bestaetigt den von den Abteilungen gemeldeten Personalbedarf.
+- Projektmanagement: legt Projekte an, plant Aufgaben und Termine, Kundenplan (Excel) und
+  uebergibt mit AB + Liefertermin an die Produktion.
+- GF: GF-Ansicht (nur GF/Admin), Projekte, genehmigt Leiharbeiter-Anfragen, KW-Einsatz von
+  Mitarbeitern in anderen Bereichen, Feiertage/Betriebsferien.
 - Admin: alles inkl. Benutzerverwaltung.
 
 PROJEKTE (linke Leiste "Projekte")
-- Tafel mit Spalten: Eingang Vertrieb -> Projektmanagement -> Angebot versendet ->
-  Arbeitsvorbereitung -> In Produktion -> Produziert. Karte anklicken = Projekt oeffnen.
-- Vertrieb/PM: "+ Neues Projekt" (Kunde, Teil, Wunschtermin, Workflow). Danach
-  "An Projektmanagement uebergeben". Kommt die Kundenantwort: AB-Nummer + Liefertermin
-  eintragen und "Angebot angenommen" - oder "Angebot verloren" mit Grund.
+- Tafel mit Spalten: Projektmanagement -> Arbeitsvorbereitung -> In Produktion -> Produziert.
+  Karte anklicken = Projekt oeffnen. Abgeschlossene/Verlorene per Haken einblenden.
+- PM: "+ Neues Projekt" (Kunde, Teil, Wunschtermin, Workflow). Nach der Kundenannahme
+  AB-Nummer + Liefertermin eintragen und "An Produktion uebergeben".
 - Projektmanagement plant Termine und verwaltet: gespeicherten Ablauf mit Startdatum
   anwenden oder Prozesse einzeln anlegen, jeweils mit Start und Faelligkeit. Jeder Prozess
   gehoert zu einer Abteilung und laeuft parallel. Den Status meldet die Abteilung selbst
