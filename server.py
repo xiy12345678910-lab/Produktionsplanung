@@ -1047,6 +1047,7 @@ def validate_state(old: dict, new: dict) -> tuple[bool, str, str]:
         return False, "MP-DEPT-001", "Produktionsbereiche fehlen."
 
     dept_ids = set()
+    dept_names: set[str] = set()
     dept_types = {}
     valid_types = {"MACHINE", "LABOR_HOURS", "PROCESS", "CYCLE"}
     for dep in departments:
@@ -1058,8 +1059,27 @@ def validate_state(old: dict, new: dict) -> tuple[bool, str, str]:
             return False, "MP-DEPT-002", f"Doppelte Bereichs-ID '{did}'."
         if ptype not in valid_types:
             return False, "MP-DEPT-003", f"Bereich '{did}' hat einen ungültigen Planungstyp."
+        name = str(dep.get("name") or "").strip()
+        if not name or len(name) > 80:
+            return False, "MP-DEPT-006", f"Abteilung '{did}' benötigt einen Namen (max. 80 Zeichen)."
+        if name.casefold() in dept_names:
+            return False, "MP-DEPT-006", f"Abteilungsname „{name}“ ist doppelt."
+        if not isinstance(dep.get("active", True), bool):
+            return False, "MP-DEPT-007", f"Abteilung „{name}“: aktiv muss ja/nein sein."
+        dept_names.add(name.casefold())
         dept_ids.add(did)
         dept_types[did] = ptype
+
+    # Deaktivieren nur ohne offene Aufträge und ohne aktive Stamm-Mitarbeiter (sonst verschwinden sie aus der Planung).
+    old_active = {str(d.get("id")): d.get("active", True) is not False for d in (old.get("departments") or []) if isinstance(d, dict)}
+    for dep in departments:
+        did = str(dep["id"])
+        if dep.get("active", True) is False and old_active.get(did, True):
+            label = str(dep.get("name") or did)
+            if any(isinstance(x, dict) and str(x.get("departmentId") or "") == did and str(x.get("status") or "planned") in {"planned", "released", "running", "paused"} for x in work_steps):
+                return False, "MP-DEPT-008", f"Abteilung „{label}“ hat noch offene Aufträge. Erst abschließen oder umplanen, dann deaktivieren."
+            if any(isinstance(e, dict) and str(e.get("departmentId") or "") == did and e.get("active", True) is not False for e in (new.get("employees") or [])):
+                return False, "MP-DEPT-008", f"Abteilung „{label}“ hat noch aktive Mitarbeiter. Erst in eine andere Abteilung umsetzen, dann deaktivieren."
 
     if not isinstance(projects, list):
         return False, "MP-PM-001", "Projekt-/Auftragsstamm ist ungültig."
@@ -1709,10 +1729,13 @@ def _need_map(state: dict) -> dict:
 
 
 def gf_change_allowed(old: dict, new: dict) -> tuple[bool, str]:
-    allowed_root = {"departmentStaffNeeds", "weeklyEmployeeDeployments", "exceptions", "audit", "meta", "ui", "employees"}
+    allowed_root = {"departmentStaffNeeds", "weeklyEmployeeDeployments", "exceptions", "audit", "meta", "ui", "employees", "departments"}
     for key in set(old) | set(new):
         if key not in allowed_root and canonical(old.get(key)) != canonical(new.get(key)):
             return False, f"GF darf operative Produktionsdaten '{key}' nicht ändern."
+    ok, reason = departments_change_allowed(old, new)
+    if not ok:
+        return False, reason
     ea, eb = _record_map(old.get("employees")), _record_map(new.get("employees"))
     if set(ea) != set(eb):
         return False, "GF legt keine Mitarbeiter an und entfernt keine."
@@ -1738,6 +1761,27 @@ def gf_change_allowed(old: dict, new: dict) -> tuple[bool, str]:
         extra = {k for k in set(a) | set(b) if k not in {"confirmed", "updatedAt"} and canonical(a.get(k)) != canonical(b.get(k))}
         if extra:
             return False, f"GF darf beim Personalbedarf nur die Bestätigung ändern ({sorted(extra)[0]})."
+    return True, ""
+
+
+DEPARTMENT_EDIT_FIELDS = {"name", "active"}
+DEPARTMENT_NEW_FIELDS = {"id", "name", "planningType", "active", "createdAt", "createdBy"}
+
+
+def departments_change_allowed(old: dict, new: dict) -> tuple[bool, str]:
+    """GF: Abteilungen anlegen, umbenennen, (de)aktivieren – nicht löschen, ID/Planungstyp bleiben."""
+    a, b = _record_map(old.get("departments")), _record_map(new.get("departments"))
+    if set(a) - set(b):
+        return False, "Abteilungen werden nicht gelöscht, nur deaktiviert."
+    for did, rec in b.items():
+        before = a.get(did)
+        if before is None:
+            if set(rec) - DEPARTMENT_NEW_FIELDS or str(rec.get("planningType")) != "MACHINE":
+                return False, "Neue Abteilung: nur Name und aktiv, Planung auf Maschinen/Linien."
+            continue
+        changed = {k for k in set(before) | set(rec) if canonical(before.get(k)) != canonical(rec.get(k))}
+        if changed - DEPARTMENT_EDIT_FIELDS:
+            return False, f"Abteilung „{rec.get('name') or did}“: nur Name und aktiv sind änderbar."
     return True, ""
 
 

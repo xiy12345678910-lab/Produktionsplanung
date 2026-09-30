@@ -2,6 +2,17 @@ MASCHINENPLANUNG V12.7.5 - RELEASE NOTES
 ========================================
 Datum: 25.09.2026 · Basis: V12.7.4 · Oberflaeche (siehe docs/UI_AUDIT_PLAN.md)
 
+ABTEILUNGEN ANLEGEN (Nachtrag 30.09.2026)
+- System -> Maschinen & Schichtkalender -> "Abteilungen": Admin und GF legen neue Abteilungen
+  (Produktionsbereiche) an, benennen sie um und deaktivieren/aktivieren sie. Loeschen gibt es
+  nicht (Benutzer, Historie und Projekte verweisen darauf).
+- Deaktivieren nur ohne offene Auftraege und ohne aktive Mitarbeiter (MP-DEPT-008); Namen sind
+  eindeutig (MP-DEPT-006). Der Server prueft das fuer alle Rollen; die GF darf nur Name/aktiv
+  aendern und neue Abteilungen anlegen.
+- Neue Abteilung einrichten: anlegen -> Admin legt die Leitung im Reiter "Benutzer" an ->
+  Maschinen/Linien anlegen (Admin oder Leitung). Die Abteilung ist dann auch Bereich in Projekten.
+- GF: Reiter in System waren fuer die GF gesperrt; jetzt bedienbar und nicht mehr ausgegraut.
+
 SPEICHERN BLOCKIERT - BEHOBEN (Nachtrag 30.09.2026)
 - Nach einem Produktionsabbruch fehlte im Historieneintrag ein Feld, das der Browser beim Laden
   ergaenzt. Danach lehnte der Server jedes Speichern aller anderen Browser mit MP-HIST-003 ab.

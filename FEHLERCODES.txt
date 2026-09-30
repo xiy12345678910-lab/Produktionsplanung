@@ -217,6 +217,9 @@ MP-DEPT-002  Produktionsbereich hat eine ungültige ID. / Doppelte Bereichs-ID �
 MP-DEPT-003  Bereich … hat einen ungültigen Planungstyp.
 MP-DEPT-004  Auftrag … verweist auf einen unbekannten Bereich.
 MP-DEPT-005  Auftrag … ist einer Maschine aus einem anderen Bereich zugeordnet.
+MP-DEPT-006  Abteilung benötigt einen eindeutigen Namen (max. 80 Zeichen).
+MP-DEPT-007  Abteilung: Wert für aktiv ist ungültig.
+MP-DEPT-008  Abteilung kann nicht deaktiviert werden: offene Aufträge oder aktive Mitarbeiter vorhanden.
 MP-DEPT-010  Bereich auswählen.
 MP-DEPT-015  CNC wird über die bestehende Maschinenplanung geplant.
 MP-DEPT-016  Konfektion benötigt Stunden größer 0.

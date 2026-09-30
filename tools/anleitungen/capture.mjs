@@ -84,11 +84,12 @@ if(want('gf')){const p=await session('gf');
  await shot(p,'gf_06_auftraege','.panel:has(h3:text("Auftragsübersicht je Bereich"))');
  await p.click('#navOrders');await W(p);await shot(p,'gf_07_projekte');
  await p.click('#navGF');await W(p);await p.click('button:has-text("Monatsreport")');await W(p);await shot(p,'gf_08_report');
+ await p.click('#navSystem');await W(p);await shot(p,'gf_09_abteilungen','#departmentsPanel');
  await p.context().close();}
 // ---------- Admin
 if(want('admin')){const p=await session('admin','adminpass1');
  await shot(p,'admin_01_wochenplan');
- await p.click('#navSystem');await W(p);await shot(p,'admin_02_system');
+ await p.click('#navSystem');await W(p);await shot(p,'admin_02_system');await shot(p,'admin_15_abteilungen','#departmentsPanel');
  for (const [n,h] of [['03_maschinen','Maschinen & Linien'],['04_ci','Firmen-CI für Kundenpläne'],['05_schichten','Schichtzeiten & Pausen'],['06_kalender','Schichtkalender · Abweichungen'],['07_feiertage','Feiertage & Betriebsferien'],['08_stillstand','Maschinenstillstand / Wartung'],['09_daten','Darstellung & Daten'],['10_benutzer','Benutzer & Rechte'],['11_server','Server-Betrieb']])
    await shot(p,'admin_'+n,`#settings .panel:has(h3:text("${h}"))`).catch(e=>log.push('admin '+n+' '+e.message.slice(0,80)));
  await p.click('#sysAudit');await W(p);await shot(p,'admin_12_aenderungen');

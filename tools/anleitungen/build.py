@@ -501,7 +501,7 @@ def sales_guide():
 ROLLEN = ("Rollen und Rechte", [
     ("table", ["Rolle", "Sieht", "Darf ändern"], [
         ["Admin", "alles", "alles inkl. Benutzer, Einstellungen, Backup-Import"],
-        ["GF", "GF-Übersicht, Projekte, Historie, Report, System (lesen)", "Leiharbeiter genehmigen/ablehnen, KW-Einsatz, Feiertage/Betriebsferien"],
+        ["GF", "GF-Übersicht, Projekte, Historie, Report, System (Abteilungen, Feiertage)", "Leiharbeiter genehmigen/ablehnen, KW-Einsatz, Feiertage/Betriebsferien, Abteilungen anlegen/umbenennen/deaktivieren"],
         ["Abteilungsleitung", "eigener Bereich: Planung, Aufträge, Produktion, Personal, System; Projekte, Historie, Report", "Feinplanung, Freigabe, Produktion, Personal, Maschinen, Schichtkalender, Stillstand; Stellvertretung + Lesende anlegen"],
         ["Stellv. Abteilungsleitung", "wie Leitung", "wie Leitung; nur Lesende anlegen"],
         ["Arbeitsvorbereitung", "Planung und Aufträge aller Bereiche, Projekte, Historie, Report", "FS anlegen/ändern/löschen (geplant), AV-Termin, Fertigungsabläufe, „Produktion fertig“"],
@@ -555,6 +555,17 @@ def gf_chapters():
             ("p", "Jeder Mitarbeiter existiert genau einmal. Hier wählen Sie für die **gewählte KW** den Einsatzbereich (z. B. CNC-Mitarbeiter hilft in Konfektion). Die Stammabteilung bleibt. Der aufnehmende Bereich plant die Person in dieser KW ein; sie darf dort jede Linie/Maschine bedienen."),
             ("img", "gf_06_auftraege", "Auftragsübersicht je Bereich", "small"),
         ]),
+        ("Abteilungen anlegen und pflegen", [
+            ("img", "gf_09_abteilungen", "System → Maschinen & Schichtkalender → Abteilungen", "small"),
+            ("steps", [
+                "System öffnen, Reiter **Maschinen & Schichtkalender**, Bereich **Abteilungen**.",
+                "**Neue Abteilung:** Namen eintragen (z. B. „Lackierung“) → [[+ Abteilung]]. Der Name muss eindeutig sein.",
+                "**Umbenennen:** Namen in der Liste ändern – wird sofort gespeichert und überall angezeigt.",
+                "**Deaktivieren:** Haken „aktiv“ entfernen. Geht nur ohne offene Aufträge und ohne aktive Mitarbeiter mit dieser Stammabteilung; die Zeile zeigt die Zahlen dazu. Wieder aktivieren jederzeit.",
+            ]),
+            ("p", "Danach richtet der **Admin** im Reiter „Benutzer“ das Konto der Abteilungsleitung ein (Rolle Abteilungsleiter, Bereich = neue Abteilung). Maschinen und Linien legt der Admin oder die neue Leitung unter „Maschinen & Linien“ an ([[+ Maschine]] / [[+ Linie]]). Die Abteilung steht dann auch in Projekten als Bereich zur Verfügung."),
+            ("warn", "Abteilungen werden nicht gelöscht, nur deaktiviert – Benutzer, Historie und Projekte verweisen weiter darauf."),
+        ]),
         ("Projekte, Report, Feiertage", [
             ("img", "gf_07_projekte", "Projekte-Tafel (GF liest)"),
             ("img", "gf_08_report", "Monatsreport"),
@@ -584,6 +595,8 @@ def admin_guide():
         ("System-Einstellungen", [
             ("img", "admin_02_system", "System (Admin)"),
             ("p", "Die Einstellungen sind in Reiter gegliedert. Der Admin darf alles, Bereichsleitungen nur ihren Bereich."),
+            ("img", "admin_15_abteilungen", "Abteilungen: anlegen, umbenennen, deaktivieren (Admin und GF)", "small"),
+            ("p", "**Neue Abteilung einrichten:** 1. unter **Abteilungen** anlegen, 2. im Reiter **Benutzer** die Leitung mit diesem Bereich anlegen, 3. unter **Maschinen & Linien** die Ressourcen anlegen (oder die Leitung macht das selbst). Ausführlich im Kapitel „Abteilungen anlegen und pflegen“."),
             ("img", "admin_03_maschinen", "Maschinen & Linien aller Bereiche", "small"),
             ("list", [
                 "**Maschinen & Linien:** je Bereich anlegen, umbenennen, Typ, Standardbetrieb, Umrüstzeit, Besetzung, Personal je Schicht.",
