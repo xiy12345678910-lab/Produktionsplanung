@@ -1,118 +1,87 @@
 # Update beim Arbeitgeber: V12.10.1 auf V12.17.0
 
-Server-PC, Windows PowerShell **als Administrator** (Rechtsklick, "Als Administrator ausführen"), sofern nicht anders vermerkt.
-Daten (`data\`, `backups\`, `LAN_CONFIG.json`) bleiben erhalten. Das Skript sichert vorher selbst und spielt bei einem Fehler automatisch alles zurück.
+Ausgangslage (am Server-PC geprüft): Ordner `C:\ProgramData\Maschinenplanung`, Live V12.10.1, Python `C:\Program Files\Python313\python.exe`, `data.ci` leer (kein Firmenname, kein Logo, keine Farbe), kein `config\firma.json`, Backup-Task läuft, manuelles Backup vom 05.10. erledigt.
+Daraus folgt: Das Firmenprofil muss **vor** dem Update angelegt werden (sonst bricht der Vorabtest mit `MP-CFG-006` ab; Live bliebe dabei unverändert).
 
-Voraussetzung: Der PR ist nach `main` gemergt und das Release `v12.17.0` liegt auf `main`. Sonst bricht der Updater mit "Tag nicht gefunden" bzw. "ausserhalb von main" ab (Live bleibt unverändert).
+Voraussetzung: PR nach `main` gemergt und Release `v12.17.0` auf `main` erstellt. Sonst meldet der Updater "Tag nicht gefunden" bzw. "ausserhalb von main".
 
-## 1. Vorher
+Alles in **einer** Windows PowerShell **als Administrator** (Rechtsklick, "Als Administrator ausführen"). Der Server lauscht nur auf der LAN-IP, nicht auf `localhost`.
 
-**1.1 Installationsordner und Variablen** (Standard `C:\ProgramData\Maschinenplanung`; das Update ermittelt ihn selbst aus dem Task):
+## 1. Vorbereitung
+
+Skripte sind per ExecutionPolicy gesperrt, auch als Admin. Deshalb in diesem Fenster zuerst (gilt nur für dieses Fenster):
 
 ```powershell
-$t = Get-ScheduledTask -TaskName 'Maschinenplanung Server'
-$b = $t.Actions[0].WorkingDirectory; $b
+Set-ExecutionPolicy -Scope Process Bypass -Force
+$b = 'C:\ProgramData\Maschinenplanung'
 $c = Get-Content "$b\LAN_CONFIG.json" -Raw | ConvertFrom-Json
+Invoke-RestMethod "http://$($c.lan_ip):$($c.port)/api/health"      # version 12.10.1
+& "$b\Backup_Datenbank.ps1"                                         # frisches Backup direkt vor dem Update
 ```
 
-Weicht `$b` von `C:\ProgramData\Maschinenplanung` ab, kopiert das Update dorthin um; der alte Ordner bleibt unverändert. Bei Firma_Einrichten dann `-Ziel $b` (siehe 3).
+Meldet `Set-ExecutionPolicy` einen Fehler wegen einer Gruppenrichtlinie (`Get-ExecutionPolicy -List`, Zeile MachinePolicy/UserPolicy gesetzt), muss die IT die Policy für diesen PC lockern. Das Update selbst (Task, Admin-Fenster des Updaters) startet seine Prozesse bereits mit `-ExecutionPolicy Bypass`.
 
-**1.2 Version prüfen.** Der Server lauscht nur auf der LAN-IP, nicht auf `localhost`:
+## 2. Neues Paket holen (noch nichts installieren)
 
-```powershell
-Invoke-RestMethod "http://$($c.lan_ip):$($c.port)/api/health"
-```
-
-Erwartet: `version 12.10.1`. Alternativ im Browser `http://<LAN-IP>:8765/api/health` (IP steht in `$c.lan_ip`).
-
-**1.3 Manuelles Backup** (Skript aus V12.10.1; Ergebnis liegt in `$b\backups`):
-
-```powershell
-& "$b\Backup_Datenbank.ps1"
-Get-ChildItem "$b\backups" -Filter 'maschinenplanung_*.sqlite3' | Sort-Object LastWriteTime -Descending | Select-Object -First 3 Name, Length, LastWriteTime
-```
-
-Exitcode 2 heißt: lokales Backup OK, Zweitkopie (`BACKUP_ZIEL.txt`) fehlgeschlagen. Zusätzlich die neueste `.sqlite3` auf einen USB-Stick kopieren.
-
-**1.4 Steht ein Firmenname in `data.ci`?** Dann kommt `MP-CFG-006` nicht. Nur lesend:
-
-```powershell
-@'
-import sqlite3, json, sys
-con = sqlite3.connect("file:" + sys.argv[1].replace("\\", "/") + "?mode=ro", uri=True)
-rev, js = con.execute("select revision, json from state where id=1").fetchone()
-ci = json.loads(js).get("ci") or {}
-name = (ci.get("company") or "").strip()
-logo = str(ci.get("logo") or "").startswith("data:image")
-print("Revision", rev, "| Firmenname:", repr(name), "| Logo:", "ja" if logo else "nein")
-print("=> MP-CFG-006 kommt, Schritt 3 noetig" if rev > 1 and not name and not logo else "=> kein MP-CFG-006, Schritt 3 entfaellt")
-'@ | Set-Content "$env:TEMP\ci_check.py" -Encoding UTF8
-py -3 "$env:TEMP\ci_check.py" "$b\data\maschinenplanung.sqlite3"
-```
-
-(Ohne `py`: `python` statt `py -3`.) Name **oder** Logo genügt, dann ist kein Schritt 3 nötig.
-
-## 2. Paket holen und installieren
-
-Der alte `Update_von_GitHub.ps1` auf dem PC taugt nicht: Er kennt kein `-Tag`, nimmt standardmäßig den Branch `claude/new-session-mpx5ch` und prüft weder Release noch Commit. **Nicht verwenden.** Stattdessen den neuen Updater (aus dem Release `v12.17.0`) holen. Er prüft, dass der Tag auf `main` liegt, installiert genau diesen Commit und startet `UPDATE_LIVE.ps1` in einem Administrator-Fenster (UAC bestätigen).
-
-Normale (nicht-Admin) PowerShell reicht; als Admin geht es auch:
+Der alte `Update_von_GitHub.ps1` auf dem PC taugt nicht: kein `-Tag`, Standard-Branch `claude/new-session-mpx5ch`, keine Release-Prüfung. **Nicht verwenden.** Neuen Updater aus dem Release laden und das Paket nur herunterladen:
 
 ```powershell
 [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
-$u = "$env:USERPROFILE\Downloads\Update_von_GitHub.ps1"
-Invoke-WebRequest -UseBasicParsing -OutFile $u -Uri 'https://raw.githubusercontent.com/xiy12345678910-lab/Produktionsplanung/v12.17.0/Update_von_GitHub.ps1'
+$repo = 'xiy12345678910-lab/Produktionsplanung'
+$u = "$env:TEMP\Update_von_GitHub.ps1"
+Invoke-WebRequest -UseBasicParsing -OutFile $u -Uri "https://raw.githubusercontent.com/$repo/v12.17.0/Update_von_GitHub.ps1"
 Unblock-File $u
-powershell -ExecutionPolicy Bypass -File $u -Tag v12.17.0
+$stage = "$env:ProgramData\Maschinenplanung_Update\manuell"
+& $u -Tag v12.17.0 -NurHerunterladen -Ziel $stage
+$p = (Get-ChildItem $stage -Directory -Recurse -Filter 'Produktionsplanung-*' | Where-Object { Test-Path "$($_.FullName)\UPDATE_LIVE.ps1" } | Sort-Object LastWriteTime -Descending | Select-Object -First 1).FullName
+$p
 ```
 
-Im Administrator-Fenster laufen 9 Schritte: Backup, Vorabtest mit Datenkopie auf Testport, Stopp, Backup, Programmstand sichern, Dateien, Tasks, Health, HTTP-Sicherheitscheck. Am Ende `UPDATE ERFOLGREICH - V12.17.0`.
+Erwartet: "Release v12.17.0", ein 40-stelliger Commit, `SHA256`, "Paket bereit". `$p` zeigt den neuen Paketordner.
 
-**Alternative ohne Updater (z. B. Proxy blockiert die API):**
-1. Im Browser `https://github.com/xiy12345678910-lab/Produktionsplanung/archive/refs/tags/v12.17.0.zip` laden.
-2. Rechtsklick auf die ZIP, Eigenschaften, "Zulassen" bzw. nach dem Entpacken: `Get-ChildItem <Ordner> -Recurse -File | Unblock-File`.
-3. In den entpackten Ordner (dort liegt `UPDATE_LIVE.ps1`) wechseln und als Administrator:
+## 3. Firmenprofil anlegen (vor dem Update)
 
-```powershell
-Set-Location '<entpackter Ordner>'
-Set-ExecutionPolicy -Scope Process Bypass
-.\UPDATE_LIVE.ps1
-```
-
-## 3. Nur falls `MP-CFG-006` kam (oder Schritt 1.4 es angekündigt hat)
-
-Meldung: "MP-CFG-006: Bestand ohne Firmenprofil ... Live-System wurde NICHT veraendert." Dann ist nichts kaputt. Vorlage holen, `config\firma.json` anlegen, Update fortsetzen. Alles in der Administrator-PowerShell:
+Die Vorlage mit Name, Logo, Farbe, Projektkürzel `WT` kommt aus dem Repo (liegt bewusst nicht im Paket):
 
 ```powershell
 $v = "$env:TEMP\legacy_employer_seed.json"
-Invoke-WebRequest -UseBasicParsing -OutFile $v -Uri 'https://raw.githubusercontent.com/xiy12345678910-lab/Produktionsplanung/v12.17.0/tools/legacy_employer_seed.json'
-# neuer Paketordner (vom Updater entpackt, enthält UPDATE_LIVE.ps1):
-$p = Get-ChildItem "$env:ProgramData\Maschinenplanung_Update" -Directory -Recurse -Filter 'Produktionsplanung-*' |
-     Where-Object { Test-Path "$($_.FullName)\UPDATE_LIVE.ps1" } | Sort-Object LastWriteTime -Descending | Select-Object -First 1
-Set-Location $p.FullName
-.\Firma_Einrichten.ps1 -Vorlage $v          # bei abweichendem Ordner (1.1): zusaetzlich -Ziel $b
+Invoke-WebRequest -UseBasicParsing -OutFile $v -Uri "https://raw.githubusercontent.com/$repo/v12.17.0/tools/legacy_employer_seed.json"
+Set-Location $p
+.\Firma_Einrichten.ps1 -Vorlage $v -Ziel $b
+Get-ChildItem "$b\config"
+```
+
+Erwartet: `Fertig: C:\ProgramData\Maschinenplanung\config - jetzt UPDATE_LIVE.ps1 starten.` und die Dateien `firma.json`, `logo.jpg`. Das ist ungefährlich für den laufenden Server: V12.10.1 liest `config\` nicht. Das Ergebnis entspricht dem Stand von V12.10.1 (Name "WERBETECHNIK *ART OF DISPLAY* GMBH", Farbe #E2382A, Schrift Arial, Logo, Projektkürzel WT, die sieben festen Projektbereiche Vertrieb bis Arbeitsvorbereitung). Die Rechte des Ordners setzt `UPDATE_LIVE.ps1` im Schritt 7 neu (SYSTEM und Administratoren Vollzugriff, Benutzer lesen); der SYSTEM-Task kann `config\` also lesen und schreiben.
+
+## 4. Update
+
+```powershell
+Set-Location $p
 .\UPDATE_LIVE.ps1
 ```
 
-Ergebnis von `Firma_Einrichten`: `Fertig: ...\config - jetzt UPDATE_LIVE.ps1 starten.` Existiert die `firma.json` schon, meldet es "nichts geaendert" (das ist in Ordnung). Bewusst ohne Firmenname: `-Neutral` statt `-Vorlage`.
+Neun Schritte: Backup, Vorabtest mit Datenkopie (Testport), Stopp, Backup, Programmstand sichern (`update_backups\pre_V12.17.0_<Zeit>`), Dateien, Ordner sperren und Tasks, Health, HTTP-Sicherheitscheck. Ende: `UPDATE ERFOLGREICH - V12.17.0`. Bei einem Fehler nach dem Stopp stellt das Skript Code, Config, Datenbank und Task selbst wieder her (`Alter Stand wieder gestartet`). Vor dem Stopp wurde nichts verändert.
 
-## 4. Kontrolle
+Alternative ohne Updater (z. B. Proxy blockiert die GitHub-API): ZIP `https://github.com/xiy12345678910-lab/Produktionsplanung/archive/refs/tags/v12.17.0.zip` im Browser laden, entpacken, `Get-ChildItem <Ordner> -Recurse -File | Unblock-File`, dann in Schritt 3 und 4 `$p` auf den entpackten Ordner setzen (der `UPDATE_LIVE.ps1` enthält).
+
+## 5. Kontrolle
 
 ```powershell
 Invoke-RestMethod "http://$($c.lan_ip):$($c.port)/api/health"      # version 12.17.0
-& "$b\Server_Status.ps1"                                            # beide Tasks, Server V12.17.0, Backup nicht älter als 26 h
-& "$b\CHECK_LAN_SICHERHEIT.ps1"                                     # alles PASS
+& "$b\Server_Status.ps1"          # beide Tasks, Server V12.17.0, Backup nicht älter als 26 h
+& "$b\CHECK_LAN_SICHERHEIT.ps1"   # alles PASS
 ```
 
-Dann im Browser (jeder PC, jeder Browser): **Strg+F5**, Login mit jeder Rolle (Admin, GF, Projektmanagement, Arbeitsvorbereitung, Vertrieb, Abteilungsleiter, Lesend), Daten vollständig, Firmenname und Logo oben, Farbe stimmt.
+Dann an jedem PC in jedem Browser **Strg+F5**, Login mit jeder Rolle (Admin, GF, Projektmanagement, Arbeitsvorbereitung, Vertrieb, Abteilungsleiter, Lesend), Daten vollständig, Firmenname, Logo und Farbe oben stimmen.
 
-## 5. Rückweg
+## 6. Rückweg
 
-**Automatisch:** Bricht `UPDATE_LIVE.ps1` ab (nach dem Stopp), stellt es selbst Code, Config, Datenbank und Task wieder her und startet den alten Stand (Meldung `Alter Stand wieder gestartet`). Vor dem Stopp (Vorabtest, MP-CFG-006) wurde nichts verändert. Auslösen kann man das nicht per Befehl.
+**Automatisch:** siehe Schritt 4 (nur bei Abbruch nach dem Stopp; nicht per Befehl auslösbar).
 
-**Von Hand, wenn das Update durchlief, aber etwas nicht stimmt.** Gesichert liegt der alte Stand in `$b\update_backups\pre_V12.17.0_<Zeitstempel>` (Dateien, `config\`, `maschinenplanung_vor_update.sqlite3`). Achtung: Eingaben seit dem Update gehen dabei verloren.
+**Von Hand, wenn das Update durchlief, aber etwas nicht stimmt.** Der alte Stand liegt in `$b\update_backups\pre_V12.17.0_<Zeitstempel>` (Dateien, `config\`, `maschinenplanung_vor_update.sqlite3`). Eingaben seit dem Update gehen dabei verloren.
 
 ```powershell
+Set-ExecutionPolicy -Scope Process Bypass -Force
 . "$b\MP_Common.ps1"
 Stop-MPServer $b
 $r = Get-ChildItem "$b\update_backups" -Directory -Filter 'pre_V12.17.0_*' | Sort-Object LastWriteTime -Descending | Select-Object -First 1
@@ -122,19 +91,19 @@ Copy-Item "$($r.FullName)\maschinenplanung_vor_update.sqlite3" "$b\data\maschine
 Start-ScheduledTask -TaskName 'Maschinenplanung Server'
 ```
 
-Danach `/api/health` zeigt 12.10.1. Neu hinzugekommene Dateien von V12.17.0 (z. B. `Restore_Datenbank.ps1`, `vorlage_*.json`) bleiben harmlos liegen. Danach nicht wieder `UPDATE_LIVE.ps1` einer älteren Version starten (Downgrade-Schutz).
+Danach zeigt `/api/health` 12.10.1. Übrig gebliebene Dateien von V12.17.0 (z. B. `Restore_Datenbank.ps1`, `config\`) stören nicht. Danach nicht den `UPDATE_LIVE.ps1` einer älteren Version starten (Downgrade-Schutz).
 
-**Nur Daten zurückholen (V12.17.0 bleibt installiert):**
+**Nur Daten zurückholen (V12.17.0 bleibt):**
 
 ```powershell
-& "$b\Restore_Datenbank.ps1"            # Auswahl der letzten 10 Sicherungen, Enter = neueste
-& "$b\Restore_Datenbank.ps1" -MitConfig # zusätzlich config\ aus dem passenden firma_*.zip
+& "$b\Restore_Datenbank.ps1"             # Auswahl der letzten 10 Sicherungen, Enter = neueste
+& "$b\Restore_Datenbank.ps1" -MitConfig  # zusätzlich config\ aus dem passenden firma_*.zip
 ```
 
-## 6. Testliste bis Mittwoch (12 Punkte)
+## 7. Testliste bis Mittwoch (12 Punkte)
 
-1. Login mit jeder Rolle; Firmenname, Logo und Farbe stimmen, Daten (Projekte, Maschinen, Personal) vollständig.
-2. Planung: Projekt verschieben, Konflikt-Hinweis, Speichern, in 2. Browser sichtbar.
+1. Login mit jeder Rolle; Firmenname, Logo und Farbe stimmen, Projekte, Maschinen, Personal vollständig.
+2. Planung: Projekt verschieben, Konflikt-Hinweis, Speichern, im 2. Browser sichtbar.
 3. Formate: Format anlegen/ändern, Zuordnung im Projekt.
 4. Personal: Mitarbeiter, Schichten, Abwesenheit eintragen.
 5. Chat: Nachricht senden, kommt beim anderen Benutzer an.
@@ -142,6 +111,6 @@ Danach `/api/health` zeigt 12.10.1. Neu hinzugekommene Dateien von V12.17.0 (z. 
 7. Undo/Redo: Änderung rückgängig machen und wiederholen.
 8. Hallenmodus: Hell/Dunkel/Halle umschalten, am Hallen-Bildschirm lesbar.
 9. Firmenprofil: Name/Farbe ändern, speichern, Strg+F5, bleibt erhalten (danach zurückstellen).
-10. Module ein/aus: ein Modul im Firmenprofil abschalten (Schreiben dort gesperrt, `MP-MOD-001`, Daten bleiben) und wieder einschalten.
+10. Module: ein Modul im Firmenprofil abschalten (Schreiben dort gesperrt, `MP-MOD-001`, Daten bleiben) und wieder einschalten.
 11. Backup-Task: `Server_Status.ps1` zeigt "Maschinenplanung Backup" ohne Fehler; nach 12:15 oder 22:15 neue Datei in `backups\`.
-12. Neustart des PCs: Server kommt von selbst hoch (`/api/health`), danach Login.
+12. PC-Neustart: Server kommt von selbst hoch (`/api/health`), danach Login.
