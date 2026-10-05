@@ -1,3 +1,20 @@
+MASCHINENPLANUNG V12.17.1 - RELEASE NOTES
+=========================================
+Datum: 05.10.2026 · Basis: V12.17.0 · Update mit UPDATE_LIVE.ps1, Daten bleiben erhalten
+
+FEHLERBEHEBUNG: PERSONAL-GATE GILT AUCH FUER LINIEN
+- Symptom: Bei Personal-Gate EIN und 0 Mitarbeitern wurde ein Auftrag auf einer Linie (z. B. Konfektion 1, "1 Pers.") trotzdem
+  Mo-Fr eingeplant; "Unterbesetzte Schichten" blieb 0. Ursache: Das Gate pruefte nur das Feld staffRequired der Ressource.
+  Linien werden mit staffRequired=0 angelegt (die Besetzung steht in crew), also galt fuer sie nie eine Personalpflicht.
+  Der Fehler bestand schon in V12.10.1.
+- Fix: Erforderliche Personenzahl einer Linie = max(staffRequired, crew). Scheduler, Besetzungspruefung, Startpruefung,
+  Auslastung und "Unterbesetzte Schichten" nutzen dieselbe Funktion. Gate AUS: unveraendert nur Planung.
+- Ist keine besetzte Schicht zu finden, wird der Auftrag nicht eingeplant, sondern als unbesetzt markiert (Symbol 👤⚠ mit Tooltip,
+  Code MP-PERS-003) und zaehlt bei "Termin gefaehrdet". Im Hinweisfeld des Wochenplans steht daneben "Personal zuordnen"
+  (springt zur Personalplanung). Die Kachel "Unterbesetzte Schichten" zeigt bei Gate EIN auch ohne Mitarbeiter die Zahl statt "-".
+- Nur Client (index.html); keine Datenmigration, keine Servervalidierung geaendert.
+- Neuer Test: tests/e2e_gate_lines.mjs (12 Pruefungen).
+
 MASCHINENPLANUNG V12.17.0 - RELEASE NOTES
 =========================================
 Datum: 05.10.2026 · Basis: V12.16.0 · Update mit UPDATE_LIVE.ps1, Daten bleiben erhalten

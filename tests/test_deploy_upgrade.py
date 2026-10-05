@@ -314,8 +314,14 @@ def run_case(label: str, commit: str, scenario: str, keep: bool, ip: str):
         miss = [f"{i}.{p}" for i, p in want.items() if i in deps and deps[i].get(p) is not True]
         ok_all &= check(sc == 200 and not miss, f"[{tag}] Bereichs-Eigenschaften für den Bestand gesetzt (formats, sharedOperators)", ", ".join(miss))
         # V12.17.0: Bestand bekommt nie einen Einrichtungsassistenten und behält die sieben Projektbereiche.
-        ok_all &= check(sc == 200 and isinstance(pc, dict) and pc.get("setupDone") is True and "adminPwUnchanged" not in pc,
-                        f"[{tag}] Bestand: setupDone=true, kein Einrichtungsassistent", str(pc.get("setupDone") if isinstance(pc, dict) else pc))
+        # Hatte der Vorgaenger setupDone schon (ab V12.17.0), bleibt dessen Wert; die Regel "nur ergaenzen" prueft config_additive.
+        try:
+            base_sd = json.loads((cfgA_dir / "firma.json").read_text(encoding="utf-8")).get("setupDone", None) if had_cfg else None
+        except (OSError, ValueError, AttributeError):
+            base_sd = None
+        want_sd = True if base_sd is None else base_sd
+        ok_all &= check(sc == 200 and isinstance(pc, dict) and pc.get("setupDone") is want_sd and (want_sd is not True or "adminPwUnchanged" not in pc),
+                        f"[{tag}] Bestand: setupDone={str(want_sd).lower()} (Wert des Vorgängers bzw. true), kein Einrichtungsassistent für Bestand", str(pc.get("setupDone") if isinstance(pc, dict) else pc))
         areas = [a.get("id") for a in (pc.get("projectAreas") if isinstance(pc, dict) else None) or []]
         ok_all &= check(areas == ["sales", "pm", "engineering", "calculation", "purchasing", "quality", "av"],
                         f"[{tag}] Bestand: die sieben Projektbereiche stehen in der Config", ",".join(areas))

@@ -285,6 +285,13 @@ def seed(url: str, admin_user: str, admin_pw: str, scenario: str = "ci") -> dict
     s, st = adm.call("GET", "/api/state")
     _expect(s == 200, "Datenstand lesen")
     new = copy.deepcopy(st["data"])
+    # Neutraler Startbestand (ab V12.17.0 ohne Bereiche/Maschinen): Testbereich CNC mit drei Maschinen ergaenzen.
+    if not [m for m in new["machines"] if m.get("departmentId") == "cnc"]:
+        if not any(d.get("id") == "cnc" for d in new.get("departments", [])):
+            new.setdefault("departments", []).append({"id": "cnc", "name": "CNC", "planningType": "MACHINE", "active": True, "sharedOperators": True})
+        for i in (1, 2, 3):
+            new["machines"].append({"id": f"m{i}", "name": f"Maschine {i}", "departmentId": "cnc", "setupMinutes": 0, "start": "2026-09-07T06:30",
+                                    "committedUntil": "", "defaultShiftMode": "1", "staffRequired": 1})
     machines = new["machines"]
     cnc = [m["id"] for m in machines if m.get("departmentId") == "cnc"]
     tf = [m["id"] for m in machines if m.get("departmentId") == "thermoforming"]

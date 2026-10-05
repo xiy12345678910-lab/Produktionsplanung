@@ -1,4 +1,4 @@
-MASCHINENPLANUNG V12.17.0 - KURZANLEITUNG FUER BENUTZER
+MASCHINENPLANUNG V12.17.1 - KURZANLEITUNG FUER BENUTZER
 ======================================================
 
 ANMELDEN
@@ -139,3 +139,6 @@ MODULE UND VORLAGEN (nur Admin, System > Firmenprofil)
 EINRICHTUNGSASSISTENT (nur Admin, neue Installation)
 - Erscheint beim ersten Admin-Login: Firma, Branche, Module, Bereiche, Benutzer. Jeder Schritt laesst sich ueberspringen; x = spaeter weitermachen.
 - Erneut: System > Firmenprofil > Assistent.
+
+PERSONAL-GATE (nur Admin, Personal)
+- Bei EIN wird nur eingeplant, wo die geforderte Personenzahl zugeordnet ist (Linie: Besetzung). Fehlt sie: 👤⚠ im Wochenplan, dort Knopf "Personal zuordnen".
