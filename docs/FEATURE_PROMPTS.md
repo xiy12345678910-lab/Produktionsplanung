@@ -10,12 +10,12 @@
 | 4 | A | Firmen-Config `config\firma.json` außerhalb des Pakets (docs/PRODUKT_MULTI_FIRMA.md) | erledigt V12.14.0 (Datei, Migration, Validierung, Update/Rollback/Umzug/Vorabtest/Backup), Korrektur Long-Poll V12.14.1, Rest V12.15.0 (API, Firmenprofil-UI, Arbeitgeberdaten aus dem Paket; Export/Import-ZIP bewusst offen), Datenerhalt-Test + Windows-Deploy in CI V12.15.1 |
 | 5 | B | Branchenvorlagen, Module | erledigt V12.16.0 (Vorlagen als Paketdateien vorlage_*.json, Anwenden nur ergaenzend, Module ein/aus mit Server-Sperre MP-MOD-001, Bereichs-Eigenschaften, Begriffe/Rollenbezeichnungen; offen: Modul export; Projektbereiche aus Config mit V12.17.0 erledigt) |
 | 6 | C1 | Einrichtungsassistent | erledigt V12.17.0 (5 Schritte, neutraler Seed, setupDone, Projektbereiche aus Config; offen: Demo-Daten und Feiertage je Bundesland = C2) |
-| 7 | 17 | Qualifikationsmatrix | offen |
-| 8 | 16 | Personalbedarf je Parallelplatz | offen |
-| 9 | 14 | Automatische Nachkalkulation | offen |
-| 10 | 7 | KPI-Dashboard GF | offen |
-| 11 | 12 | Liefertermin-Vorschlag Vertrieb | offen |
-| 12 | – | **Stopp: Windows-Installation beim Arbeitgeber** (Erstinstallation/Update live, danach weiter) | offen |
+| 7 | – | **Windows-Installation beim Arbeitgeber (Prio 2, jetzt)**: Update 12.10.1 → 12.17.0 nach `docs/INSTALL_ARBEITGEBER.md`; danach Pause, bis der Nutzer getestet hat | jetzt |
+| 8 | 17 | Qualifikationsmatrix | offen |
+| 9 | 16 | Personalbedarf je Parallelplatz | offen |
+| 10 | 14 | Automatische Nachkalkulation | offen |
+| 11 | 7 | KPI-Dashboard GF | offen |
+| 12 | 12 | Liefertermin-Vorschlag Vertrieb | offen |
 | 13 | E | Installer-Branding, signierte Updates | offen |
 | 14 | G | Vorbereitung gehosteter Betrieb | offen |
 | 15 | 11 | Was-wäre-wenn-Szenarien | offen |
@@ -26,7 +26,7 @@
 Voraussetzung erledigt: Hotfix V12.10.2 (docs/AUDIT.md V-02, V-03, V-04, V-12), u. a. `workDaysBetween` mit Feiertagen (für Prompt 12).
 
 Jeder Prompt ist eigenständig: Er wird in eine neue Claude-Code-Session kopiert, und zwar **zusammen mit dem gemeinsamen Vorspann**.
-Reihenfolge: 5 → 3 → 4 → A → B → C1 → 17 → 16 → 14 → 7 → 12 → **Windows-Installation** → E → G → 11 → C2 → D → F.
+Reihenfolge: 5 → 3 → 4 → A → B → C1 (erledigt V12.17.0) → **Windows-Installation (Prio 2, jetzt; danach Pause bis zum Test durch den Nutzer)** → 17 → 16 → 14 → 7 → 12 → E → G → 11 → C2 → D → F.
 
 ---
 
