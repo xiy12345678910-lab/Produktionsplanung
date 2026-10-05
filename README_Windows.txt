@@ -1,4 +1,4 @@
-MASCHINENPLANUNG V12.10.0 - WINDOWS-SERVER (LAN ONLY)
+MASCHINENPLANUNG V12.10.1 - WINDOWS-SERVER (LAN ONLY)
 =====================================================
 
 1. VORAUSSETZUNGEN
@@ -84,6 +84,7 @@ MASCHINENPLANUNG V12.10.0 - WINDOWS-SERVER (LAN ONLY)
    Arbeitsvorbereitung     plant Termine und verwaltet die Fertigung: FS anlegen/verknuepfen,
                            Planwochen, Fertigungsprozesse terminieren, eigene Fertigungsablaeufe.
                            Keine Freigabe, keine Fortschrittsmeldung, kein Personal/Einstellungen
+   (V12.10.1) GF sieht Wochenplan und Auftragsliste nur lesend.
    (V12.7) GF-Ansicht: nur GF + Admin. Projekt-Ansicht: GF, PM, AV, Vertrieb, Admin.
    Vertrieb                legt Eingaenge an, pflegt Kundendaten bis zur Annahme, meldet
                            Angebot angenommen (AB + Liefertermin) oder verloren

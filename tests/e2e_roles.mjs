@@ -28,7 +28,7 @@ const check = (ok, label) => { results.push([!!ok, label]); if (!ok) console.log
 // Rolle → Benutzer, Bereich, erwartete Navigation (Reihenfolge egal). Mit „System“ liegen Historie/Report dort als Reiter.
 const ROLES = [
   ['admin', 'admin', '', ['navPlan', 'navList', 'navOrders', 'navPersonnel', 'navGF', 'navSystem']],
-  ['gf', 'gf', '', ['navOrders', 'navGF', 'navSystem']],
+  ['gf', 'gf', '', ['navPlan', 'navList', 'navOrders', 'navGF', 'navSystem']],
   ['lead', 'department_lead', 'cnc', ['navPlan', 'navList', 'navOrders', 'navPersonnel', 'navSystem']],
   ['deputy', 'department_deputy', 'thermoforming', ['navPlan', 'navList', 'navOrders', 'navPersonnel', 'navSystem']],
   ['viewer', 'viewer', '', ['navPlan', 'navList', 'navOrders', 'navPersonnel', 'navHistory', 'navReport']],
@@ -99,6 +99,12 @@ try {
       const visible = [];
       for (const n of NAV_ALL) if (await page.locator('#' + n).isVisible()) visible.push(n);
       check(visible.sort().join() === [...navs].sort().join(), `${user}@${w}: Navigation ${visible.join(',')} (erwartet ${navs.join(',')})`);
+      if (user === 'gf') {
+        await page.click('#navPlan'); await page.waitForTimeout(300);
+        const ro = await page.evaluate(() => ({ view: document.querySelector('.view.active')?.id, add: !!document.getElementById('quickAdd')?.offsetParent, drag: document.querySelectorAll('#overview [draggable="true"]').length, chips: document.querySelectorAll('#overview .jobchip').length }));
+        check(ro.view === 'overview' && ro.chips > 0, `gf@${w}: Wochenplan sichtbar (${ro.chips} Aufträge)`);
+        check(!ro.add && ro.drag === 0, `gf@${w}: Wochenplan nur lesen (kein + Auftrag, nicht verschiebbar)`);
+      }
       const targets = visible.map(n => ['#' + n]);
       if (visible.includes('navSystem')) for (const sub of ['#sysAudit', '#sysHistory', '#sysReport']) targets.push(['#navSystem', sub]);
       for (const steps of targets) {

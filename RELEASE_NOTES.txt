@@ -1,3 +1,10 @@
+MASCHINENPLANUNG V12.10.1 - RELEASE NOTES
+=========================================
+Datum: 05.10.2026 · Basis: V12.10.0 · Update mit UPDATE_LIVE.ps1, Daten bleiben erhalten
+
+- GF sieht Wochenplan und Auftragsliste (nur lesen, alle Bereiche bzw. ueber "Bereich" gefiltert).
+  Planen/Verschieben bleibt Abteilung und Arbeitsvorbereitung vorbehalten.
+
 MASCHINENPLANUNG V12.10.0 - RELEASE NOTES
 =========================================
 Datum: 05.10.2026 · Basis: V12.9.1 · Update mit UPDATE_LIVE.ps1, Daten bleiben erhalten
