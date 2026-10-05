@@ -140,8 +140,8 @@ table.tools input.n{width:70px}
         </div>
         <div class="fields">
           <div class="field" style="grid-column:span 2"><label>Formatname</label><input id="fName"></div>
-          <div class="field"><label>Maschine</label><select id="fMachine"><option>TZ 1 – Illig</option><option>TZ 2 – Geiss</option></select></div>
-          <div class="field"><label>Taktzeit (s)</label><input id="fCycle" type="number" min="1"></div>
+          <div class="field"><label>Maschine</label><select id="fMachine"></select></div>
+          <div class="field"><label>Taktzeit (s)</label><input id="fCycle" type="number" min="1" title="Taktzeit auf der gewählten Maschine"></div>
           <div class="field"><label>Format Länge (mm)</label><input id="fL" type="number" min="1"></div>
           <div class="field"><label>Format Breite (mm)</label><input id="fB" type="number" min="1"></div>
           <div class="field"><label>Max. Ziehtiefe (mm)</label><input id="fH" type="number" min="1"></div>
@@ -149,6 +149,9 @@ table.tools input.n{width:70px}
         </div>
 
         <p class="hint" style="margin:-4px 0 12px">Abstandsregel: Formatrand ringsum (Standard 100 mm = 10 cm) · Abstand zwischen zwei Werkzeugen = ½ Werkzeughöhe (bei unterschiedlichen Höhen gilt das höhere Werkzeug).</p>
+        <h3>Taktzeit je Maschine</h3>
+        <div class="tblScroll"><table class="tools" style="min-width:560px"><thead><tr><th></th><th>Maschine</th><th>max. Format / Ziehtiefe</th><th>Taktzeit (s)</th><th class="num">Laufzeit</th><th>Eignung</th></tr></thead><tbody id="cycleRows"></tbody></table></div>
+        <p class="hint">Jede Maschine hat für dasselbe Format eine eigene Taktzeit. Auswahl links = Maschine, auf der das Format geplant wird. Leere Taktzeit = auf dieser Maschine noch nicht gefahren.</p>
         <h3>Werkzeuge / Positionen auf dem Format</h3>
         <div class="tblScroll"><table class="tools">
           <thead><tr><th>Position / Auftrag</th><th>L (mm)</th><th>B (mm)</th><th>H (mm)</th><th title="Wie oft ist das Werkzeug auf dem Format enthalten?">Nutzen ×</th><th class="num">Menge</th><th class="num">Takte</th><th class="num">Überprod.</th><th></th></tr></thead>
@@ -189,14 +192,19 @@ const ORDERS=[
   {id:'A-24850/1',kunde:'Kröger AG',art:'Abdeckhaube',menge:150,l:520,b:380,h:140,due:'09.10.'},
   {id:'A-24851/3',kunde:'Kröger AG',art:'Einsatz',menge:600,l:180,b:140,h:35,due:'12.10.'}
 ];
+const MACHINES=[
+  {name:'TZ 1 – Illig',maxL:1500,maxB:1000,maxH:200},
+  {name:'TZ 2 – Geiss',maxL:1000,maxB:700,maxH:250},
+  {name:'TZ 3 – Kiefel',maxL:1800,maxB:1200,maxH:300}
+];
 let formats=[
-  {id:'F-101',name:'F-101 Müller Schale+Deckel',machine:'TZ 1 – Illig',cycle:38,L:1500,B:1000,H:180,rand:100,layout:null,tools:[
+  {id:'F-101',name:'F-101 Müller Schale+Deckel',machine:'TZ 1 – Illig',cycles:{'TZ 1 – Illig':38,'TZ 3 – Kiefel':46},L:1500,B:1000,H:180,rand:100,layout:null,tools:[
     {order:'A-24811/1',l:300,b:200,h:60,n:4},
     {order:'A-24811/2',l:310,b:210,h:25,n:4}]},
-  {id:'F-102',name:'F-102 Mischformat Hansa/Nordmed',machine:'TZ 1 – Illig',cycle:32,L:1500,B:1000,H:180,rand:100,layout:null,tools:[
+  {id:'F-102',name:'F-102 Mischformat Hansa/Nordmed',machine:'TZ 1 – Illig',cycles:{'TZ 1 – Illig':32,'TZ 2 – Geiss':29,'TZ 3 – Kiefel':40},L:1500,B:1000,H:180,rand:100,layout:null,tools:[
     {order:'A-24830/1',l:400,b:280,h:45,n:2},
     {order:'A-24842/1',l:120,b:90,h:20,n:8}]},
-  {id:'F-103',name:'F-103 Kröger Haube',machine:'TZ 2 – Geiss',cycle:55,L:1000,B:700,H:200,rand:100,layout:null,tools:[
+  {id:'F-103',name:'F-103 Kröger Haube',machine:'TZ 2 – Geiss',cycles:{'TZ 2 – Geiss':55,'TZ 3 – Kiefel':62},L:1000,B:700,H:200,rand:100,layout:null,tools:[
     {order:'A-24850/1',l:520,b:380,h:140,n:1}]}
 ];
 let cur='F-101',uidSeq=1,selKey=null;
@@ -210,11 +218,13 @@ const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',
 function toast(t){const e=$('toast');e.textContent=t;e.classList.add('show');clearTimeout(toast.t);toast.t=setTimeout(()=>e.classList.remove('show'),2600)}
 
 /* ---------- Berechnung ---------- */
-function calc(f){
+const cycleOf=(f,m=f.machine)=>Math.max(0,+((f.cycles||{})[m])||0);
+const machineFits=(f,m)=>{const M=MACHINES.find(x=>x.name===m);if(!M)return[];const r=[];if(Math.max(f.L,f.B)>Math.max(M.maxL,M.maxB)||Math.min(f.L,f.B)>Math.min(M.maxL,M.maxB))r.push('Format zu groß');const hmax=Math.max(0,...f.tools.map(t=>+t.h||0));if(hmax>M.maxH)r.push('Werkzeug zu hoch');return r};
+function calc(f,m=f.machine){
   const rows=f.tools.map(t=>{const o=ord(t.order),menge=o?o.menge:0,n=Math.max(1,+t.n||1),takte=Math.ceil(menge/n);return{...t,menge,n,takte}});
   const takte=rows.reduce((m,r)=>Math.max(m,r.takte),0);
   rows.forEach(r=>r.over=takte*r.n-r.menge);
-  const hours=takte*f.cycle/3600;
+  const hours=takte*cycleOf(f,m)/3600;
   const area=f.L*f.B,used=rows.reduce((s,r)=>s+r.l*r.b*r.n,0);
   return{rows,takte,hours,util:area?used/area:0};
 }
@@ -279,7 +289,7 @@ function renderList(){
 }
 function renderFormat(){
   const f=fmtById(cur);if(!f)return;
-  $('fName').value=f.name;$('fMachine').value=f.machine;$('fCycle').value=f.cycle;$('fL').value=f.L;$('fB').value=f.B;$('fH').value=f.H;$('fRand').value=f.rand;selKey=null;
+  $('fName').value=f.name;$('fMachine').innerHTML=MACHINES.map(M=>`<option>${esc(M.name)}</option>`).join('');$('fMachine').value=f.machine;$('fCycle').value=cycleOf(f)||'';$('fL').value=f.L;$('fB').value=f.B;$('fH').value=f.H;$('fRand').value=f.rand;selKey=null;
   renderTools();renderList();
 }
 function renderTools(){
@@ -304,12 +314,25 @@ function renderTools(){
   });
   $('toolRows').querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>{f.tools.splice(+b.dataset.del,1);keepLayout(f);renderTools();renderList()});
   const L=layout(f);
+  renderCycles(f);
   $('sum').innerHTML=`
     <div class="kpi"><small>Takte gesamt</small><b>${nf(c.takte)}</b></div>
     <div class="kpi"><small>Laufzeit</small><b>${c.hours.toFixed(1).replace('.',',')} h</b></div>
     <div class="kpi"><small>Teile / Takt</small><b>${nf(c.rows.reduce((s,r)=>s+r.n,0))}</b></div>
     <div class="kpi"><small>Flächennutzung</small><b>${Math.round(c.util*100)} %</b></div>`;
   renderPlate(f,L,c);renderPool();
+}
+function renderCycles(f){
+  const rows=MACHINES.map(M=>{const cy=cycleOf(f,M.name),c=calc(f,M.name),bad=machineFits(f,M.name);return{M,cy,c,bad}});
+  const ok=rows.filter(r=>r.cy&&!r.bad.length),best=ok.length?ok.reduce((a,b)=>b.c.hours<a.c.hours?b:a):null;
+  $('cycleRows').innerHTML=rows.map(({M,cy,c,bad})=>`<tr${M.name===f.machine?' style="background:var(--violetbg)"':''}>
+    <td><input type="radio" name="cyMachine" value="${esc(M.name)}" ${M.name===f.machine?'checked':''} ${bad.length?'disabled':''} style="width:auto"></td>
+    <td><b>${esc(M.name)}</b></td><td>${M.maxL}×${M.maxB} · ${M.maxH} mm</td>
+    <td><input class="n" type="number" min="1" data-cy="${esc(M.name)}" value="${cy||''}" placeholder="—"></td>
+    <td class="num">${cy?c.hours.toFixed(1).replace('.',',')+' h':'—'}</td>
+    <td>${bad.length?`<span class="badge bad">${bad.join(', ')}</span>`:cy?(best&&best.M===M?'<span class="badge ok">schnellste</span>':'<span class="badge">geeignet</span>'):'<span class="badge warn">Takt fehlt</span>'}</td></tr>`).join('');
+  $('cycleRows').querySelectorAll('[data-cy]').forEach(el=>el.onchange=()=>{const v=+el.value;f.cycles={...(f.cycles||{})};if(v>0)f.cycles[el.dataset.cy]=v;else delete f.cycles[el.dataset.cy];if(el.dataset.cy===f.machine)$('fCycle').value=v||'';renderTools();renderList();renderBoard()});
+  $('cycleRows').querySelectorAll('[name=cyMachine]').forEach(el=>el.onchange=()=>{f.machine=el.value;$('fMachine').value=f.machine;$('fCycle').value=cycleOf(f)||'';renderTools();renderList();renderBoard()});
 }
 function renderPlate(f,L,c){
   const s=$('plate'),parked=L.some(x=>x.parked||x.y>f.B),bottom=parked?Math.max(...L.map(x=>x.y+x.d),f.B+90)+40:f.B+70;
@@ -337,6 +360,8 @@ function renderPlate(f,L,c){
   const seen=new Set();errs.forEach(x=>x.err.filter(e=>e!=='nicht auf Format').forEach(e=>{const t=`${x.order}: ${e}`;if(!seen.has(t)){seen.add(t);m.push(['bad',t])}}));
   c.rows.filter(r=>r.h>f.H).forEach(r=>m.push(['bad',`${r.order}: Werkzeughöhe ${r.h} mm überschreitet max. Ziehtiefe ${f.H} mm.`]));
   c.rows.filter(r=>r.over>0&&r.over>=r.menge*0.25).forEach(r=>m.push(['warn',`${r.order}: ${nf(r.over)} Teile Überproduktion – Werkzeug nach ${nf(r.takte)} Takten abdecken/ausbauen oder Nutzen anpassen.`]));
+  if(!cycleOf(f))m.push(['warn',`Für ${f.machine} ist noch keine Taktzeit hinterlegt – Laufzeit kann nicht berechnet werden.`]);
+  const unfit=machineFits(f,f.machine);if(unfit.length)m.push(['bad',`${f.machine} ist für dieses Format nicht geeignet: ${unfit.join(', ')}.`]);
   if(!m.length)m.push(['ok','Alle Werkzeuge liegen auf dem Format, Rand und Abstände sind eingehalten.']);
   $('msgs').innerHTML=m.map(([k,t])=>`<div class="msg ${k}">${esc(t)}</div>`).join('');
 }
@@ -373,11 +398,11 @@ function renderPool(){
 }
 ['fName','fMachine','fCycle','fL','fB','fH','fRand'].forEach(id=>$(id).onchange=()=>{
   const f=fmtById(cur),v=$(id).value;
-  ({fName:()=>f.name=v,fMachine:()=>f.machine=v,fCycle:()=>f.cycle=Math.max(1,+v||1),fL:()=>f.L=Math.max(1,+v||1),fB:()=>f.B=Math.max(1,+v||1),fH:()=>f.H=Math.max(1,+v||1),fRand:()=>f.rand=Math.max(0,+v||0)})[id]();
+  ({fName:()=>f.name=v,fMachine:()=>{f.machine=v;$('fCycle').value=cycleOf(f)||''},fCycle:()=>{f.cycles={...(f.cycles||{}),[f.machine]:Math.max(1,+v||1)}},fL:()=>f.L=Math.max(1,+v||1),fB:()=>f.B=Math.max(1,+v||1),fH:()=>f.H=Math.max(1,+v||1),fRand:()=>f.rand=Math.max(0,+v||0)})[id]();
   renderTools();renderList();renderBoard();
 });
 $('addTool').onclick=()=>{const f=fmtById(cur),o=ORDERS[0];f.tools.push({uid:uidSeq++,order:o.id,l:o.l,b:o.b,h:o.h,n:1});renderTools();renderList()};
-$('newFmt').onclick=()=>{const id='F-'+(100+formats.length+1);formats.push({id,name:id+' Neues Format',machine:'TZ 1 – Illig',cycle:35,L:1500,B:1000,H:180,rand:100,layout:null,tools:[]});cur=id;renderFormat()};
+$('newFmt').onclick=()=>{const id='F-'+(100+formats.length+1);formats.push({id,name:id+' Neues Format',machine:'TZ 1 – Illig',cycles:{},L:1500,B:1000,H:180,rand:100,layout:null,tools:[]});cur=id;renderFormat()};
 $('dupFmt').onclick=()=>{const f=fmtById(cur),id='F-'+(100+formats.length+1);const cp=JSON.parse(JSON.stringify(f)),map={};cp.tools.forEach(t=>{const nu=uidSeq++;map[t.uid]=nu;t.uid=nu});if(cp.layout){const nl={};for(const k in cp.layout){const [u,i]=k.split('-');nl[map[u]+'-'+i]=cp.layout[k]}cp.layout=nl}formats.push({...cp,id,name:id+' Kopie von '+f.id});cur=id;renderFormat()};
 $('planFmt').onclick=()=>{const f=fmtById(cur),c=calc(f);toast(`${f.name}: ${c.hours.toFixed(1).replace('.',',')} h auf ${f.machine} – würde im echten System per Drag & Drop in den Wochenplan gesetzt.`)};
 
@@ -401,7 +426,8 @@ const KONF=[
 // Tiefziehen: Formate je Maschine/Tag; mehrere Formate oder einzelne Aufträge können parallel laufen, wenn mehrere Maschinen/Stationen frei sind
 const TZ=[
   {name:'TZ 1 – Illig',sub:'2-Schicht · 15,5 h/Tag',cap:[15.5,15.5,15.5,15.5,7.5],plan:[['F-101'],['F-101','F-102'],['F-102'],[],[]]},
-  {name:'TZ 2 – Geiss',sub:'1-Schicht · 8,5 h/Tag',cap:[8.5,8.5,8.5,8.5,5],plan:[[],['F-103'],['F-103'],[],[]]}
+  {name:'TZ 2 – Geiss',sub:'1-Schicht · 8,5 h/Tag',cap:[8.5,8.5,8.5,8.5,5],plan:[[],['F-103'],['F-103'],[],[]]},
+  {name:'TZ 3 – Kiefel',sub:'1-Schicht · 8,5 h/Tag',cap:[8.5,8.5,8.5,8.5,5],plan:[[],[],[],[],[]]}
 ];
 function capBar(used,cap){const p=cap?used/cap:0,cls=p>1?'over':p>=.9?'full':'';return`<div class="capTxt"><span>${used.toFixed(1).replace('.',',')} / ${String(cap).replace('.',',')} h</span><span>${Math.round(p*100)} %</span></div><div class="cap ${cls}"><i style="width:${Math.min(100,p*100)}%"></i></div>`}
 function renderBoard(){
@@ -419,7 +445,7 @@ function renderBoard(){
   for(const r of TZ){
     h+=`<tr><td class="resCell">${esc(r.name)}<small>${r.sub}</small></td>`;
     r.plan.forEach((ids,d)=>{
-      const blocks=ids.map(id=>{const f=fmtById(id);if(!f)return null;const c=calc(f);return{f,c,h:c.hours/occ[id]}}).filter(Boolean);
+      const blocks=ids.map(id=>{const f=fmtById(id);if(!f)return null;const c=calc(f,r.name);return{f,c,h:c.hours/occ[id]}}).filter(Boolean);
       const used=blocks.reduce((s,b)=>s+b.h,0);
       h+=`<td class="dayCell">${capBar(used,r.cap[d])}<div class="lanes">${blocks.map(b=>`<div class="fmtBlock" data-fmt="${b.f.id}" title="Format öffnen"><div class="fmtHead"><span>${b.f.id}</span><span>${b.h.toFixed(1).replace('.',',')} h</span></div><div class="lanes">${b.c.rows.map(x=>`<div class="chip" style="background:${colorOf(x.order)}"><b>${esc(x.order)}</b><span>×${x.n} · ${nf(x.menge)} Stk</span></div>`).join('')}</div></div>`).join('')}</div><div class="addSlot">+ Format einplanen</div></td>`});
     h+='</tr>';

@@ -1,5 +1,8 @@
-NACHTRAG (nach V12.7.5) - PRODUKTIONSSTART/-ENDE MIT ZEITERFASSUNG
-=================================================================
+MASCHINENPLANUNG V12.7.6 - RELEASE NOTES
+========================================
+Datum: 05.10.2026 · Basis: V12.7.5 · Update mit UPDATE_LIVE.ps1, Daten bleiben erhalten
+
+PRODUKTIONSSTART/-ENDE MIT ZEITERFASSUNG
 - Auftragsliste: Der Knopf ▶ oeffnet ein Popup "Produktion starten" mit Tag und Uhrzeit des
   tatsaechlichen Starts (vorbelegt mit jetzt). Bei geplanten Auftraegen wird automatisch erst
   freigegeben und danach gestartet ("Nur freigeben" bleibt als Knopf im Popup). Das Popup zeigt
