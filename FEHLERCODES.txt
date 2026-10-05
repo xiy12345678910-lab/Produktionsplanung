@@ -1,4 +1,4 @@
-MASCHINENPLANUNG V12.8.2 - FEHLERCODES
+MASCHINENPLANUNG V12.8.3 - FEHLERCODES
 ======================================
 
 Jeder Fehler wird dem Mitarbeiter als Klartext + Code angezeigt.
@@ -362,3 +362,8 @@ MP-DEPT-005  Bereichsname fehlt/zu lang/doppelt oder ID fuer feste Projektbereic
 MP-DEPT-006  Bereich mit offenen Auftraegen kann nicht deaktiviert werden.
 MP-GF-030    (erweitert) GF legt Bereiche an (Name, Art, aktiv) und nur die erste Maschine/Linie
              eines Bereichs; keine Loeschung von Bereichen, keine Aenderung bestehender Maschinen.
+
+V12.8.3 NEU (PM-Vorplan vs. AV vs. Ist)
+MP-PM-017    PM-Vorplan (pmPlan) eines Prozesses ist ungueltig (nur Start/Faellig/Zeitpunkt/Benutzer).
+MP-PM-031    (erweitert) PM-Vorplan sichert nur die AV, einmalig und unveraendert; danach sind die
+             PM-Termine dieses Prozesses gesperrt und der Prozess kann vom PM nicht entfernt werden.

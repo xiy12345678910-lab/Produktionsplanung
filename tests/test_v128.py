@@ -114,6 +114,28 @@ proj_new["projects"][0]["processes"][0]["areaId"] = "cnc"
 ok, why = server.project_changes_allowed(proj_old, proj_new, "production_planning", "av")
 check(ok, f"Bereiche: AV plant Prozess in Produktion {why}")
 
+# --------------------------------------------------------------------------- V12.8.3 PM-Vorplan
+pa = state()
+pa["projects"] = [{"id": "p1", "number": "P-1", "phase": "accepted", "name": "Test", "customer": "K", "ab": "AB-1", "dueDate": "2026-11-30", "log": [],
+                   "processes": [{"id": "pr1", "areaId": "cnc", "title": "Fräsen", "status": "open", "startDate": "2026-10-12", "dueDate": "2026-10-16"}]}]
+check(server.validate_state(BASE, pa)[0], "PM-Vorplan: Ausgangsprojekt gültig " + str(server.validate_state(BASE, pa)[1:]))
+av = copy.deepcopy(pa); pr = av["projects"][0]["processes"][0]
+pr["pmPlan"] = {"startDate": "2026-10-12", "dueDate": "2026-10-16", "at": "2026-10-05T08:00:00Z", "by": "av"}; pr["dueDate"] = "2026-10-21"
+check(server.validate_state(pa, av)[0], "PM-Vorplan: Schnappschuss strukturell gültig")
+check(server.project_changes_allowed(pa, av, "production_planning", "av")[0], "PM-Vorplan: AV sichert PM-Termin beim ersten Überschreiben")
+fake = copy.deepcopy(av); fake["projects"][0]["processes"][0]["pmPlan"]["dueDate"] = "2026-10-30"
+check(not server.project_changes_allowed(pa, fake, "production_planning", "av")[0], "PM-Vorplan: AV darf keinen veränderten PM-Termin sichern")
+again = copy.deepcopy(av); again["projects"][0]["processes"][0]["pmPlan"]["dueDate"] = "2026-10-21"
+check(not server.project_changes_allowed(av, again, "production_planning", "av")[0], "PM-Vorplan: Schnappschuss nur einmal")
+pm = copy.deepcopy(av); pm["projects"][0]["processes"][0]["dueDate"] = "2026-10-23"
+check(not server.project_changes_allowed(av, pm, "project_management", "pm")[0], "PM-Vorplan: PM-Termine nach AV-Übernahme gesperrt")
+pm2 = copy.deepcopy(pa); pm2["projects"][0]["processes"][0]["dueDate"] = "2026-10-19"
+check(server.project_changes_allowed(pa, pm2, "project_management", "pm")[0], "PM-Vorplan: PM terminiert, solange AV nicht übernommen hat")
+pm3 = copy.deepcopy(av); pm3["projects"][0]["processes"][0]["pmPlan"] = None
+check(not server.project_changes_allowed(av, pm3, "project_management", "pm")[0], "PM-Vorplan: PM löscht Schnappschuss nicht")
+bad = copy.deepcopy(av); bad["projects"][0]["processes"][0]["pmPlan"] = {"dueDate": "x"}
+check(server.validate_state(pa, bad)[1] == "MP-PM-017", "PM-Vorplan: ungültiges Datum → MP-PM-017")
+
 failed = [x for x in RESULTS if not x[0]]
 print(f"\n{len(RESULTS) - len(failed)}/{len(RESULTS)} bestanden")
 sys.exit(1 if failed else 0)

@@ -25,7 +25,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-APP_VERSION = "12.8.2"
+APP_VERSION = "12.8.3"
 HOST = os.environ.get("MP_HOST", "0.0.0.0")
 PORT = int(os.environ.get("MP_PORT", "8765"))
 BASE = Path(__file__).resolve().parent
@@ -988,6 +988,11 @@ def validate_projects(old: dict, projects: list) -> tuple[bool, str, str]:
                 return False, "MP-PM-010", f"Projekt '{label}': Prozess hat ein ungültiges Startdatum."
             if _valid_date_key(pr.get("startDate")) and _valid_date_key(pr.get("dueDate")) and str(pr["startDate"]) > str(pr["dueDate"]):
                 return False, "MP-PM-016", f"Projekt '{label}': Prozess „{pr.get('title')}“ startet nach seiner Fälligkeit."
+            pm_plan = pr.get("pmPlan")
+            if pm_plan is not None and (not isinstance(pm_plan, dict) or set(pm_plan) - {"startDate", "dueDate", "at", "by"}
+                                        or any(pm_plan.get(k) not in (None, "") and not _valid_date_key(pm_plan.get(k)) for k in ("startDate", "dueDate"))
+                                        or len(str(pm_plan.get("by") or "")) > 80 or len(str(pm_plan.get("at") or "")) > 40):
+                return False, "MP-PM-017", f"Projekt '{label}': PM-Vorplan von „{pr.get('title')}“ ist ungültig."
         cp = project.get("customerPlan")
         if cp is not None:
             # Kundenplan = an den Kunden gegebener PM-Terminplan (Stand), Vergleichsbasis für die AV.
@@ -1124,7 +1129,7 @@ def validate_formats(new: dict, dept_ids: set) -> tuple[bool, str, str]:
 
 
 TEMPLATE_KINDS = {"pm", "av"}
-# V12.8.2: Bereichsarten. Produktion plant über Maschinen/Linien, Vertrieb/Entwicklung nur Projektaufgaben.
+# V12.8.3: Bereichsarten. Produktion plant über Maschinen/Linien, Vertrieb/Entwicklung nur Projektaufgaben.
 DEPARTMENT_KINDS = {"production", "sales", "development"}
 PROJECT_FIXED_AREA_IDS = {"sales", "pm", "engineering", "calculation", "purchasing", "quality", "av"}
 
@@ -1214,7 +1219,7 @@ def validate_state(old: dict, new: dict) -> tuple[bool, str, str]:
         dept_types[did] = ptype
         dept_kinds[did] = kind
 
-    # V12.8.2: Vertrieb/Entwicklung bearbeiten nur Projektaufgaben – keine Maschinen, Aufträge, Formate.
+    # V12.8.3: Vertrieb/Entwicklung bearbeiten nur Projektaufgaben – keine Maschinen, Aufträge, Formate.
     for name, what in (("machines", "Maschine/Linie"), ("workSteps", "Auftrag"), ("formats", "Format"), ("baseFormats", "Grundformat")):
         for rec in new.get(name) or []:
             if isinstance(rec, dict) and dept_kinds.get(str(rec.get("departmentId") or "cnc"), "production") != "production":
@@ -1721,7 +1726,7 @@ def validate_state(old: dict, new: dict) -> tuple[bool, str, str]:
                 return False, "MP-PROD-019", f"Auftrag '{o.get('order') or oid}': Laufzeitpunkt fehlt."
 
         if status in {"running", "paused"}:
-            # V12.8.2: bis zu 'lanes' laufende/pausierte Aufträge je Maschine/Linie (Parallelbelegung)
+            # V12.8.3: bis zu 'lanes' laufende/pausierte Aufträge je Maschine/Linie (Parallelbelegung)
             running_here = locked_by_machine.setdefault(mid, set())
             running_here.add(oid)
             if len(running_here) > machine_lanes(new, mid):
@@ -1885,7 +1890,7 @@ def _need_map(state: dict) -> dict:
 
 
 def _gf_departments_change(old: dict, new: dict) -> tuple[bool, str]:
-    """V12.8.2: GF legt Bereiche an (Name, Art, aktiv) und richtet einem neuen Produktionsbereich
+    """V12.8.3: GF legt Bereiche an (Name, Art, aktiv) und richtet einem neuen Produktionsbereich
     die erste Maschine/Linie ein. Bereiche werden nicht gelöscht, nur deaktiviert."""
     da, db = _record_map(old.get("departments")), _record_map(new.get("departments"))
     if set(da) - set(db):
@@ -2062,7 +2067,24 @@ def _pm_process_change(a: dict, b: dict, label: str) -> tuple[bool, str]:
             return False, f"Projekt {label}: Den Status von „{y.get('title')}“ meldet die zuständige Abteilung, nicht das Projektmanagement."
         if x is None and after != "open" and str(y.get("areaId")) not in PM_STATUS_AREAS:
             return False, f"Projekt {label}: Neue Abteilungsprozesse starten mit Status „Offen“."
+        if x is not None and canonical(x.get("pmPlan")) != canonical(y.get("pmPlan")):
+            return False, f"Projekt {label}: Den PM-Vorplan von „{y.get('title')}“ sichert nur die Arbeitsvorbereitung."
+        if x is not None and x.get("pmPlan") and any(canonical(x.get(k)) != canonical(y.get(k)) for k in ("startDate", "dueDate")):
+            return False, f"Projekt {label}: „{y.get('title')}“ wird von der Arbeitsvorbereitung terminiert – PM-Termine sind gesperrt."
+    for pid, x in pa.items():
+        if pid not in pb and x.get("pmPlan"):
+            return False, f"Projekt {label}: „{x.get('title')}“ ist von der Arbeitsvorbereitung übernommen und kann nicht entfernt werden."
     return True, ""
+
+
+def _pm_plan_snapshot_ok(x: dict, y: dict) -> bool:
+    """V12.8.3: Beim ersten Überschreiben durch die AV wird der PM-Termin unverändert gesichert."""
+    a, b = x.get("pmPlan"), y.get("pmPlan")
+    if canonical(a) == canonical(b):
+        return True
+    if a or not isinstance(b, dict) or set(b) - {"startDate", "dueDate", "at", "by"}:
+        return False
+    return str(b.get("startDate") or "") == str(x.get("startDate") or "") and str(b.get("dueDate") or "") == str(x.get("dueDate") or "")
 
 
 def _av_process_change(a: dict, b: dict, own_areas: set, label: str) -> tuple[bool, str]:
@@ -2086,6 +2108,10 @@ def _av_process_change(a: dict, b: dict, own_areas: set, label: str) -> tuple[bo
                 return False, f"Projekt {label}: Nur offene, noch nicht übernommene Prozesse dürfen entfernt werden."
             continue
         diff = {k for k in set(x) | set(y) if canonical(x.get(k)) != canonical(y.get(k))}
+        if "pmPlan" in diff:
+            if not _pm_plan_snapshot_ok(x, y):
+                return False, f"Projekt {label}: PM-Vorplan von „{y.get('title')}“ darf nur einmal unverändert gesichert werden."
+            diff.discard("pmPlan")
         if diff - PROCESS_TIMING_FIELDS:
             return False, f"Projekt {label}: Feld '{sorted(diff - PROCESS_TIMING_FIELDS)[0]}' am Prozess „{y.get('title')}“ ist für die Arbeitsvorbereitung nicht änderbar."
     return True, ""

@@ -1,3 +1,18 @@
+MASCHINENPLANUNG V12.8.3 - RELEASE NOTES
+========================================
+Datum: 05.10.2026 · Basis: V12.8.2 · Update mit UPDATE_LIVE.ps1, Daten bleiben erhalten
+
+PM-VORPLAN · AV-PLAN · IST
+- Aendert die Arbeitsvorbereitung Start oder Faelligkeit eines Fertigungsprozesses zum ersten Mal,
+  wird der Termin des Projektmanagements als PM-Vorplan gesichert (mit Zeitpunkt und Benutzer).
+  Danach sind die PM-Termine dieses Prozesses gesperrt; die AV terminiert weiter.
+- Projekt → "Termine: PM-Vorplan · AV · Ist": je Produktionsbereich PM-Vorplan, AV-Plan,
+  Ist (fertig gemeldet) bzw. Prognose aus dem Wochenplan und die Abweichungen in Arbeitstagen
+  (AV − PM, Ist − PM, Ist − AV). Sichtbar fuer Admin, GF, Projektmanagement, Arbeitsvorbereitung.
+- Server prueft: nur die AV sichert den PM-Vorplan, einmalig und mit den bisherigen Terminen;
+  das PM kann ihn weder aendern noch loeschen.
+- Tests: tests/test_v128.py, tests/e2e_pmplan.mjs.
+
 MASCHINENPLANUNG V12.8.2 - RELEASE NOTES
 ========================================
 Datum: 05.10.2026 · Basis: V12.8.1 · Update mit UPDATE_LIVE.ps1, Daten bleiben erhalten
