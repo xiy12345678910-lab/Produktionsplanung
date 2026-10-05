@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Mockup Formatplanung</title>
+<!-- MOCKUP – nur zur Abstimmung, nicht an Server/Datenbank angebunden. Alle Daten sind Beispieldaten. -->
+<style>
+:root{
+  --bg:#f4f7fb;--panel:#fff;--panel2:#f8fafc;--text:#142033;--muted:#5f6f84;
+  --line:#d9e2ec;--brand:#1f5eff;--brand2:#eaf0ff;--ok:#14865c;--okbg:#e8f7f0;
+  --warn:#b36a00;--warnbg:#fff3d8;--danger:#bd3343;--dangerbg:#fdecef;
+  --violet:#6d48aa;--violetbg:#f1ebff;--shadow:0 10px 35px rgba(24,42,74,.08);--radius:18px;
+}
+*{box-sizing:border-box}
+html,body{margin:0;font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--text);background:var(--bg)}
+button,input,select{font:inherit}button{cursor:pointer}
+.wrap{max-width:1500px;margin:0 auto;padding:20px 16px 60px}
+.mockBanner{background:var(--warnbg);color:var(--warn);border:1px solid #f0d49a;border-radius:12px;padding:10px 14px;font-weight:700;font-size:13px;margin-bottom:14px}
+h1{margin:0 0 4px;font-size:24px}h2{margin:0 0 10px;font-size:18px}h3{margin:0 0 8px;font-size:15px}
+.sub{color:var(--muted);font-size:13px;margin:0 0 14px}
+.tabBar{display:flex;gap:6px;margin:4px 0 14px;flex-wrap:wrap}
+.tabBtn{border:1px solid var(--line);background:#fff;border-radius:10px;padding:9px 16px;font-weight:850;color:#4c5d73}
+.tabBtn.active{background:var(--brand);border-color:var(--brand);color:#fff}
+.view{display:none}.view.active{display:block}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);padding:16px;margin-bottom:14px}
+.btn{border:1px solid var(--line);background:#fff;border-radius:10px;padding:7px 12px;font-weight:750;font-size:13px;color:#26364d}
+.btn.primary{background:var(--brand);border-color:var(--brand);color:#fff}
+.btn.small{padding:4px 9px;font-size:12px}
+.btn.ghost{background:transparent}
+.badge{display:inline-block;font-size:11px;font-weight:850;padding:3px 8px;border-radius:999px;background:#eef3fa;color:#34445a}
+.badge.ok{background:var(--okbg);color:var(--ok)}.badge.warn{background:var(--warnbg);color:var(--warn)}.badge.bad{background:var(--dangerbg);color:var(--danger)}.badge.vio{background:var(--violetbg);color:var(--violet)}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin-top:10px}
+
+/* ---------- Wochenplan ---------- */
+.boardScroll{overflow-x:auto}
+.board{width:100%;border-collapse:separate;border-spacing:0;min-width:980px}
+.board th{background:#f7f9fc;font-size:12px;text-align:left;padding:8px;border-bottom:1px solid var(--line);color:#4c5d73}
+.board td{vertical-align:top;border-bottom:1px solid #eef1f5;padding:6px;border-left:1px solid #eef1f5}
+.resCell{min-width:190px;font-weight:850;font-size:13px}
+.resCell small{display:block;color:var(--muted);font-weight:600;font-size:11px;margin-top:3px}
+.groupRow td{background:#e8eef7;font-weight:850;font-size:12px;color:#26364d;padding:6px 10px}
+.dayCell{min-width:150px}
+.cap{height:6px;border-radius:99px;background:#eef1f5;overflow:hidden;margin-bottom:5px}
+.cap>i{display:block;height:100%;background:var(--ok)}
+.cap.full>i{background:var(--warn)}.cap.over>i{background:var(--danger)}
+.capTxt{font-size:10.5px;color:var(--muted);margin-bottom:5px;display:flex;justify-content:space-between}
+.lanes{display:grid;gap:4px}
+.lanes.par{grid-template-columns:repeat(auto-fit,minmax(60px,1fr))}
+.chip{border-radius:8px;padding:5px 6px;font-size:11px;line-height:1.25;border:1px solid rgba(0,0,0,.08);overflow:hidden}
+.chip b{display:block;font-size:11.5px}
+.chip span{color:rgba(20,32,51,.75)}
+.fmtBlock{border:2px solid var(--violet);background:var(--violetbg);border-radius:10px;padding:5px;cursor:pointer}
+.fmtBlock .fmtHead{display:flex;justify-content:space-between;align-items:center;font-size:11px;font-weight:850;color:var(--violet);margin-bottom:4px;gap:4px}
+.fmtBlock .lanes{grid-template-columns:repeat(auto-fit,minmax(50px,1fr))}
+.fmtBlock:hover{box-shadow:0 0 0 3px rgba(109,72,170,.18)}
+.addSlot{border:1px dashed #c8d3e1;border-radius:8px;color:var(--muted);font-size:11px;text-align:center;padding:4px;margin-top:4px}
+
+/* ---------- Formatplanung ---------- */
+.fmtGrid{display:grid;grid-template-columns:270px minmax(0,1fr) 360px;gap:14px;align-items:start}
+@media(max-width:1250px){.fmtGrid{grid-template-columns:1fr 1fr}.fmtGrid>.colPool{grid-column:1/-1}}
+@media(max-width:820px){.fmtGrid{grid-template-columns:1fr}}
+.fmtList{display:grid;gap:8px}
+.fmtItem{border:1px solid var(--line);border-radius:12px;padding:10px;background:#fff;text-align:left;width:100%}
+.fmtItem.active{border-color:var(--violet);box-shadow:0 0 0 3px rgba(109,72,170,.15)}
+.fmtItem b{display:block;font-size:13.5px}
+.fmtItem small{color:var(--muted);font-size:11.5px}
+.fields{display:grid;grid-template-columns:repeat(4,minmax(110px,1fr));gap:8px 10px;margin-bottom:12px}
+@media(max-width:700px){.fields{grid-template-columns:1fr 1fr}}
+.field label{display:block;font-size:10.5px;font-weight:850;color:#67758b;margin-bottom:3px;text-transform:uppercase;letter-spacing:.02em}
+.field input,.field select{width:100%;border:1px solid var(--line);border-radius:8px;padding:6px 8px;background:#fff;font-size:13px}
+.tblScroll{overflow-x:auto}
+table.tools{width:100%;border-collapse:collapse;font-size:12.5px;min-width:760px}
+table.tools th{background:#f7f9fc;text-align:left;padding:6px;font-size:11px;color:#4c5d73;border-bottom:1px solid var(--line);white-space:nowrap}
+table.tools td{padding:5px 6px;border-bottom:1px solid #eef1f5;vertical-align:middle}
+table.tools input,table.tools select{width:100%;border:1px solid var(--line);border-radius:7px;padding:4px 6px;font-size:12.5px;background:#fff}
+table.tools input.n{width:70px}
+.sw{display:inline-block;width:12px;height:12px;border-radius:4px;vertical-align:middle;margin-right:6px;border:1px solid rgba(0,0,0,.15)}
+.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.sumGrid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:12px}
+@media(max-width:700px){.sumGrid{grid-template-columns:1fr 1fr}}
+.kpi{background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:9px 10px}
+.kpi small{display:block;font-size:10.5px;font-weight:850;color:#67758b;text-transform:uppercase}
+.kpi b{font-size:18px}
+.plateBox{background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:10px}
+.plateBox svg{width:100%;height:auto;display:block}
+.msgs{display:grid;gap:6px;margin-top:10px}
+.msg{font-size:12px;border-radius:9px;padding:7px 9px}
+.msg.ok{background:var(--okbg);color:var(--ok)}.msg.warn{background:var(--warnbg);color:var(--warn)}.msg.bad{background:var(--dangerbg);color:var(--danger)}
+.pool{display:grid;gap:6px}
+.poolItem{display:flex;justify-content:space-between;align-items:center;gap:8px;border:1px solid var(--line);border-radius:10px;padding:8px 10px;background:#fff;font-size:12.5px}
+.poolItem small{display:block;color:var(--muted);font-size:11px}
+.poolItem.used{opacity:.5}
+.hint{font-size:12px;color:var(--muted);margin:6px 0 0}
+.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#10213d;color:#fff;padding:10px 16px;border-radius:10px;font-size:13px;font-weight:700;opacity:0;transition:opacity .2s;pointer-events:none;max-width:calc(100vw - 32px)}
+.toast.show{opacity:1}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="mockBanner">MOCKUP – nur zur Abstimmung. Keine Verbindung zum Server, Beispieldaten, Änderungen gehen beim Neuladen verloren.</div>
+  <h1>Parallelbelegung &amp; Formatplanung Tiefziehen</h1>
+  <p class="sub">Konfektion und Tiefziehen können mehrere Aufträge gleichzeitig fahren. Im Tiefziehen werden Aufträge über ein <b>Format</b> gebündelt: Die Tiefzieher geben pro Werkzeug Länge × Breite × Höhe und die Anzahl (Nutzen) auf dem Format an.</p>
+
+  <div class="tabBar">
+    <button class="tabBtn active" data-tab="week">Wochenplan (Parallelbelegung)</button>
+    <button class="tabBtn" data-tab="format">Formatplanung Tiefziehen</button>
+  </div>
+
+  <!-- =============== WOCHENPLAN =============== -->
+  <section class="view active" id="view-week">
+    <div class="card">
+      <h2>KW 41 · 05.10. – 09.10.2026</h2>
+      <p class="sub">Pro Tag zeigt der Balken die belegte Kapazität. Aufträge nebeneinander laufen <b>gleichzeitig</b>. Im Tiefziehen ist ein lila Rahmen ein Format: alle Positionen darin laufen im selben Takt. Klick auf ein Format öffnet die Formatplanung.</p>
+      <div class="boardScroll"><table class="board" id="board"></table></div>
+      <div class="legend">
+        <span><span class="sw" style="background:var(--ok)"></span>Kapazität frei</span>
+        <span><span class="sw" style="background:var(--warn)"></span>voll (≥ 90 %)</span>
+        <span><span class="sw" style="background:var(--danger)"></span>überbucht</span>
+        <span><span class="sw" style="background:var(--violetbg);border:2px solid var(--violet)"></span>Format (Tiefziehen)</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- =============== FORMATPLANUNG =============== -->
+  <section class="view" id="view-format">
+    <div class="fmtGrid">
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><h3 style="margin:0">Formate</h3><button class="btn small primary" id="newFmt">+ Neues Format</button></div>
+        <div class="fmtList" id="fmtList"></div>
+        <p class="hint">Ein Format ist auswählbar und kann für mehrere Tage/Maschinen wiederverwendet werden.</p>
+      </div>
+
+      <div class="card" style="min-width:0">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+          <h3 style="margin:0">Format bearbeiten</h3>
+          <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn small" id="dupFmt">Duplizieren</button><button class="btn small primary" id="planFmt">In Wochenplan einplanen</button></div>
+        </div>
+        <div class="fields">
+          <div class="field" style="grid-column:span 2"><label>Formatname</label><input id="fName"></div>
+          <div class="field"><label>Maschine</label><select id="fMachine"><option>TZ 1 – Illig</option><option>TZ 2 – Geiss</option></select></div>
+          <div class="field"><label>Taktzeit (s)</label><input id="fCycle" type="number" min="1"></div>
+          <div class="field"><label>Format Länge (mm)</label><input id="fL" type="number" min="1"></div>
+          <div class="field"><label>Format Breite (mm)</label><input id="fB" type="number" min="1"></div>
+          <div class="field"><label>Max. Ziehtiefe (mm)</label><input id="fH" type="number" min="1"></div>
+          <div class="field"><label>Abstand Werkzeuge (mm)</label><input id="fGap" type="number" min="0"></div>
+        </div>
+
+        <h3>Werkzeuge / Positionen auf dem Format</h3>
+        <div class="tblScroll"><table class="tools">
+          <thead><tr><th>Position / Auftrag</th><th>L (mm)</th><th>B (mm)</th><th>H (mm)</th><th title="Wie oft ist das Werkzeug auf dem Format enthalten?">Nutzen ×</th><th class="num">Menge</th><th class="num">Takte</th><th class="num">Überprod.</th><th></th></tr></thead>
+          <tbody id="toolRows"></tbody>
+        </table></div>
+        <button class="btn small" id="addTool" style="margin-top:8px">+ Werkzeug hinzufügen</button>
+        <p class="hint">Takte pro Position = Menge ÷ Nutzen (aufgerundet). Das Format läuft so lange, bis die Position mit den meisten Takten fertig ist – die anderen Positionen produzieren dabei mit (Überproduktion) oder das Werkzeug wird vorher abgedeckt.</p>
+
+        <div class="sumGrid" id="sum"></div>
+      </div>
+
+      <div class="colPool">
+        <div class="card">
+          <h3>Formatbelegung (Draufsicht)</h3>
+          <div class="plateBox"><svg id="plate" viewBox="0 0 100 60"></svg></div>
+          <div class="msgs" id="msgs"></div>
+        </div>
+        <div class="card">
+          <h3>Offene Tiefzieh-Positionen</h3>
+          <div class="pool" id="pool"></div>
+          <p class="hint">„Auf Format“ übernimmt die Position mit den hinterlegten Werkzeugmaßen in das gewählte Format.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+const COLORS=['#cfe0ff','#d7f2e4','#ffe6bf','#f5d5e6','#e3dbff','#d4eef4','#f9e0d2','#e6ecc8'];
+const ORDERS=[
+  {id:'A-24811/1',kunde:'Müller GmbH',art:'Schale 300',menge:1200,l:300,b:200,h:60,due:'07.10.'},
+  {id:'A-24811/2',kunde:'Müller GmbH',art:'Deckel 300',menge:1200,l:310,b:210,h:25,due:'07.10.'},
+  {id:'A-24830/1',kunde:'Hansa Pack',art:'Tray 6-fach',menge:800,l:400,b:280,h:45,due:'08.10.'},
+  {id:'A-24842/1',kunde:'Nordmed',art:'Blister klein',menge:3000,l:120,b:90,h:20,due:'09.10.'},
+  {id:'A-24850/1',kunde:'Kröger AG',art:'Abdeckhaube',menge:150,l:520,b:380,h:140,due:'09.10.'},
+  {id:'A-24851/3',kunde:'Kröger AG',art:'Einsatz',menge:600,l:180,b:140,h:35,due:'12.10.'}
+];
+let formats=[
+  {id:'F-101',name:'F-101 Müller Schale+Deckel',machine:'TZ 1 – Illig',cycle:38,L:1200,B:800,H:180,gap:20,tools:[
+    {order:'A-24811/1',l:300,b:200,h:60,n:4},
+    {order:'A-24811/2',l:310,b:210,h:25,n:4}]},
+  {id:'F-102',name:'F-102 Mischformat Hansa/Nordmed',machine:'TZ 1 – Illig',cycle:32,L:1200,B:800,H:180,gap:15,tools:[
+    {order:'A-24830/1',l:400,b:280,h:45,n:2},
+    {order:'A-24842/1',l:120,b:90,h:20,n:8}]},
+  {id:'F-103',name:'F-103 Kröger Haube',machine:'TZ 2 – Geiss',cycle:55,L:1000,B:700,H:200,gap:25,tools:[
+    {order:'A-24850/1',l:520,b:380,h:140,n:1}]}
+];
+let cur='F-101';
+const $=id=>document.getElementById(id);
+const ord=id=>ORDERS.find(o=>o.id===id);
+const fmtById=id=>formats.find(f=>f.id===id);
+const colorOf=id=>COLORS[Math.max(0,ORDERS.findIndex(o=>o.id===id))%COLORS.length];
+const nf=n=>Number(n).toLocaleString('de-DE');
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+function toast(t){const e=$('toast');e.textContent=t;e.classList.add('show');clearTimeout(toast.t);toast.t=setTimeout(()=>e.classList.remove('show'),2600)}
+
+/* ---------- Berechnung ---------- */
+function calc(f){
+  const rows=f.tools.map(t=>{const o=ord(t.order),menge=o?o.menge:0,n=Math.max(1,+t.n||1),takte=Math.ceil(menge/n);return{...t,menge,n,takte}});
+  const takte=rows.reduce((m,r)=>Math.max(m,r.takte),0);
+  rows.forEach(r=>r.over=takte*r.n-r.menge);
+  const hours=takte*f.cycle/3600;
+  const area=f.L*f.B,used=rows.reduce((s,r)=>s+r.l*r.b*r.n,0);
+  return{rows,takte,hours,util:area?used/area:0};
+}
+// einfache Reihen-Packung (Shelf), Werkzeuge werden ggf. gedreht
+function pack(f){
+  const items=[];f.tools.forEach(t=>{for(let i=0;i<Math.max(0,+t.n||0);i++)items.push({...t})});
+  items.sort((a,b)=>Math.min(b.l,b.b)-Math.min(a.l,a.b));
+  const g=+f.gap||0,placed=[],fail=[];let x=g,y=g,rowH=0;
+  for(const it of items){
+    let w=Math.max(it.l,it.b),h=Math.min(it.l,it.b);
+    if(x+w+g>f.L&&x+h+g<=f.L){[w,h]=[h,w]}
+    if(x+w+g>f.L){x=g;y+=rowH+g;rowH=0;if(w+2*g>f.L)[w,h]=[h,w]}
+    if(x+w+g>f.L||y+h+g>f.B){fail.push(it);continue}
+    placed.push({...it,x,y,w,h});x+=w+g;rowH=Math.max(rowH,h);
+  }
+  return{placed,fail};
+}
+
+/* ---------- Formatplanung rendern ---------- */
+function renderList(){
+  $('fmtList').innerHTML=formats.map(f=>{const c=calc(f);return`<button class="fmtItem${f.id===cur?' active':''}" data-id="${f.id}"><b>${esc(f.name)}</b><small>${esc(f.machine)} · ${f.L}×${f.B} mm · ${f.tools.length} Position(en)</small><div style="margin-top:6px;display:flex;gap:4px;flex-wrap:wrap">${f.tools.map(t=>`<span class="badge" style="background:${colorOf(t.order)}">${esc(t.order)} ×${t.n}</span>`).join('')}</div><small style="display:block;margin-top:5px">${nf(c.takte)} Takte · ${c.hours.toFixed(1).replace('.',',')} h</small></button>`}).join('');
+  document.querySelectorAll('.fmtItem').forEach(b=>b.onclick=()=>{cur=b.dataset.id;renderFormat()});
+}
+function renderFormat(){
+  const f=fmtById(cur);if(!f)return;
+  $('fName').value=f.name;$('fMachine').value=f.machine;$('fCycle').value=f.cycle;$('fL').value=f.L;$('fB').value=f.B;$('fH').value=f.H;$('fGap').value=f.gap;
+  renderTools();renderList();
+}
+function renderTools(){
+  const f=fmtById(cur),c=calc(f);
+  $('toolRows').innerHTML=c.rows.map((r,i)=>{
+    const o=ord(r.order),opts=ORDERS.map(x=>`<option value="${x.id}"${x.id===r.order?' selected':''}>${x.id} · ${esc(x.art)}</option>`).join('');
+    const longest=r.takte===c.takte&&c.rows.length>1;
+    return`<tr>
+      <td><span class="sw" style="background:${colorOf(r.order)}"></span><select data-i="${i}" data-k="order" style="width:calc(100% - 22px)">${opts}</select>${o?`<div style="font-size:11px;color:var(--muted);margin-top:2px">${esc(o.kunde)} · Termin ${o.due}</div>`:''}</td>
+      <td><input class="n" type="number" min="1" data-i="${i}" data-k="l" value="${r.l}"></td>
+      <td><input class="n" type="number" min="1" data-i="${i}" data-k="b" value="${r.b}"></td>
+      <td><input class="n" type="number" min="1" data-i="${i}" data-k="h" value="${r.h}"${r.h>f.H?' style="border-color:var(--danger);background:var(--dangerbg)"':''}></td>
+      <td><input class="n" type="number" min="1" data-i="${i}" data-k="n" value="${r.n}"></td>
+      <td class="num">${nf(r.menge)}</td>
+      <td class="num">${nf(r.takte)}${longest?' <span class="badge vio" title="bestimmt die Laufzeit">max</span>':''}</td>
+      <td class="num">${r.over>0?`<span class="badge warn">+${nf(r.over)}</span>`:'<span class="badge ok">0</span>'}</td>
+      <td><button class="btn small ghost" data-del="${i}" title="Entfernen">✕</button></td></tr>`}).join('')||'<tr><td colspan="9" style="color:var(--muted);padding:12px">Noch keine Werkzeuge – Position rechts „Auf Format“ setzen oder „+ Werkzeug hinzufügen“.</td></tr>';
+  $('toolRows').querySelectorAll('input,select').forEach(el=>el.onchange=()=>{
+    const t=f.tools[+el.dataset.i],k=el.dataset.k;
+    if(k==='order'){t.order=el.value;const o=ord(el.value);if(o){t.l=o.l;t.b=o.b;t.h=o.h}}else t[k]=Math.max(1,+el.value||1);
+    renderTools();renderList();
+  });
+  $('toolRows').querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>{f.tools.splice(+b.dataset.del,1);renderTools();renderList()});
+  const p=pack(f);
+  $('sum').innerHTML=`
+    <div class="kpi"><small>Takte gesamt</small><b>${nf(c.takte)}</b></div>
+    <div class="kpi"><small>Laufzeit</small><b>${c.hours.toFixed(1).replace('.',',')} h</b></div>
+    <div class="kpi"><small>Teile / Takt</small><b>${nf(c.rows.reduce((s,r)=>s+r.n,0))}</b></div>
+    <div class="kpi"><small>Flächennutzung</small><b>${Math.round(c.util*100)} %</b></div>`;
+  renderPlate(f,p,c);renderPool();
+}
+function renderPlate(f,p,c){
+  const s=$('plate');s.setAttribute('viewBox',`-30 -30 ${f.L+60} ${f.B+80}`);
+  let h=`<rect x="0" y="0" width="${f.L}" height="${f.B}" rx="10" fill="#fff" stroke="#9fb0c6" stroke-width="4" stroke-dasharray="14 8"/>`;
+  h+=`<text x="${f.L/2}" y="${f.B+40}" text-anchor="middle" font-size="${Math.max(22,f.L/38)}" fill="#5f6f84">${f.L} × ${f.B} mm · max. Ziehtiefe ${f.H} mm</text>`;
+  const fs=Math.max(14,Math.min(f.L,f.B)/30);
+  for(const r of p.placed){
+    const deep=r.h>f.H;
+    h+=`<rect x="${r.x}" y="${r.y}" width="${r.w}" height="${r.h}" rx="6" fill="${colorOf(r.order)}" stroke="${deep?'#bd3343':'#4c5d73'}" stroke-width="${deep?6:2}"/>`;
+    if(r.w>fs*4&&r.h>fs*2)h+=`<text x="${r.x+r.w/2}" y="${r.y+r.h/2}" text-anchor="middle" dominant-baseline="middle" font-size="${fs}" font-weight="700" fill="#142033">${esc(r.order)}</text>`;
+  }
+  s.innerHTML=h;
+  const m=[];
+  if(!f.tools.length)m.push(['warn','Format ist leer.']);
+  if(p.fail.length){const by={};p.fail.forEach(x=>by[x.order]=(by[x.order]||0)+1);m.push(['bad','Passt nicht auf das Format: '+Object.entries(by).map(([k,v])=>`${v}× ${k}`).join(', ')+'. Nutzen reduzieren oder größeres Format wählen.'])}
+  c.rows.filter(r=>r.h>f.H).forEach(r=>m.push(['bad',`${r.order}: Werkzeughöhe ${r.h} mm überschreitet max. Ziehtiefe ${f.H} mm.`]));
+  const hs=[...new Set(c.rows.map(r=>r.h))];if(hs.length>1&&Math.max(...hs)-Math.min(...hs)>60)m.push(['warn','Stark unterschiedliche Werkzeughöhen ('+Math.min(...hs)+'–'+Math.max(...hs)+' mm) – Wandstärken/Ziehverhältnis prüfen.']);
+  c.rows.filter(r=>r.over>0&&r.over>=r.menge*0.25).forEach(r=>m.push(['warn',`${r.order}: ${nf(r.over)} Teile Überproduktion – Werkzeug nach ${nf(r.takte)} Takten abdecken/ausbauen oder Nutzen anpassen.`]));
+  if(!m.length)m.push(['ok','Alle Werkzeuge passen auf das Format.']);
+  $('msgs').innerHTML=m.map(([k,t])=>`<div class="msg ${k}">${esc(t)}</div>`).join('');
+}
+function renderPool(){
+  const f=fmtById(cur),usedAny=new Set(formats.flatMap(x=>x.tools.map(t=>t.order))),inCur=new Set(f.tools.map(t=>t.order));
+  $('pool').innerHTML=ORDERS.map(o=>`<div class="poolItem${inCur.has(o.id)?' used':''}"><div><span class="sw" style="background:${colorOf(o.id)}"></span><b>${o.id}</b> · ${esc(o.art)}<small>${esc(o.kunde)} · ${nf(o.menge)} Stk · Werkzeug ${o.l}×${o.b}×${o.h} · Termin ${o.due}${usedAny.has(o.id)&&!inCur.has(o.id)?' · <b>in anderem Format</b>':''}</small></div>${inCur.has(o.id)?'<span class="badge ok">drauf</span>':`<button class="btn small" data-add="${o.id}">Auf Format</button>`}</div>`).join('');
+  $('pool').querySelectorAll('[data-add]').forEach(b=>b.onclick=()=>{const o=ord(b.dataset.add);f.tools.push({order:o.id,l:o.l,b:o.b,h:o.h,n:1});renderTools();renderList()});
+}
+['fName','fMachine','fCycle','fL','fB','fH','fGap'].forEach(id=>$(id).onchange=()=>{
+  const f=fmtById(cur),v=$(id).value;
+  ({fName:()=>f.name=v,fMachine:()=>f.machine=v,fCycle:()=>f.cycle=Math.max(1,+v||1),fL:()=>f.L=Math.max(1,+v||1),fB:()=>f.B=Math.max(1,+v||1),fH:()=>f.H=Math.max(1,+v||1),fGap:()=>f.gap=Math.max(0,+v||0)})[id]();
+  renderTools();renderList();renderBoard();
+});
+$('addTool').onclick=()=>{const f=fmtById(cur),o=ORDERS[0];f.tools.push({order:o.id,l:o.l,b:o.b,h:o.h,n:1});renderTools();renderList()};
+$('newFmt').onclick=()=>{const id='F-'+(100+formats.length+1);formats.push({id,name:id+' Neues Format',machine:'TZ 1 – Illig',cycle:35,L:1200,B:800,H:180,gap:20,tools:[]});cur=id;renderFormat()};
+$('dupFmt').onclick=()=>{const f=fmtById(cur),id='F-'+(100+formats.length+1);formats.push({...JSON.parse(JSON.stringify(f)),id,name:id+' Kopie von '+f.id});cur=id;renderFormat()};
+$('planFmt').onclick=()=>{const f=fmtById(cur),c=calc(f);toast(`${f.name}: ${c.hours.toFixed(1).replace('.',',')} h auf ${f.machine} – würde im echten System per Drag & Drop in den Wochenplan gesetzt.`)};
+
+/* ---------- Wochenplan ---------- */
+const DAYS=['Mo 05.10.','Di 06.10.','Mi 07.10.','Do 08.10.','Fr 09.10.'];
+// Konfektion: Stundenplanung, mehrere Aufträge parallel (Kapazität = Personen × Stunden)
+const KONF=[
+  {name:'Konfektion 1 – Thomsen',sub:'3 Personen · 8,5 h → 25,5 h/Tag',cap:[25.5,25.5,25.5,25.5,14],jobs:[
+    [{id:'K-5510',t:'Nähen Hülle',h:12,c:'#cfe0ff'},{id:'K-5512',t:'Kanten',h:8,c:'#d7f2e4'}],
+    [{id:'K-5510',t:'Nähen Hülle',h:10,c:'#cfe0ff'},{id:'K-5520',t:'Ösen setzen',h:6,c:'#ffe6bf'},{id:'K-5521',t:'Verpacken',h:6,c:'#f5d5e6'}],
+    [{id:'K-5520',t:'Ösen setzen',h:14,c:'#ffe6bf'},{id:'K-5530',t:'Zuschnitt',h:13,c:'#e3dbff'}],
+    [{id:'K-5530',t:'Zuschnitt',h:9,c:'#e3dbff'}],
+    [{id:'K-5540',t:'Kleben',h:7,c:'#d4eef4'},{id:'K-5541',t:'Etiketten',h:5,c:'#f9e0d2'}]]},
+  {name:'Konfektion 2 – Keller',sub:'2 Personen · 8,5 h → 17 h/Tag',cap:[17,17,17,17,9.5],jobs:[
+    [{id:'K-5601',t:'Schweißen',h:9,c:'#e6ecc8'},{id:'K-5602',t:'Prüfen',h:4,c:'#d4eef4'}],
+    [{id:'K-5601',t:'Schweißen',h:15,c:'#e6ecc8'}],
+    [],
+    [{id:'K-5610',t:'Montage',h:8,c:'#cfe0ff'},{id:'K-5611',t:'Montage B',h:8,c:'#d7f2e4'}],
+    [{id:'K-5610',t:'Montage',h:6,c:'#cfe0ff'}]]}
+];
+// Tiefziehen: Formate je Maschine/Tag; mehrere Formate oder einzelne Aufträge können parallel laufen, wenn mehrere Maschinen/Stationen frei sind
+const TZ=[
+  {name:'TZ 1 – Illig',sub:'2-Schicht · 15,5 h/Tag',cap:[15.5,15.5,15.5,15.5,7.5],plan:[['F-101'],['F-101','F-102'],['F-102'],[],[]]},
+  {name:'TZ 2 – Geiss',sub:'1-Schicht · 8,5 h/Tag',cap:[8.5,8.5,8.5,8.5,5],plan:[[],['F-103'],['F-103'],[],[]]}
+];
+function capBar(used,cap){const p=cap?used/cap:0,cls=p>1?'over':p>=.9?'full':'';return`<div class="capTxt"><span>${used.toFixed(1).replace('.',',')} / ${String(cap).replace('.',',')} h</span><span>${Math.round(p*100)} %</span></div><div class="cap ${cls}"><i style="width:${Math.min(100,p*100)}%"></i></div>`}
+function renderBoard(){
+  let h=`<thead><tr><th>Ressource</th>${DAYS.map(d=>`<th>${d}</th>`).join('')}</tr></thead><tbody>`;
+  h+=`<tr class="groupRow"><td colspan="6">Konfektion · Stundenplanung · mehrere Aufträge gleichzeitig</td></tr>`;
+  for(const r of KONF){
+    h+=`<tr><td class="resCell">${esc(r.name)}<small>${r.sub}</small></td>`;
+    r.jobs.forEach((js,d)=>{const used=js.reduce((s,j)=>s+j.h,0);
+      h+=`<td class="dayCell">${capBar(used,r.cap[d])}<div class="lanes par">${js.map(j=>`<div class="chip" style="background:${j.c}"><b>${j.id}</b><span>${esc(j.t)}<br>${String(j.h).replace('.',',')} h</span></div>`).join('')}</div><div class="addSlot">+ parallel einplanen</div></td>`});
+    h+='</tr>';
+  }
+  h+=`<tr class="groupRow"><td colspan="6">Tiefziehen · Taktplanung · Formate mit mehreren Positionen</td></tr>`;
+  // Laufzeit eines Formats über die Tage verteilen (Mockup: gleichmäßig auf die Tage, an denen es steht)
+  const occ={};TZ.forEach(r=>r.plan.forEach(ids=>ids.forEach(id=>occ[id]=(occ[id]||0)+1)));
+  for(const r of TZ){
+    h+=`<tr><td class="resCell">${esc(r.name)}<small>${r.sub}</small></td>`;
+    r.plan.forEach((ids,d)=>{
+      const blocks=ids.map(id=>{const f=fmtById(id);if(!f)return null;const c=calc(f);return{f,c,h:c.hours/occ[id]}}).filter(Boolean);
+      const used=blocks.reduce((s,b)=>s+b.h,0);
+      h+=`<td class="dayCell">${capBar(used,r.cap[d])}<div class="lanes">${blocks.map(b=>`<div class="fmtBlock" data-fmt="${b.f.id}" title="Format öffnen"><div class="fmtHead"><span>${b.f.id}</span><span>${b.h.toFixed(1).replace('.',',')} h</span></div><div class="lanes">${b.c.rows.map(x=>`<div class="chip" style="background:${colorOf(x.order)}"><b>${esc(x.order)}</b><span>×${x.n} · ${nf(x.menge)} Stk</span></div>`).join('')}</div></div>`).join('')}</div><div class="addSlot">+ Format einplanen</div></td>`});
+    h+='</tr>';
+  }
+  $('board').innerHTML=h+'</tbody>';
+  $('board').querySelectorAll('[data-fmt]').forEach(b=>b.onclick=()=>{cur=b.dataset.fmt;switchTab('format');renderFormat()});
+}
+function switchTab(t){document.querySelectorAll('.tabBtn').forEach(b=>b.classList.toggle('active',b.dataset.tab===t));document.querySelectorAll('.view').forEach(v=>v.classList.toggle('active',v.id==='view-'+t));if(t==='week')renderBoard()}
+document.querySelectorAll('.tabBtn').forEach(b=>b.onclick=()=>switchTab(b.dataset.tab));
+renderBoard();renderFormat();
+</script>
+</body>
+</html>
