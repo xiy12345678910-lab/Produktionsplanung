@@ -83,7 +83,9 @@ table.tools input.n{width:70px}
 .kpi small{display:block;font-size:10.5px;font-weight:850;color:#67758b;text-transform:uppercase}
 .kpi b{font-size:18px}
 .plateBox{background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:10px}
-.plateBox svg{width:100%;height:auto;display:block}
+.plateBox svg{width:100%;height:auto;display:block;touch-action:none;user-select:none}
+.plateBox svg .tool{cursor:grab}.plateBox svg .tool.drag{cursor:grabbing}
+.plateBar{display:flex;justify-content:space-between;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:8px}
 .msgs{display:grid;gap:6px;margin-top:10px}
 .msg{font-size:12px;border-radius:9px;padding:7px 9px}
 .msg.ok{background:var(--okbg);color:var(--ok)}.msg.warn{background:var(--warnbg);color:var(--warn)}.msg.bad{background:var(--dangerbg);color:var(--danger)}
@@ -143,24 +145,27 @@ table.tools input.n{width:70px}
           <div class="field"><label>Format Länge (mm)</label><input id="fL" type="number" min="1"></div>
           <div class="field"><label>Format Breite (mm)</label><input id="fB" type="number" min="1"></div>
           <div class="field"><label>Max. Ziehtiefe (mm)</label><input id="fH" type="number" min="1"></div>
-          <div class="field"><label>Abstand Werkzeuge (mm)</label><input id="fGap" type="number" min="0"></div>
+          <div class="field"><label>Formatrand (mm)</label><input id="fRand" type="number" min="0"></div>
         </div>
 
+        <p class="hint" style="margin:-4px 0 12px">Abstandsregel: Formatrand ringsum (Standard 100 mm = 10 cm) · Abstand zwischen zwei Werkzeugen = ½ Werkzeughöhe (bei unterschiedlichen Höhen gilt das höhere Werkzeug).</p>
         <h3>Werkzeuge / Positionen auf dem Format</h3>
         <div class="tblScroll"><table class="tools">
           <thead><tr><th>Position / Auftrag</th><th>L (mm)</th><th>B (mm)</th><th>H (mm)</th><th title="Wie oft ist das Werkzeug auf dem Format enthalten?">Nutzen ×</th><th class="num">Menge</th><th class="num">Takte</th><th class="num">Überprod.</th><th></th></tr></thead>
           <tbody id="toolRows"></tbody>
         </table></div>
         <button class="btn small" id="addTool" style="margin-top:8px">+ Werkzeug hinzufügen</button>
-        <p class="hint">Takte pro Position = Menge ÷ Nutzen (aufgerundet). Das Format läuft so lange, bis die Position mit den meisten Takten fertig ist – die anderen Positionen produzieren dabei mit (Überproduktion) oder das Werkzeug wird vorher abgedeckt.</p>
+        <p class="hint">Werkzeugmaße L × B × H sind frei änderbar – vorbelegt aus der Position, gelten aber nur für dieses Format. Takte pro Position = Menge ÷ Nutzen (aufgerundet). Das Format läuft so lange, bis die Position mit den meisten Takten fertig ist – die anderen Positionen produzieren dabei mit (Überproduktion) oder das Werkzeug wird vorher abgedeckt.</p>
 
         <div class="sumGrid" id="sum"></div>
       </div>
 
       <div class="colPool">
         <div class="card">
-          <h3>Formatbelegung (Draufsicht)</h3>
+          <div class="plateBar"><h3 style="margin:0">Formatbelegung (Draufsicht)</h3><span id="layoutState"></span></div>
+          <div class="plateBar"><button class="btn small primary" id="recLayout">Empfohlenes Layout</button><button class="btn small" id="rotSel" disabled>Ausgewähltes drehen ⟳</button></div>
           <div class="plateBox"><svg id="plate" viewBox="0 0 100 60"></svg></div>
+          <p class="hint">Werkzeuge mit der Maus/dem Finger verschieben · Doppelklick dreht um 90° · gestrichelter Rahmen = Formatrand, heller Saum = ½ Höhe Mindestabstand. Werkzeuge, die nicht passen, liegen in der Ablage unter dem Format.</p>
           <div class="msgs" id="msgs"></div>
         </div>
         <div class="card">
@@ -185,16 +190,17 @@ const ORDERS=[
   {id:'A-24851/3',kunde:'Kröger AG',art:'Einsatz',menge:600,l:180,b:140,h:35,due:'12.10.'}
 ];
 let formats=[
-  {id:'F-101',name:'F-101 Müller Schale+Deckel',machine:'TZ 1 – Illig',cycle:38,L:1200,B:800,H:180,gap:20,tools:[
+  {id:'F-101',name:'F-101 Müller Schale+Deckel',machine:'TZ 1 – Illig',cycle:38,L:1500,B:1000,H:180,rand:100,layout:null,tools:[
     {order:'A-24811/1',l:300,b:200,h:60,n:4},
     {order:'A-24811/2',l:310,b:210,h:25,n:4}]},
-  {id:'F-102',name:'F-102 Mischformat Hansa/Nordmed',machine:'TZ 1 – Illig',cycle:32,L:1200,B:800,H:180,gap:15,tools:[
+  {id:'F-102',name:'F-102 Mischformat Hansa/Nordmed',machine:'TZ 1 – Illig',cycle:32,L:1500,B:1000,H:180,rand:100,layout:null,tools:[
     {order:'A-24830/1',l:400,b:280,h:45,n:2},
     {order:'A-24842/1',l:120,b:90,h:20,n:8}]},
-  {id:'F-103',name:'F-103 Kröger Haube',machine:'TZ 2 – Geiss',cycle:55,L:1000,B:700,H:200,gap:25,tools:[
+  {id:'F-103',name:'F-103 Kröger Haube',machine:'TZ 2 – Geiss',cycle:55,L:1000,B:700,H:200,rand:100,layout:null,tools:[
     {order:'A-24850/1',l:520,b:380,h:140,n:1}]}
 ];
-let cur='F-101';
+let cur='F-101',uidSeq=1,selKey=null;
+formats.forEach(f=>f.tools.forEach(t=>t.uid=uidSeq++));
 const $=id=>document.getElementById(id);
 const ord=id=>ORDERS.find(o=>o.id===id);
 const fmtById=id=>formats.find(f=>f.id===id);
@@ -212,19 +218,58 @@ function calc(f){
   const area=f.L*f.B,used=rows.reduce((s,r)=>s+r.l*r.b*r.n,0);
   return{rows,takte,hours,util:area?used/area:0};
 }
-// einfache Reihen-Packung (Shelf), Werkzeuge werden ggf. gedreht
-function pack(f){
-  const items=[];f.tools.forEach(t=>{for(let i=0;i<Math.max(0,+t.n||0);i++)items.push({...t})});
-  items.sort((a,b)=>Math.min(b.l,b.b)-Math.min(a.l,a.b));
-  const g=+f.gap||0,placed=[],fail=[];let x=g,y=g,rowH=0;
-  for(const it of items){
-    let w=Math.max(it.l,it.b),h=Math.min(it.l,it.b);
-    if(x+w+g>f.L&&x+h+g<=f.L){[w,h]=[h,w]}
-    if(x+w+g>f.L){x=g;y+=rowH+g;rowH=0;if(w+2*g>f.L)[w,h]=[h,w]}
-    if(x+w+g>f.L||y+h+g>f.B){fail.push(it);continue}
-    placed.push({...it,x,y,w,h});x+=w+g;rowH=Math.max(rowH,h);
+// Einzelne Werkzeuge (Nutzen aufgeloest), Schluessel bleibt beim Loeschen anderer Zeilen stabil
+function instances(f){const out=[];f.tools.forEach(t=>{for(let k=0;k<Math.max(0,+t.n||0);k++)out.push({key:t.uid+'-'+k,order:t.order,l:+t.l,b:+t.b,h:+t.h})});return out}
+const SNAP=5,snap=v=>Math.round(v/SNAP)*SNAP,up=v=>Math.ceil(v/SNAP-1e-9)*SNAP;
+const dims=(it,rot)=>{const w=Math.max(it.l,it.b),d=Math.min(it.l,it.b);return rot?[d,w]:[w,d]};
+// Empfohlenes Layout: Reihen-Packung mit Formatrand und Abstand = 1/2 der groesseren Werkzeughoehe
+function recommend(f){
+  const its=instances(f).sort((a,b)=>b.h-a.h||Math.min(b.l,b.b)-Math.min(a.l,a.b)||a.order.localeCompare(b.order));
+  const R=+f.rand||0,maxX=f.L-R,pos={},fail=[];let R0=Math.ceil(R/5)*5;
+  let x=R0,y=R0,row=[],prevRow=[];
+  const rowGap=(it)=>prevRow.length?Math.max(...prevRow.map(p=>p.h),it.h)/2:0;
+  const rowTop=()=>prevRow.length?Math.max(...prevRow.map(p=>p.y+p.d)):R;
+  for(const it of its){
+    let placed=false;
+    for(const rot of [false,true]){
+      const [w,d]=dims(it,rot),last=row[row.length-1],gx=last?Math.max(last.h,it.h)/2:0,yy=prevRow.length?up(rowTop()+rowGap(it)):R0;
+      if(x+gx+w<=maxX&&yy+d<=f.B-R){const p={key:it.key,x:up(x+gx),y:Math.max(y,yy),w,d,h:it.h,rot};if(p.x+w>maxX)continue;row.push(p);pos[it.key]=p;x=p.x+w;y=Math.max(y,p.y);placed=true;break}
+    }
+    if(placed)continue;
+    if(row.length){prevRow=row;row=[];x=R0;y=0;
+      for(const rot of [false,true]){const [w,d]=dims(it,rot),yy=up(rowTop()+rowGap(it));if(R0+w<=maxX&&yy+d<=f.B-R){const p={key:it.key,x:R0,y:yy,w,d,h:it.h,rot};row.push(p);pos[it.key]=p;x=R0+w;y=yy;placed=true;break}}
+    }
+    if(!placed)fail.push(it.key);
   }
-  return{placed,fail};
+  const out={};for(const k in pos)out[k]={x:pos[k].x,y:pos[k].y,rot:pos[k].rot};
+  return{pos:out,fail};
+}
+// Aktuelles Layout: manuelle Positionen, sonst Empfehlung; was nirgends Platz hat, liegt in der Ablage unter dem Format
+function layout(f){
+  const its=instances(f),rec=recommend(f),src=f.layout||rec.pos,list=[];
+  let px=0;const py=f.B+90;
+  for(const it of its){
+    let p=src[it.key]||(f.layout?rec.pos[it.key]:null),parked=false;
+    if(!p){const [w]=dims(it,false);p={x:px,y:py,rot:false};px+=w+30;parked=true}
+    const [w,d]=dims(it,p.rot);list.push({...it,x:p.x,y:p.y,rot:p.rot,w,d,parked});
+  }
+  // Pruefung
+  const R=+f.rand||0;
+  for(const a of list){a.err=[];
+    const on=a.x>=0&&a.y>=0&&a.x+a.w<=f.L&&a.y+a.d<=f.B;
+    if(!on){a.err.push('nicht auf Format');continue}
+    if(a.x<R||a.y<R||a.x+a.w>f.L-R||a.y+a.d>f.B-R)a.err.push('im Formatrand');
+    if(a.h>f.H)a.err.push('zu hoch');
+  }
+  for(let i=0;i<list.length;i++)for(let j=i+1;j<list.length;j++){
+    const a=list[i],b=list[j];if(a.err.includes('nicht auf Format')||b.err.includes('nicht auf Format'))continue;
+    const dx=Math.max(0,b.x-(a.x+a.w),a.x-(b.x+b.w)),dy=Math.max(0,b.y-(a.y+a.d),a.y-(b.y+b.d)),need=Math.max(a.h,b.h)/2;
+    if(Math.max(dx,dy)<need-0.01){const t=(dx===0&&dy===0)?'überlappt':'Abstand < '+need+' mm';a.err.push(t+' zu '+b.order);b.err.push(t+' zu '+a.order)}
+  }
+  return list;
+}
+function keepLayout(f){ // vor Aenderungen: manuelle Positionen fuer noch vorhandene Werkzeuge behalten
+  if(!f.layout)return;const keys=new Set(instances(f).map(i=>i.key));for(const k in f.layout)if(!keys.has(k))delete f.layout[k];
 }
 
 /* ---------- Formatplanung rendern ---------- */
@@ -234,7 +279,7 @@ function renderList(){
 }
 function renderFormat(){
   const f=fmtById(cur);if(!f)return;
-  $('fName').value=f.name;$('fMachine').value=f.machine;$('fCycle').value=f.cycle;$('fL').value=f.L;$('fB').value=f.B;$('fH').value=f.H;$('fGap').value=f.gap;
+  $('fName').value=f.name;$('fMachine').value=f.machine;$('fCycle').value=f.cycle;$('fL').value=f.L;$('fB').value=f.B;$('fH').value=f.H;$('fRand').value=f.rand;selKey=null;
   renderTools();renderList();
 }
 function renderTools(){
@@ -255,50 +300,85 @@ function renderTools(){
   $('toolRows').querySelectorAll('input,select').forEach(el=>el.onchange=()=>{
     const t=f.tools[+el.dataset.i],k=el.dataset.k;
     if(k==='order'){t.order=el.value;const o=ord(el.value);if(o){t.l=o.l;t.b=o.b;t.h=o.h}}else t[k]=Math.max(1,+el.value||1);
-    renderTools();renderList();
+    keepLayout(f);renderTools();renderList();
   });
-  $('toolRows').querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>{f.tools.splice(+b.dataset.del,1);renderTools();renderList()});
-  const p=pack(f);
+  $('toolRows').querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>{f.tools.splice(+b.dataset.del,1);keepLayout(f);renderTools();renderList()});
+  const L=layout(f);
   $('sum').innerHTML=`
     <div class="kpi"><small>Takte gesamt</small><b>${nf(c.takte)}</b></div>
     <div class="kpi"><small>Laufzeit</small><b>${c.hours.toFixed(1).replace('.',',')} h</b></div>
     <div class="kpi"><small>Teile / Takt</small><b>${nf(c.rows.reduce((s,r)=>s+r.n,0))}</b></div>
     <div class="kpi"><small>Flächennutzung</small><b>${Math.round(c.util*100)} %</b></div>`;
-  renderPlate(f,p,c);renderPool();
+  renderPlate(f,L,c);renderPool();
 }
-function renderPlate(f,p,c){
-  const s=$('plate');s.setAttribute('viewBox',`-30 -30 ${f.L+60} ${f.B+80}`);
-  let h=`<rect x="0" y="0" width="${f.L}" height="${f.B}" rx="10" fill="#fff" stroke="#9fb0c6" stroke-width="4" stroke-dasharray="14 8"/>`;
-  h+=`<text x="${f.L/2}" y="${f.B+40}" text-anchor="middle" font-size="${Math.max(22,f.L/38)}" fill="#5f6f84">${f.L} × ${f.B} mm · max. Ziehtiefe ${f.H} mm</text>`;
-  const fs=Math.max(14,Math.min(f.L,f.B)/30);
-  for(const r of p.placed){
-    const deep=r.h>f.H;
-    h+=`<rect x="${r.x}" y="${r.y}" width="${r.w}" height="${r.h}" rx="6" fill="${colorOf(r.order)}" stroke="${deep?'#bd3343':'#4c5d73'}" stroke-width="${deep?6:2}"/>`;
-    if(r.w>fs*4&&r.h>fs*2)h+=`<text x="${r.x+r.w/2}" y="${r.y+r.h/2}" text-anchor="middle" dominant-baseline="middle" font-size="${fs}" font-weight="700" fill="#142033">${esc(r.order)}</text>`;
+function renderPlate(f,L,c){
+  const s=$('plate'),parked=L.some(x=>x.parked||x.y>f.B),bottom=parked?Math.max(...L.map(x=>x.y+x.d),f.B+90)+40:f.B+70;
+  const R=+f.rand||0,fs=Math.max(16,Math.min(f.L,f.B)/32);
+  s.setAttribute('viewBox',`-40 -40 ${f.L+80} ${bottom+40}`);
+  let h=`<rect x="0" y="0" width="${f.L}" height="${f.B}" rx="10" fill="#fff" stroke="#9fb0c6" stroke-width="4"/>`;
+  h+=`<rect x="${R}" y="${R}" width="${Math.max(0,f.L-2*R)}" height="${Math.max(0,f.B-2*R)}" fill="none" stroke="#b6c3d4" stroke-width="3" stroke-dasharray="14 10"/>`;
+  h+=`<text x="${f.L/2}" y="${f.B+fs*1.6}" text-anchor="middle" font-size="${fs}" fill="#5f6f84">${f.L} × ${f.B} mm · Rand ${R} mm · max. Ziehtiefe ${f.H} mm</text>`;
+  if(parked)h+=`<text x="0" y="${f.B+80}" font-size="${fs}" font-weight="700" fill="#bd3343">Ablage – nicht auf dem Format:</text>`;
+  for(const r of L){
+    const bad=r.err.length>0,sel=r.key===selKey,halo=r.h/2;
+    h+=`<g class="tool" data-key="${r.key}">`;
+    if(!r.parked&&!r.err.includes('nicht auf Format'))h+=`<rect x="${r.x-halo}" y="${r.y-halo}" width="${r.w+2*halo}" height="${r.d+2*halo}" rx="${halo}" fill="${colorOf(r.order)}" opacity=".28"/>`;
+    h+=`<rect x="${r.x}" y="${r.y}" width="${r.w}" height="${r.d}" rx="6" fill="${colorOf(r.order)}" stroke="${bad?'#bd3343':sel?'#1f5eff':'#4c5d73'}" stroke-width="${bad||sel?7:2}"${bad?' stroke-dasharray="16 8"':''}/>`;
+    if(r.w>fs*.62*r.order.length+8&&r.d>fs*2.4)h+=`<text x="${r.x+r.w/2}" y="${r.y+r.d/2-fs*.45}" text-anchor="middle" font-size="${fs}" font-weight="700" fill="#142033" pointer-events="none">${esc(r.order)}</text><text x="${r.x+r.w/2}" y="${r.y+r.d/2+fs*.85}" text-anchor="middle" font-size="${fs*.8}" fill="#34445a" pointer-events="none">${r.rot?r.b+'×'+r.l:r.l+'×'+r.b}×${r.h}</text>`;
+    h+='</g>';
   }
   s.innerHTML=h;
-  const m=[];
+  $('layoutState').innerHTML=f.layout?'<span class="badge warn">manuell angepasst</span>':'<span class="badge vio">Empfehlung</span>';
+  $('rotSel').disabled=!L.some(x=>x.key===selKey);
+  const m=[],errs=L.filter(x=>x.err.length);
   if(!f.tools.length)m.push(['warn','Format ist leer.']);
-  if(p.fail.length){const by={};p.fail.forEach(x=>by[x.order]=(by[x.order]||0)+1);m.push(['bad','Passt nicht auf das Format: '+Object.entries(by).map(([k,v])=>`${v}× ${k}`).join(', ')+'. Nutzen reduzieren oder größeres Format wählen.'])}
+  const off=L.filter(x=>x.err.includes('nicht auf Format'));
+  if(off.length){const by={};off.forEach(x=>by[x.order]=(by[x.order]||0)+1);m.push(['bad','Nicht auf dem Format: '+Object.entries(by).map(([k,v])=>`${v}× ${k}`).join(', ')+' – hineinschieben, Nutzen reduzieren oder größeres Format wählen.'])}
+  const seen=new Set();errs.forEach(x=>x.err.filter(e=>e!=='nicht auf Format').forEach(e=>{const t=`${x.order}: ${e}`;if(!seen.has(t)){seen.add(t);m.push(['bad',t])}}));
   c.rows.filter(r=>r.h>f.H).forEach(r=>m.push(['bad',`${r.order}: Werkzeughöhe ${r.h} mm überschreitet max. Ziehtiefe ${f.H} mm.`]));
-  const hs=[...new Set(c.rows.map(r=>r.h))];if(hs.length>1&&Math.max(...hs)-Math.min(...hs)>60)m.push(['warn','Stark unterschiedliche Werkzeughöhen ('+Math.min(...hs)+'–'+Math.max(...hs)+' mm) – Wandstärken/Ziehverhältnis prüfen.']);
   c.rows.filter(r=>r.over>0&&r.over>=r.menge*0.25).forEach(r=>m.push(['warn',`${r.order}: ${nf(r.over)} Teile Überproduktion – Werkzeug nach ${nf(r.takte)} Takten abdecken/ausbauen oder Nutzen anpassen.`]));
-  if(!m.length)m.push(['ok','Alle Werkzeuge passen auf das Format.']);
+  if(!m.length)m.push(['ok','Alle Werkzeuge liegen auf dem Format, Rand und Abstände sind eingehalten.']);
   $('msgs').innerHTML=m.map(([k,t])=>`<div class="msg ${k}">${esc(t)}</div>`).join('');
 }
+// Verschieben per Zeiger (Maus/Touch), Raster 5 mm
+(function(){
+  const svg=$('plate');let drag=null;
+  const pt=e=>{const p=svg.createSVGPoint();p.x=e.clientX;p.y=e.clientY;return p.matrixTransform(svg.getScreenCTM().inverse())};
+  const fix=f=>{if(!f.layout){f.layout=JSON.parse(JSON.stringify(recommend(f).pos))}};
+  svg.addEventListener('pointerdown',e=>{
+    const g=e.target.closest('.tool');if(!g)return;const f=fmtById(cur),key=g.dataset.key,it=layout(f).find(x=>x.key===key);if(!it)return;
+    selKey=key;const p=pt(e);drag={key,dx:p.x-it.x,dy:p.y-it.y,rot:it.rot,moved:false};svg.setPointerCapture(e.pointerId);e.preventDefault();renderPlate(f,layout(f),calc(f));
+  });
+  svg.addEventListener('pointermove',e=>{
+    if(!drag)return;const f=fmtById(cur),p=pt(e);fix(f);
+    f.layout[drag.key]={x:snap(p.x-drag.dx),y:snap(p.y-drag.dy),rot:drag.rot};drag.moved=true;renderPlate(f,layout(f),calc(f));
+  });
+  const end=()=>{if(!drag)return;drag=null;renderList()};
+  svg.addEventListener('pointerup',end);svg.addEventListener('pointercancel',end);
+  svg.addEventListener('dblclick',e=>{const g=e.target.closest('.tool');if(g){selKey=g.dataset.key;rotate()}});
+})();
+function rotate(){
+  const f=fmtById(cur),it=layout(f).find(x=>x.key===selKey);if(!it)return;
+  if(!f.layout)f.layout=JSON.parse(JSON.stringify(recommend(f).pos));
+  // um den Mittelpunkt drehen
+  const cx=it.x+it.w/2,cy=it.y+it.d/2,[w,d]=dims(it,!it.rot);
+  f.layout[it.key]={x:snap(cx-w/2),y:snap(cy-d/2),rot:!it.rot};renderTools();
+}
+$('rotSel').onclick=rotate;
+$('recLayout').onclick=()=>{const f=fmtById(cur);f.layout=null;renderTools();renderList();toast('Empfohlenes Layout gesetzt: Rand '+(f.rand||0)+' mm, Abstand ½ Werkzeughöhe.')};
 function renderPool(){
   const f=fmtById(cur),usedAny=new Set(formats.flatMap(x=>x.tools.map(t=>t.order))),inCur=new Set(f.tools.map(t=>t.order));
   $('pool').innerHTML=ORDERS.map(o=>`<div class="poolItem${inCur.has(o.id)?' used':''}"><div><span class="sw" style="background:${colorOf(o.id)}"></span><b>${o.id}</b> · ${esc(o.art)}<small>${esc(o.kunde)} · ${nf(o.menge)} Stk · Werkzeug ${o.l}×${o.b}×${o.h} · Termin ${o.due}${usedAny.has(o.id)&&!inCur.has(o.id)?' · <b>in anderem Format</b>':''}</small></div>${inCur.has(o.id)?'<span class="badge ok">drauf</span>':`<button class="btn small" data-add="${o.id}">Auf Format</button>`}</div>`).join('');
-  $('pool').querySelectorAll('[data-add]').forEach(b=>b.onclick=()=>{const o=ord(b.dataset.add);f.tools.push({order:o.id,l:o.l,b:o.b,h:o.h,n:1});renderTools();renderList()});
+  $('pool').querySelectorAll('[data-add]').forEach(b=>b.onclick=()=>{const o=ord(b.dataset.add);f.tools.push({uid:uidSeq++,order:o.id,l:o.l,b:o.b,h:o.h,n:1});renderTools();renderList()});
 }
-['fName','fMachine','fCycle','fL','fB','fH','fGap'].forEach(id=>$(id).onchange=()=>{
+['fName','fMachine','fCycle','fL','fB','fH','fRand'].forEach(id=>$(id).onchange=()=>{
   const f=fmtById(cur),v=$(id).value;
-  ({fName:()=>f.name=v,fMachine:()=>f.machine=v,fCycle:()=>f.cycle=Math.max(1,+v||1),fL:()=>f.L=Math.max(1,+v||1),fB:()=>f.B=Math.max(1,+v||1),fH:()=>f.H=Math.max(1,+v||1),fGap:()=>f.gap=Math.max(0,+v||0)})[id]();
+  ({fName:()=>f.name=v,fMachine:()=>f.machine=v,fCycle:()=>f.cycle=Math.max(1,+v||1),fL:()=>f.L=Math.max(1,+v||1),fB:()=>f.B=Math.max(1,+v||1),fH:()=>f.H=Math.max(1,+v||1),fRand:()=>f.rand=Math.max(0,+v||0)})[id]();
   renderTools();renderList();renderBoard();
 });
-$('addTool').onclick=()=>{const f=fmtById(cur),o=ORDERS[0];f.tools.push({order:o.id,l:o.l,b:o.b,h:o.h,n:1});renderTools();renderList()};
-$('newFmt').onclick=()=>{const id='F-'+(100+formats.length+1);formats.push({id,name:id+' Neues Format',machine:'TZ 1 – Illig',cycle:35,L:1200,B:800,H:180,gap:20,tools:[]});cur=id;renderFormat()};
-$('dupFmt').onclick=()=>{const f=fmtById(cur),id='F-'+(100+formats.length+1);formats.push({...JSON.parse(JSON.stringify(f)),id,name:id+' Kopie von '+f.id});cur=id;renderFormat()};
+$('addTool').onclick=()=>{const f=fmtById(cur),o=ORDERS[0];f.tools.push({uid:uidSeq++,order:o.id,l:o.l,b:o.b,h:o.h,n:1});renderTools();renderList()};
+$('newFmt').onclick=()=>{const id='F-'+(100+formats.length+1);formats.push({id,name:id+' Neues Format',machine:'TZ 1 – Illig',cycle:35,L:1500,B:1000,H:180,rand:100,layout:null,tools:[]});cur=id;renderFormat()};
+$('dupFmt').onclick=()=>{const f=fmtById(cur),id='F-'+(100+formats.length+1);const cp=JSON.parse(JSON.stringify(f)),map={};cp.tools.forEach(t=>{const nu=uidSeq++;map[t.uid]=nu;t.uid=nu});if(cp.layout){const nl={};for(const k in cp.layout){const [u,i]=k.split('-');nl[map[u]+'-'+i]=cp.layout[k]}cp.layout=nl}formats.push({...cp,id,name:id+' Kopie von '+f.id});cur=id;renderFormat()};
 $('planFmt').onclick=()=>{const f=fmtById(cur),c=calc(f);toast(`${f.name}: ${c.hours.toFixed(1).replace('.',',')} h auf ${f.machine} – würde im echten System per Drag & Drop in den Wochenplan gesetzt.`)};
 
 /* ---------- Wochenplan ---------- */
