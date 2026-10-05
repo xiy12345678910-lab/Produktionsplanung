@@ -1,4 +1,4 @@
-MASCHINENPLANUNG V12.7.6 - FEHLERCODES
+MASCHINENPLANUNG V12.8.0 - FEHLERCODES
 ======================================
 
 Jeder Fehler wird dem Mitarbeiter als Klartext + Code angezeigt.
@@ -27,6 +27,7 @@ CODEGRUPPEN
 - MP-TPL-xxx: Gespeicherte Prozessabläufe
 - MP-LOG-xxx: Änderungsprotokoll
 - MP-MIG-xxx: Datenbank-Migration beim Serverstart
+- MP-FMT-xxx: Formatplanung Tiefziehen (Grundformate, Formate, Lager)
 
 EINZELCODES (der genaue Klartext kann je nach Kontext zusaetzliche Details enthalten)
 
@@ -328,3 +329,23 @@ MP-MACH-013  Ressource hat noch offene Aufträge und kann nicht entfernt werden.
 MP-DEPT-030  Den AV-Termin legt die Arbeitsvorbereitung fest (Abteilung plant nur innerhalb).
 MP-DEPT-031  Für den Bereich ist noch keine Maschine/Linie angelegt.
 MP-AUTH-019  AV-Termin ändern nur Arbeitsvorbereitung/Admin.
+
+V12.8.0 NEU (Formatplanung Tiefziehen)
+MP-FMT-001  Grundformat ungueltig: eindeutige ID, Name, bekannter Bereich, Laenge/Breite 100–5000 mm.
+MP-FMT-002  Format ungueltig: eindeutige ID, Bereich, Status, Laenge/Breite 100–5000 mm, Ziehtiefe/Rand.
+MP-FMT-003  Formatnummer fehlt oder ist doppelt.
+MP-FMT-004  Format verweist auf ein unbekanntes Grundformat bzw. Grundformat wird noch verwendet.
+MP-FMT-005  Maschine des Formats gehoert nicht zum Bereich bzw. keine Maschine gewaehlt.
+MP-FMT-006  Werkzeugliste ungueltig: Masse 1–5000 mm, Nutzen 1–500, Menge ganzzahlig.
+MP-FMT-007  Formatbelegung (Layout) ist ungueltig.
+MP-FMT-008  Einlagern nur mit Lagerort; Lagerort nur bei eingelagerten Formaten.
+MP-FMT-009  Format-Verlauf ist ungueltig.
+MP-FMT-010  Verknuepfung Format → Auftrag ist ungueltig.
+MP-FMT-020  Einplanen: Format ist leer.
+MP-FMT-021  Einplanen: an der Maschine ist kein Takt hinterlegt.
+MP-FMT-022  Einplanen: ohne Mengen keine Takte.
+MP-FMT-023  Einplanen: Werkzeuge liegen nicht auf dem Format.
+MP-FMT-024  Einplanen: Format passt nicht auf die Maschine (max. Formatgroesse/Ziehtiefe).
+MP-FMT-025  Format-Auftrag ist bereits freigegeben/gestartet und kann nicht mehr geaendert werden.
+MP-FMT-026  Uebernommene Auftraege sind bereits freigegeben/gestartet.
+MP-MACH-014  Maschine: Taktliste (Name, 1–3600 s, max. 30) oder max. Formatgroesse/Ziehtiefe ungueltig.

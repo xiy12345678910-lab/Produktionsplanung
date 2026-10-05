@@ -25,7 +25,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-APP_VERSION = "12.7.6"
+APP_VERSION = "12.8.0"
 HOST = os.environ.get("MP_HOST", "0.0.0.0")
 PORT = int(os.environ.get("MP_PORT", "8765"))
 BASE = Path(__file__).resolve().parent
@@ -987,6 +987,123 @@ def validate_projects(old: dict, projects: list) -> tuple[bool, str, str]:
     return True, "", ""
 
 
+# --------------------------------------------------------------------------- Tiefziehen: Formate
+_SAFE_ID = re.compile(r"[A-Za-z0-9_-]{1,80}")
+FORMAT_STATUS = {"active", "stored"}
+
+
+def _num_in(v, lo, hi, integer=False):
+    x = _finite_float(v)
+    return x is not None and lo <= x <= hi and (not integer or x.is_integer())
+
+
+def _validate_machine_format_fields(m: dict) -> tuple[bool, str]:
+    """Tiefziehen: Takte je Maschine (Name + Sekunden) und maximale Formatgröße/Ziehtiefe."""
+    for f in ("maxL", "maxB", "maxH"):
+        if m.get(f) not in (None, "") and not _num_in(m.get(f), 0, 10000):
+            return False, f"{f} ist ungültig."
+    takte = m.get("takte")
+    if takte in (None, ""):
+        return True, ""
+    if not isinstance(takte, list) or len(takte) > 30:
+        return False, "Taktliste ist ungültig (max. 30)."
+    seen = set()
+    for t in takte:
+        if not isinstance(t, dict) or not _SAFE_ID.fullmatch(str(t.get("id") or "")) or str(t.get("id")) in seen:
+            return False, "Takt benötigt eine eindeutige ID."
+        seen.add(str(t.get("id")))
+        if not str(t.get("name") or "").strip() or len(str(t.get("name"))) > 40:
+            return False, "Taktname fehlt oder ist zu lang."
+        if not _num_in(t.get("sec"), 1, 3600):
+            return False, f"Takt „{t.get('name')}“: Sekunden müssen zwischen 1 und 3600 liegen."
+    return True, ""
+
+
+def validate_formats(new: dict, dept_ids: set) -> tuple[bool, str, str]:
+    """Grundformate und Formate (Tiefziehen)."""
+    base = new.get("baseFormats")
+    if base in (None, ""):
+        base = []
+    if not isinstance(base, list) or len(base) > 200:
+        return False, "MP-FMT-001", "Grundformate sind ungültig."
+    base_ids = set()
+    for g in base:
+        if not isinstance(g, dict) or not _SAFE_ID.fullmatch(str(g.get("id") or "")) or str(g.get("id")) in base_ids:
+            return False, "MP-FMT-001", "Grundformat benötigt eine eindeutige ID."
+        base_ids.add(str(g.get("id")))
+        if str(g.get("departmentId") or "") not in dept_ids:
+            return False, "MP-FMT-001", f"Grundformat '{g.get('name')}' verweist auf einen unbekannten Bereich."
+        if not str(g.get("name") or "").strip() or len(str(g.get("name"))) > 60:
+            return False, "MP-FMT-001", "Grundformat: Name fehlt oder ist zu lang."
+        if not _num_in(g.get("L"), 100, 5000, True) or not _num_in(g.get("B"), 100, 5000, True):
+            return False, "MP-FMT-001", f"Grundformat '{g.get('name')}': Länge/Breite 100–5000 mm."
+    formats = new.get("formats")
+    if formats in (None, ""):
+        formats = []
+    if not isinstance(formats, list) or len(formats) > 5000:
+        return False, "MP-FMT-002", "Formatliste ist ungültig."
+    machine_dept = {str(m.get("id")): str(m.get("departmentId") or "cnc") for m in (new.get("machines") or []) if isinstance(m, dict)}
+    step_ids = {str(x.get("id")) for x in (new.get("workSteps") or []) if isinstance(x, dict)}
+    ids, numbers = set(), set()
+    for f in formats:
+        if not isinstance(f, dict) or not _SAFE_ID.fullmatch(str(f.get("id") or "")) or str(f.get("id")) in ids:
+            return False, "MP-FMT-002", "Format benötigt eine eindeutige ID."
+        ids.add(str(f.get("id")))
+        number = str(f.get("number") or "").strip()
+        label = number or str(f.get("id"))
+        if not number or len(number) > 20 or number.casefold() in numbers:
+            return False, "MP-FMT-003", f"Format '{label}': Formatnummer fehlt oder ist doppelt."
+        numbers.add(number.casefold())
+        did = str(f.get("departmentId") or "")
+        if did not in dept_ids:
+            return False, "MP-FMT-002", f"Format '{label}' verweist auf einen unbekannten Bereich."
+        if len(str(f.get("name") or "")) > 120:
+            return False, "MP-FMT-002", f"Format '{label}': Name ist zu lang."
+        status = str(f.get("status") or "active")
+        if status not in FORMAT_STATUS:
+            return False, "MP-FMT-002", f"Format '{label}' hat einen ungültigen Status."
+        if f.get("baseId") not in (None, "") and str(f.get("baseId")) not in base_ids:
+            return False, "MP-FMT-004", f"Format '{label}' verweist auf ein unbekanntes Grundformat."
+        mid = str(f.get("machineId") or "")
+        if mid and machine_dept.get(mid) != did:
+            return False, "MP-FMT-005", f"Format '{label}': Maschine gehört nicht zum Bereich."
+        if not _num_in(f.get("L"), 100, 5000, True) or not _num_in(f.get("B"), 100, 5000, True):
+            return False, "MP-FMT-002", f"Format '{label}': Länge/Breite 100–5000 mm."
+        if not _num_in(f.get("H", 0), 0, 2000) or not _num_in(f.get("rand", 0), 0, 1000):
+            return False, "MP-FMT-002", f"Format '{label}': Ziehtiefe/Rand ungültig."
+        tools = f.get("tools") or []
+        if not isinstance(tools, list) or len(tools) > 60:
+            return False, "MP-FMT-006", f"Format '{label}': Werkzeugliste ist ungültig (max. 60)."
+        tool_ids = set()
+        for t in tools:
+            if not isinstance(t, dict) or not _SAFE_ID.fullmatch(str(t.get("id") or "")) or str(t.get("id")) in tool_ids:
+                return False, "MP-FMT-006", f"Format '{label}': Werkzeug ohne eindeutige ID."
+            tool_ids.add(str(t.get("id")))
+            for k, lim in (("wkz", 40), ("fs", 40), ("order", 80), ("article", 120), ("stepId", 80), ("projectId", 80)):
+                if len(str(t.get(k) or "")) > lim:
+                    return False, "MP-FMT-006", f"Format '{label}': Feld '{k}' ist zu lang."
+            if not all(_num_in(t.get(k), 1, 5000) for k in ("l", "b", "h")):
+                return False, "MP-FMT-006", f"Format '{label}': Werkzeugmaße 1–5000 mm."
+            if not _num_in(t.get("n"), 1, 500, True) or not _num_in(t.get("qty", 0), 0, 10_000_000, True):
+                return False, "MP-FMT-006", f"Format '{label}': Nutzen (1–500) bzw. Menge ungültig."
+        layout = f.get("layout")
+        if layout is not None and (not isinstance(layout, dict) or len(layout) > 5000):
+            return False, "MP-FMT-007", f"Format '{label}': Layout ist ungültig."
+        lager = f.get("lager")
+        if status == "stored":
+            if not isinstance(lager, dict) or not str(lager.get("ort") or "").strip() or len(str(lager.get("ort"))) > 120:
+                return False, "MP-FMT-008", f"Format '{label}': Eingelagert ohne Lagerort."
+        elif lager not in (None, ""):
+            return False, "MP-FMT-008", f"Format '{label}': Lagerort nur bei eingelagerten Formaten."
+        log = f.get("log") or []
+        if not isinstance(log, list) or len(log) > 500 or any(not isinstance(x, dict) for x in log):
+            return False, "MP-FMT-009", f"Format '{label}': Verlauf ist ungültig."
+        wsid = str(f.get("workStepId") or "")
+        if wsid and wsid not in step_ids and len(wsid) > 80:
+            return False, "MP-FMT-010", f"Format '{label}': Verknüpfung zum Auftrag ist ungültig."
+    return True, "", ""
+
+
 TEMPLATE_KINDS = {"pm", "av"}
 
 
@@ -1067,6 +1184,9 @@ def validate_state(old: dict, new: dict) -> tuple[bool, str, str]:
     if not ok:
         return False, code, reason
     ok, code, reason = validate_process_templates(new.get("processTemplates"))
+    if not ok:
+        return False, code, reason
+    ok, code, reason = validate_formats(new, dept_ids)
     if not ok:
         return False, code, reason
     seen_project_ids = {str(p.get("id")) for p in projects}
@@ -1198,6 +1318,9 @@ def validate_state(old: dict, new: dict) -> tuple[bool, str, str]:
         setup = _finite_float(m.get("setupMinutes", 0))
         if setup is None or setup < 0 or setup > 1440:
             return False, "MP-MACH-009", f"Umrüstzeit von Maschine '{m.get('name') or mid}' ist ungültig."
+        ok, reason = _validate_machine_format_fields(m)
+        if not ok:
+            return False, "MP-MACH-014", f"Maschine '{m.get('name') or mid}': {reason}"
         crew = _finite_float(m.get("crew", 1))
         if crew is None or crew < 1 or not crew.is_integer() or crew > 99:
             return False, "MP-MACH-010", f"Besetzung von '{m.get('name') or mid}' muss eine ganze Zahl von 1 bis 99 sein."
@@ -1945,7 +2068,7 @@ def production_planning_change_allowed(old: dict, new: dict) -> tuple[bool, str]
     löschen, AB-Verknüpfung). Freigabe, Produktion, Fertigmeldung, Personal,
     Maschinen und Einstellungen bleiben bei Bereichen/Admin.
     """
-    allowed_root = {"workSteps", "projects", "processTemplates", "audit", "meta", "ui", "planVersions"}
+    allowed_root = {"workSteps", "projects", "processTemplates", "audit", "meta", "ui", "planVersions", "formats"}
     for key in set(old) | set(new):
         if key not in allowed_root and canonical(old.get(key)) != canonical(new.get(key)):
             return False, f"Arbeitsvorbereitung darf '{key}' nicht ändern."
@@ -1975,7 +2098,7 @@ def department_change_allowed(old: dict, new: dict, department_id: str) -> tuple
     if not department_id:
         return False, "Kein Bereich am Benutzer hinterlegt."
     globally_allowed = {"audit", "meta", "ui", "planVersions", "departmentStaffNeeds"}
-    scoped = {"workSteps", "machines", "machineBlocks", "employees", "personnelAssignments", "personnelAbsences", "history", "yearRules", "weekRules", "projects"}
+    scoped = {"workSteps", "machines", "machineBlocks", "employees", "personnelAssignments", "personnelAbsences", "history", "yearRules", "weekRules", "projects", "formats", "baseFormats"}
     # Sprechende Meldungen für häufige Fälle, danach die allgemeine Regel.
     if canonical(old.get("exceptions")) != canonical(new.get("exceptions")):
         return False, "Globale Betriebsferien/Kalender-Ausnahmen dürfen nur GF/Admin ändern."
@@ -2037,6 +2160,10 @@ def department_change_allowed(old: dict, new: dict, department_id: str) -> tuple
     for rec in changed_records("machines"):
         if str(rec.get("departmentId") or "cnc") != department_id:
             return False, "Maschine gehört nicht zum eigenen Bereich."
+    for name, what in (("formats", "Format"), ("baseFormats", "Grundformat")):
+        for rec in changed_records(name):
+            if str(rec.get("departmentId") or "") != department_id:
+                return False, f"{what} gehört nicht zum eigenen Bereich."
     for rec in changed_records("workSteps"):
         did = str(rec.get("departmentId") or machine_dept.get(str(rec.get("machineId")), "cnc"))
         if did != department_id:
