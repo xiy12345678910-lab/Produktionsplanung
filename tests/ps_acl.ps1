@@ -44,6 +44,8 @@ if ($IsWindows -or $env:OS -eq 'Windows_NT') {
     New-Item -ItemType Directory -Path $d | Out-Null
     try {
         & icacls $d /inheritance:r /grant:r '*S-1-5-18:(OI)(CI)F' '*S-1-5-32-544:(OI)(CI)F' '*S-1-5-32-545:(OI)(CI)RX' | Out-Null
+        # Das erzeugende Konto (CI: runneradmin) steht sonst als eigener Eintrag mit FullControl in der ACL.
+        & icacls $d /remove:g "$env:USERDOMAIN\$env:USERNAME" | Out-Null
         $issue = Test-MPFolderAclSafe $d $false
         if ($issue) { Write-Host "  Befund: $issue"; & icacls $d }
         Check ($null -eq $issue) 'echte ACL: Users:RX -> sicher'
