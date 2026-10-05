@@ -1,4 +1,4 @@
-MASCHINENPLANUNG V12.9.0 - KURZANLEITUNG FUER BENUTZER
+MASCHINENPLANUNG V12.9.1 - KURZANLEITUNG FUER BENUTZER
 ======================================================
 
 ANMELDEN
@@ -93,6 +93,9 @@ NACHRICHTEN (ab V12.9.0)
 - Im Text "/" tippen und z. B. die FS-Nummer: Auftrag, Projekt oder Format auswaehlen → wird ein
   Link; ein Klick darauf oeffnet ihn direkt. "@" + Name erwaehnt eine Person (rot markiert).
 - Enter sendet, Umschalt+Enter macht eine neue Zeile.
+- Nachrichten werden 30 Tage nach dem Versand automatisch geloescht. Wichtiges mit 📌 an der
+  Nachricht "behalten" (gilt fuer alle in der Unterhaltung). 📌 oben zeigt nur die behaltenen.
+  Ab 7 Tagen vor der Loeschung steht "noch n T" an der Nachricht.
 
 FORMATE TIEFZIEHEN (ab V12.8.0)
 - Ansicht "Formate": Auftraege "Auf Format" setzen, Werkzeuge anordnen, "In Wochenplan einplanen".

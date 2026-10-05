@@ -48,6 +48,15 @@ with server.DB_LOCK, server.db_session() as con:
     for name, role, dep in (("lena", "department_lead", "cnc"), ("tom", "production_planning", ""), ("gast", "viewer", "")):
         salt, digest = server.hash_password(${JSON.stringify(PASS)})
         con.execute("INSERT INTO users(username,salt,password_hash,role,department_id,active,created_at,updated_at) VALUES(?,?,?,?,?,1,?,?)", (name, salt, digest, role, dep, server.now_iso(), server.now_iso()))
+    # V12.9.1: Aufbewahrung – 40 Tage alt (weg), 40 Tage alt behalten (bleibt), 25 Tage alt (noch 5 T)
+    from datetime import datetime, timedelta, timezone
+    ago = lambda d: (datetime.now(timezone.utc) - timedelta(days=d)).isoformat()
+    con.execute("INSERT INTO chat_messages(channel_id,author,text,ts,keep,kept_by) VALUES(1,'admin','Alte Notiz',?,0,'')", (ago(40),))
+    con.execute("INSERT INTO chat_messages(channel_id,author,text,ts,keep,kept_by) VALUES(1,'admin','Wichtige Regel',?,1,'admin')", (ago(40),))
+    con.execute("INSERT INTO chat_messages(channel_id,author,text,ts,keep,kept_by) VALUES(1,'admin','Bald weg',?,0,'')", (ago(25),))
+    for u in ("tom", "gast"):
+        con.execute("INSERT INTO chat_reads(username,channel_id,last_id) SELECT ?,1,max(id) FROM chat_messages", (u,))
+server._CHAT_LAST_PURGE = 0
 httpd = server.MPHTTPServer(("127.0.0.1", ${PORT}), server.Handler)
 print("READY", flush=True)
 httpd.serve_forever()
@@ -153,6 +162,29 @@ try {
   const again = await lena.evaluate(async () => (await (await fetch('/api/chat/channels', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-MP-Client-Version': (await (await fetch('/api/health')).json()).version }, body: JSON.stringify({ kind: 'direct', members: ['gast'] }) })).json()).channel.id);
   const chans = await lena.evaluate(async () => (await (await fetch('/api/chat/channels')).json()).channels.filter(c => c.kind === 'direct').length);
   check(again && chans === 1, 'Direkt-Chat wird nicht doppelt angelegt');
+
+  // V12.9.1 Aufbewahrung: 30 Tage, 📌 behält
+  await lena.click('#chatBack');
+  await lena.locator('[data-ch]', { hasText: 'Alle' }).first().click();
+  await lena.waitForTimeout(600);
+  const txt = await lena.textContent('#chatMsgs');
+  check(!txt.includes('Alte Notiz'), 'Nachricht älter als 30 Tage ohne 📌 gelöscht');
+  check(txt.includes('Wichtige Regel') && await lena.locator('.chatMsg.kept .chatKeep.on').count() === 1, 'Behaltene Nachricht (📌) bleibt über 30 Tage');
+  const soon = lena.locator('.chatMsg', { hasText: 'Bald weg' });
+  check((await soon.locator('.chatGone').textContent()) === 'noch 5 T', 'Hinweis „noch 5 T“ vor der Löschung');
+  await soon.locator('.chatKeep').click();
+  await lena.waitForTimeout(500);
+  const kept = await lena.evaluate(async () => (await (await fetch('/api/chat/messages?channel=1')).json()).messages.filter(m => m.keep).map(m => m.text + ':' + m.keptBy).join(','));
+  check(kept === 'Wichtige Regel:admin,Bald weg:lena', `📌 setzt „behalten“ am Server (${kept})`);
+  await lena.click('#chatKeptBtn');
+  await lena.waitForTimeout(400);
+  check(await lena.locator('#chatMsgs .chatMsg').count() === 2 && await lena.locator('.chatKeptHead').count() === 1, 'Ansicht „Behaltene Nachrichten“ zeigt 2');
+  await shot(lena, '5_behalten');
+  await lena.click('#chatKeptBtn');
+  await lena.waitForTimeout(300);
+  check(await lena.locator('.chatKeptHead').count() === 0, 'Zweiter Klick zeigt wieder alle');
+  const kd = await lena.evaluate(async () => (await fetch('/api/chat/keep', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-MP-Client-Version': (await (await fetch('/api/health')).json()).version }, body: JSON.stringify({ channel: 1, message: 999999, keep: true }) })).json());
+  check(kd.errorCode === 'MP-CHAT-007', 'Behalten unbekannter Nachricht → MP-CHAT-007');
   await lena.close();
 
   // gast (kein Mitglied der Gruppe): kein Zugriff, Mobil-Darstellung

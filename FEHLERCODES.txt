@@ -1,4 +1,4 @@
-MASCHINENPLANUNG V12.9.0 - FEHLERCODES
+MASCHINENPLANUNG V12.9.1 - FEHLERCODES
 ======================================
 
 Jeder Fehler wird dem Mitarbeiter als Klartext + Code angezeigt.
@@ -377,4 +377,5 @@ MP-CHAT-003  Mitglieder ungueltig (unbekannt/inaktiv; Direkt = genau eine Person
 MP-CHAT-004  Gruppenname fehlt oder ist zu lang (max. 60).
 MP-CHAT-005  Nachricht leer oder zu lang (max. 2000 Zeichen).
 MP-CHAT-006  Mitglieder aendert nur, wer die Gruppe angelegt hat (oder Admin); nur bei Gruppen.
+MP-CHAT-007  Nachricht zum Behalten nicht gefunden (bereits nach 30 Tagen geloescht?).
 MP-CHAT-010  Verweis existiert nicht mehr (Auftrag/Projekt/Format geloescht oder archiviert).

@@ -25,7 +25,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-APP_VERSION = "12.9.0"
+APP_VERSION = "12.9.1"
 HOST = os.environ.get("MP_HOST", "0.0.0.0")
 PORT = int(os.environ.get("MP_PORT", "8765"))
 BASE = Path(__file__).resolve().parent
@@ -255,6 +255,8 @@ def init_db() -> None:
         migrate_state_v1280(con)
         if not con.execute("SELECT 1 FROM chat_channels WHERE kind='all'").fetchone():
             con.execute("INSERT INTO chat_channels(kind,name,members,created_by,created_at) VALUES('all','Alle','[]','Server',?)", (now_iso(),))
+        migrate_chat_v1291(con)
+        chat_purge(con, force=True)
         archive_history_on_start(con)
 
 
@@ -676,6 +678,37 @@ def canonical(obj) -> str:
 # im Text; der Server speichert nur Text und prüft Mitgliedschaft.
 CHAT_MAX_TEXT = 2000
 CHAT_MAX_MEMBERS = 100
+# V12.9.1: Nachrichten verschwinden nach CHAT_RETENTION_DAYS Tagen, außer sie sind auf „Behalten“ gesetzt.
+CHAT_RETENTION_DAYS = 30
+CHAT_PURGE_EVERY = 3600
+_CHAT_LAST_PURGE = 0.0
+CHAT_MSG_COLS = "id,author,text,ts,keep,kept_by"
+
+
+def migrate_chat_v1291(con: sqlite3.Connection) -> None:
+    cols = {r["name"] for r in con.execute("PRAGMA table_info(chat_messages)").fetchall()}
+    if "keep" not in cols:
+        con.execute("ALTER TABLE chat_messages ADD COLUMN keep INTEGER NOT NULL DEFAULT 0")
+    if "kept_by" not in cols:
+        con.execute("ALTER TABLE chat_messages ADD COLUMN kept_by TEXT NOT NULL DEFAULT ''")
+
+
+def chat_purge(con: sqlite3.Connection, force: bool = False) -> int:
+    """Löscht nicht behaltene Nachrichten älter als CHAT_RETENTION_DAYS (höchstens einmal pro Stunde)."""
+    global _CHAT_LAST_PURGE
+    now = time.time()
+    if not force and now - _CHAT_LAST_PURGE < CHAT_PURGE_EVERY:
+        return 0
+    _CHAT_LAST_PURGE = now
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=CHAT_RETENTION_DAYS)).isoformat()
+    n = con.execute("DELETE FROM chat_messages WHERE keep=0 AND ts<?", (cutoff,)).rowcount
+    if n:
+        print(f"CHAT: {n} Nachricht(en) älter als {CHAT_RETENTION_DAYS} Tage gelöscht", flush=True)
+    return n
+
+
+def _chat_msg(row) -> dict:
+    return {"id": row["id"], "author": row["author"], "text": row["text"], "ts": row["ts"], "keep": bool(row["keep"]), "keptBy": row["kept_by"]}
 
 
 def _chat_channel_for(con, channel_id, username: str):
@@ -705,11 +738,12 @@ def chat_get(con, user: dict, path: str, qs: dict) -> tuple[int, dict]:
         rows = con.execute("SELECT username,role,department_id FROM users WHERE active=1 ORDER BY username COLLATE NOCASE").fetchall()
         return 200, {"users": [{"username": r["username"], "role": r["role"], "departmentId": r["department_id"]} for r in rows]}
     if path == "/api/chat/channels":
+        chat_purge(con)
         out = []
         for row in con.execute("SELECT * FROM chat_channels ORDER BY id").fetchall():
             if _chat_channel_for(con, row["id"], username):
                 out.append(_chat_channel_json(con, row, username))
-        return 200, {"channels": out, "me": username}
+        return 200, {"channels": out, "me": username, "retentionDays": CHAT_RETENTION_DAYS}
     if path == "/api/chat/messages":
         try:
             cid = int(qs.get("channel", ["0"])[0])
@@ -720,12 +754,15 @@ def chat_get(con, user: dict, path: str, qs: dict) -> tuple[int, dict]:
         if not _chat_channel_for(con, cid, username):
             return 404, mp_error("MP-CHAT-002", "Unterhaltung nicht gefunden oder kein Mitglied.")
         if before:
-            rows = con.execute("SELECT id,author,text,ts FROM chat_messages WHERE channel_id=? AND id<? ORDER BY id DESC LIMIT 100", (cid, before)).fetchall()[::-1]
+            rows = con.execute(f"SELECT {CHAT_MSG_COLS} FROM chat_messages WHERE channel_id=? AND id<? ORDER BY id DESC LIMIT 100", (cid, before)).fetchall()[::-1]
         elif after:
-            rows = con.execute("SELECT id,author,text,ts FROM chat_messages WHERE channel_id=? AND id>? ORDER BY id LIMIT 500", (cid, after)).fetchall()
+            rows = con.execute(f"SELECT {CHAT_MSG_COLS} FROM chat_messages WHERE channel_id=? AND id>? ORDER BY id LIMIT 500", (cid, after)).fetchall()
         else:
-            rows = con.execute("SELECT id,author,text,ts FROM chat_messages WHERE channel_id=? ORDER BY id DESC LIMIT 100", (cid,)).fetchall()[::-1]
-        return 200, {"messages": [dict(r) for r in rows]}
+            rows = con.execute(f"SELECT {CHAT_MSG_COLS} FROM chat_messages WHERE channel_id=? ORDER BY id DESC LIMIT 100", (cid,)).fetchall()[::-1]
+        kept = []
+        if qs.get("kept"):
+            kept = [_chat_msg(r) for r in con.execute(f"SELECT {CHAT_MSG_COLS} FROM chat_messages WHERE channel_id=? AND keep=1 ORDER BY id DESC LIMIT 200", (cid,)).fetchall()]
+        return 200, {"messages": [_chat_msg(r) for r in rows], "kept": kept, "retentionDays": CHAT_RETENTION_DAYS}
     return 404, mp_error("MP-REQ-404", "Nicht gefunden.")
 
 
@@ -784,7 +821,18 @@ def chat_post(con, user: dict, path: str, body: dict) -> tuple[int, dict]:
             return 400, mp_error("MP-CHAT-005", f"Nachricht ist zu lang (max. {CHAT_MAX_TEXT} Zeichen).")
         cur = con.execute("INSERT INTO chat_messages(channel_id,author,text,ts) VALUES(?,?,?,?)", (cid, username, text, ts))
         con.execute("INSERT INTO chat_reads(username,channel_id,last_id) VALUES(?,?,?) ON CONFLICT(username,channel_id) DO UPDATE SET last_id=excluded.last_id", (username, cid, cur.lastrowid))
-        return 201, {"message": {"id": cur.lastrowid, "author": username, "text": text, "ts": ts}}
+        return 201, {"message": {"id": cur.lastrowid, "author": username, "text": text, "ts": ts, "keep": False, "keptBy": ""}}
+    if path == "/api/chat/keep":
+        try:
+            mid = int(body.get("message") or 0)
+        except (TypeError, ValueError):
+            mid = 0
+        msg = con.execute(f"SELECT {CHAT_MSG_COLS} FROM chat_messages WHERE id=? AND channel_id=?", (mid, cid)).fetchone()
+        if not msg:
+            return 404, mp_error("MP-CHAT-007", "Nachricht nicht gefunden (bereits gelöscht?).")
+        keep = bool(body.get("keep"))
+        con.execute("UPDATE chat_messages SET keep=?, kept_by=? WHERE id=?", (1 if keep else 0, username if keep else "", mid))
+        return 200, {"message": _chat_msg(con.execute(f"SELECT {CHAT_MSG_COLS} FROM chat_messages WHERE id=?", (mid,)).fetchone())}
     if path == "/api/chat/read":
         try:
             last = max(0, int(body.get("lastId") or 0))
