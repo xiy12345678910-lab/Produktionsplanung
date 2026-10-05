@@ -196,6 +196,9 @@ MP-PROD-019  Pausenhistorie ist ungueltig oder passt nicht zum Status Laufend/Pa
 MP-PROD-029  Ist-Produktionsstart darf nach Produktionsbeginn nicht nachtraeglich veraendert werden.
 MP-PROD-031  Geplanter/freigegebener Auftrag darf keine versteckten Live-Produktionsdaten enthalten.
 MP-PROD-032  Laufbeginn/Pausenbeginn der aktuellen Phase darf ohne echten Pause-/Fortsetzen-Uebergang nicht veraendert werden.
+MP-PROD-033  Keine Berechtigung fuer den Produktionsstart.
+MP-PROD-034  Startzeit fehlt oder liegt in der Zukunft (Popup "Produktion starten").
+MP-PROD-035  Freigabe vor dem Start konnte noch nicht auf dem Server gespeichert werden; erneut versuchen.
 
 SUPPORT-REGEL
 - Fehler nicht nur als Screenshot melden: Fehlercode mit angeben.

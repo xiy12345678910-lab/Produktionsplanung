@@ -1,3 +1,21 @@
+NACHTRAG (nach V12.7.5) - PRODUKTIONSSTART/-ENDE MIT ZEITERFASSUNG
+=================================================================
+- Auftragsliste: Der Knopf ▶ oeffnet ein Popup "Produktion starten" mit Tag und Uhrzeit des
+  tatsaechlichen Starts (vorbelegt mit jetzt). Bei geplanten Auftraegen wird automatisch erst
+  freigegeben und danach gestartet ("Nur freigeben" bleibt als Knopf im Popup). Das Popup zeigt
+  Sollzeit + Umruesten + Pausen/Feierabend und das voraussichtliche Ende.
+- Derselbe Platz zeigt danach ✓: Popup "wann ist er fertig geworden?" mit Rechnung
+  Kalenderzeit − Pausen/Feierabend/freie Tage − gemeldete Produktionspausen = reale Arbeitszeit,
+  − Umruesten = reine Produktionszeit, Vergleich mit dem Soll. Die Werte werden in der Historie
+  gespeichert (actualWorkHours, actualSetupMinutes, actualProductionHours).
+- Wochenplan: laufende Auftraege als "In Produktion (seit …)", fertige als "Abgeschlossen" mit
+  realer Arbeitszeit.
+- Fehlerbehebung MP-PERS-033 ("Freigabe … ist personell unterdeckt (0/1)"): Die Server-Pruefung
+  zaehlt jetzt wie die Oberflaeche auch die Stammmaschine (ohne ausdrueckliche Tageseinteilung),
+  KW-Einsaetze in anderen Bereichen und Leiharbeiter-Zeitraeume. Vorher plante die Oberflaeche
+  mit der Stammbesetzung, der Server lehnte die Freigabe aber ab.
+- Neue Fehlercodes MP-PROD-033 bis MP-PROD-035 (siehe FEHLERCODES.txt).
+
 MASCHINENPLANUNG V12.7.5 - RELEASE NOTES
 ========================================
 Datum: 25.09.2026 · Basis: V12.7.4 · Oberflaeche (siehe docs/UI_AUDIT_PLAN.md)
