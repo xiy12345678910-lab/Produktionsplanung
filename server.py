@@ -27,7 +27,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-APP_VERSION = "12.14.1"
+APP_VERSION = "12.15.0"
 HOST = os.environ.get("MP_HOST", "0.0.0.0")
 PORT = int(os.environ.get("MP_PORT", "8765"))
 BASE = Path(__file__).resolve().parent
@@ -51,7 +51,7 @@ CONFIG_PATH = CONFIG_DIR / "firma.json"
 CONFIG_SCHEMA = 1
 CONFIG_KEEP_BAK = 20
 CONFIG_LOGO_MAX = 420 * 1024
-CONFIG_LOCK = threading.Lock()
+CONFIG_LOCK = threading.RLock()
 CONFIG_MODULES = ("projects", "formats", "personnel", "chat", "notifications", "postcalc", "kpi")
 CONFIG_TEMPLATES = {"werbetechnik", "neutral"}
 CONFIG_HEX = re.compile(r"^#[0-9a-fA-F]{6}$")
@@ -89,12 +89,18 @@ def config_defaults() -> dict:
     }
 
 
-# Bisher fest eingebaute Werte des Bestandskunden: stehen nur hier, ausschließlich für die Erstmigration.
-LEGACY_SEED = {
-    "tenantId": "werbetechnik", "template": "werbetechnik",
-    "company": {"name": "WERBETECHNIK *ART OF DISPLAY* GMBH", "color": "#E2382A", "font": "Arial"},
-    "terms": {"projectNumber": "WT"},
-}
+# V12.15.0: Die bisher fest eingebauten Werte des Bestandskunden stehen NICHT mehr im Programmpaket.
+# Für die Erstmigration (Bestand ohne firma.json) werden sie, falls vorhanden, aus tools/legacy_employer_seed.json
+# gelesen (Entwickler-Repo, nicht in $MP_AppFiles). Ohne Datei bleibt es bei data.ci + neutralen Werten.
+LEGACY_SEED_PATH = Path(os.environ.get("MP_LEGACY_SEED") or (BASE / "tools" / "legacy_employer_seed.json"))
+
+
+def legacy_seed() -> dict:
+    try:
+        d = json.loads(LEGACY_SEED_PATH.read_text(encoding="utf-8-sig"))
+        return d if isinstance(d, dict) else {}
+    except (OSError, ValueError):
+        return {}
 
 
 def _merge_missing(cur, default):
@@ -130,6 +136,9 @@ def validate_config(cfg) -> list[str]:
     sv = cfg.get("schemaVersion")
     if sv is not None and (not isinstance(sv, int) or isinstance(sv, bool) or sv < 1):
         errs.append("schemaVersion: ganze Zahl >= 1 erwartet")
+    rv = cfg.get("revision")
+    if rv is not None and (not isinstance(rv, int) or isinstance(rv, bool) or rv < 0):
+        errs.append("revision: ganze Zahl >= 0 erwartet")
     t = cfg.get("tenantId")
     if t is not None and not (isinstance(t, str) and CONFIG_TENANT.match(t)):
         errs.append("tenantId: [a-z0-9-], 3-32 Zeichen")
@@ -144,14 +153,19 @@ def validate_config(cfg) -> list[str]:
             errs.append(f"company.{k}: Hex-Farbe #RRGGBB erwartet")
     lf = c.get("logoFile")
     if lf not in (None, ""):
-        if not (isinstance(lf, str) and re.match(r"^[A-Za-z0-9_.-]+\.(png|jpe?g)$", lf)):
-            errs.append("company.logoFile: Dateiname .png/.jpg im config-Ordner erwartet")
+        if not (isinstance(lf, str) and re.match(r"^[A-Za-z0-9_.-]+\.(png|jpe?g|svg)$", lf)):
+            errs.append("company.logoFile: Dateiname .png/.jpg/.svg im config-Ordner erwartet")
         else:
             p = CONFIG_DIR / lf
             if not p.is_file():
                 errs.append(f"company.logoFile: Datei {lf} fehlt")
             elif p.stat().st_size > CONFIG_LOGO_MAX:
                 errs.append(f"company.logoFile: Datei größer als {CONFIG_LOGO_MAX // 1024} KB")
+            elif lf.lower().endswith(".svg"):
+                try:
+                    svg_sanitize(p.read_bytes())
+                except ValueError as e:
+                    errs.append(f"company.logoFile: SVG nicht zulässig ({e})")
     lo = sec("locale")
     if lo.get("language") is not None and lo["language"] not in ("de", "en"):
         errs.append("locale.language: de oder en")
@@ -239,17 +253,13 @@ def save_config(cfg: dict) -> None:
         _atomic_write(CONFIG_PATH, data)
 
 
-def _legacy_logo(ci: dict) -> tuple[str, bytes]:
-    """Logo des Bestands: data.ci.logo, sonst das bisher in index.html eingebaute. ('', b'') wenn keins/zu groß."""
+def _legacy_logo(ci: dict, seed: dict) -> tuple[str, bytes]:
+    """Logo des Bestands: data.ci.logo, sonst das der Legacy-Seed-Datei. ('', b'') wenn keins/zu groß."""
     cands = []
     if isinstance(ci, dict) and isinstance(ci.get("logo"), str):
         cands.append(ci["logo"])
-    try:
-        m = re.search(r"logo:'(data:image/(?:png|jpeg);base64,[A-Za-z0-9+/=]+)'", INDEX_PATH.read_text(encoding="utf-8"))
-        if m:
-            cands.append(m.group(1))
-    except OSError:
-        pass
+    if isinstance(seed.get("logoDataUrl"), str):
+        cands.append(seed["logoDataUrl"])
     for s in cands:
         m = re.match(r"^data:image/(png|jpeg);base64,(.+)$", s, re.S)
         if not m:
@@ -263,8 +273,8 @@ def _legacy_logo(ci: dict) -> tuple[str, bytes]:
     return "", b""
 
 
-def _existing_state_ci() -> dict | None:
-    """Liest (read-only) revision/data.ci. None = keine Bestandsdatenbank (Revision <= 1 oder keine)."""
+def _existing_state() -> dict | None:
+    """Liest (read-only) den Datenstand. None = keine Bestandsdatenbank (Revision <= 1 oder keine)."""
     if not DB_PATH.exists():
         return None
     try:
@@ -275,19 +285,21 @@ def _existing_state_ci() -> dict | None:
             con.close()
         if not row or int(row[0]) <= 1:
             return None
-        ci = json.loads(row[1]).get("ci")
-        return ci if isinstance(ci, dict) else {}
+        st = json.loads(row[1])
+        return st if isinstance(st, dict) else {}
     except (sqlite3.Error, ValueError, TypeError):
         return None
 
 
 def migrate_firma_config() -> dict:
-    """Fehlt die Datei: aus den bisherigen Werten (Bestand) bzw. neutral anlegen. Idempotent."""
+    """Fehlt die Datei: aus data.ci (+ optionaler Legacy-Seed-Datei) bzw. neutral anlegen. Idempotent."""
     cfg = config_defaults()
-    ci = _existing_state_ci()
-    if ci is not None:
-        cfg = _merge_missing(json.loads(json.dumps(LEGACY_SEED)), cfg)
-        cfg["tenantId"] = LEGACY_SEED["tenantId"]
+    st = _existing_state()
+    if st is not None:
+        ci = st.get("ci") if isinstance(st.get("ci"), dict) else {}
+        seed = legacy_seed()
+        if seed:
+            cfg = _merge_missing({k: v for k, v in seed.items() if k not in ("logoDataUrl", "_hinweis")}, cfg)
         co = cfg["company"]
         for k in ("address", "footer", "font"):
             if isinstance(ci.get(k), str) and ci[k]:
@@ -296,30 +308,278 @@ def migrate_firma_config() -> dict:
             co["name"] = ci["company"].strip()[:120]
         if isinstance(ci.get("color"), str) and CONFIG_HEX.match(ci["color"]):
             co["color"] = ci["color"]
-        name, raw = _legacy_logo(ci)
+        name, raw = _legacy_logo(ci, seed)
         if name:
             _atomic_write(CONFIG_DIR / name, raw)
             co["logoFile"] = name
+        if not seed and not co.get("name"):
+            print("WARNUNG: Bestandsdatenbank ohne firma.json und ohne Firmenwerte in data.ci - neutrale Config angelegt. "
+                  "Firmenprofil unter System setzen oder config\\firma.json aus der Sicherung zurueckspielen.", flush=True)
+        acc = (st.get("ui") or {}).get("accent") if isinstance(st.get("ui"), dict) else None
+        if isinstance(acc, str) and CONFIG_HEX.match(acc):
+            co["uiAccent"] = acc
+    cfg["uiAccentSynced"] = True
     save_config(cfg)
     return cfg
 
 
+CURRENT_CFG: dict | None = None
+
+
 def load_config() -> tuple[dict, list[str]]:
     """Start-Prüfung. Liefert (Konfiguration, Warnungen). Wirft ConfigError (MP-CFG-001/002) bei ungültiger Datei."""
+    global CURRENT_CFG
     warnings: list[str] = []
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
     if not CONFIG_PATH.exists():
-        return migrate_firma_config(), warnings
+        CURRENT_CFG = migrate_firma_config()
+        return CURRENT_CFG, warnings
     cfg = read_config_file()
     if int(cfg.get("schemaVersion", 1)) > CONFIG_SCHEMA:
         warnings.append(f"MP-CFG-003 {CONFIG_PATH}: schemaVersion {cfg['schemaVersion']} ist neuer als bekannt "
                         f"({CONFIG_SCHEMA}); Datei wird nur gelesen, nicht geändert.")
+        CURRENT_CFG = cfg
         return cfg, warnings
     merged = _merge_missing(cfg, config_defaults())
     merged["schemaVersion"] = max(int(cfg.get("schemaVersion", 1)), CONFIG_SCHEMA)
+    # V12.15.0: UI-Akzent wandert einmalig aus dem Datenstand (data.ui.accent) in die Config, damit die Anzeige gleich bleibt.
+    if not merged.get("uiAccentSynced"):
+        st = _existing_state()
+        acc = ((st or {}).get("ui") or {}).get("accent") if st else None
+        if isinstance(acc, str) and CONFIG_HEX.match(acc):
+            merged["company"]["uiAccent"] = acc
+        merged["uiAccentSynced"] = True
     if merged != cfg:
         save_config(merged)
+    CURRENT_CFG = merged
     return merged, warnings
+
+
+# ---------------------------------------------------------------------------------------------
+# V12.15.0: Config-API (GET alle angemeldeten Rollen, Schreiben nur Admin), Logo-Ablage, SVG-Entschärfung.
+# ---------------------------------------------------------------------------------------------
+CONFIG_WRITE_SECTIONS = {
+    "company": ("name", "productName", "color", "uiAccent", "font", "address", "footer", "logoFile"),
+    "locale": ("language", "timezone", "holidayRegion"),
+    "terms": ("projectNumber", "orderNumber", "roleLabels"),
+    "modules": CONFIG_MODULES,
+}
+LOGO_TYPES = {"image/png": "png", "image/jpeg": "jpg", "image/svg+xml": "svg"}
+LOGO_MIME = {"png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg", "svg": "image/svg+xml"}
+SVG_NS = "http://www.w3.org/2000/svg"
+XLINK_NS = "http://www.w3.org/1999/xlink"
+SVG_TAGS = {
+    "svg", "g", "defs", "path", "rect", "circle", "ellipse", "line", "polyline", "polygon", "text", "tspan",
+    "lineargradient", "radialgradient", "stop", "clippath", "mask", "symbol", "use", "title", "desc", "style",
+}
+SVG_BAD_VALUE = re.compile(r"javascript:|data:|vbscript:|@import|expression\s*\(|behaviou?r\s*:|-moz-binding|<|&#", re.I)
+SVG_URL = re.compile(r"url\s*\(\s*['\"]?\s*([^)'\"\s]*)", re.I)
+
+
+def _svg_value_ok(v: str) -> bool:
+    if SVG_BAD_VALUE.search(v):
+        return False
+    return all(m.startswith("#") for m in SVG_URL.findall(v))
+
+
+def svg_sanitize(raw: bytes) -> bytes:
+    """Prüft und entschärft ein SVG streng nach Positivliste. Wirft ValueError(grund) bei allem Unklaren
+    (Script, foreignObject, image, a, Animation, externe Verweise, Event-Handler, DOCTYPE/ENTITY ...)."""
+    if len(raw) > CONFIG_LOGO_MAX:
+        raise ValueError("zu groß")
+    try:
+        text = raw.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        raise ValueError("kein UTF-8")
+    if re.search(r"<!\s*(DOCTYPE|ENTITY)", text, re.I):
+        raise ValueError("DOCTYPE/ENTITY nicht erlaubt")
+    import xml.etree.ElementTree as ET
+    try:
+        root = ET.fromstring(text)
+    except ET.ParseError:
+        raise ValueError("kein gültiges XML")
+    if root.tag != f"{{{SVG_NS}}}svg":
+        raise ValueError("Wurzel ist nicht svg")
+    count = 0
+
+    def clean(el, depth):
+        nonlocal count
+        count += 1
+        if count > 5000 or depth > 40:
+            raise ValueError("zu komplex")
+        for k in list(el.attrib):
+            v = el.attrib[k]
+            local = k.rsplit("}", 1)[-1].lower()
+            ns = k[1:].split("}", 1)[0] if k.startswith("{") else ""
+            if local.startswith("on"):
+                raise ValueError("Event-Handler")
+            if local == "href":
+                if not v.startswith("#") or ns not in ("", XLINK_NS):
+                    raise ValueError("externer Verweis")
+            elif ns and ns != XLINK_NS and ns != "http://www.w3.org/XML/1998/namespace":
+                del el.attrib[k]          # Editor-Metadaten (inkscape:, sodipodi: ...) entfernen
+                continue
+            if not _svg_value_ok(v):
+                raise ValueError("unzulässiger Attributwert")
+        for ch in list(el):
+            if not isinstance(ch.tag, str):
+                el.remove(ch)
+                continue
+            ns, _, name = ch.tag[1:].partition("}") if ch.tag.startswith("{") else ("", "", ch.tag)
+            if ns != SVG_NS:
+                el.remove(ch)             # fremde Namensräume (metadata, namedview ...) entfernen
+                continue
+            if name.lower() == "metadata":
+                el.remove(ch)
+                continue
+            if name.lower() not in SVG_TAGS:
+                raise ValueError(f"Element {name} nicht erlaubt")
+            clean(ch, depth + 1)
+        if el.tag.endswith("}style") and not _svg_value_ok(el.text or ""):
+            raise ValueError("unzulässiges CSS")
+
+    clean(root, 0)
+    ET.register_namespace("", SVG_NS)
+    ET.register_namespace("xlink", XLINK_NS)
+    out = ET.tostring(root, encoding="utf-8", xml_declaration=True)
+    if len(out) > CONFIG_LOGO_MAX:
+        raise ValueError("zu groß")
+    return out
+
+
+def logo_check(data: bytes, ctype: str) -> tuple[str, bytes]:
+    """(Dateiendung, zu speichernde Bytes) oder ValueError(grund)."""
+    ext = LOGO_TYPES.get(ctype)
+    if not ext:
+        raise ValueError("Logo nur als PNG, JPG oder SVG")
+    if not data or len(data) > CONFIG_LOGO_MAX:
+        raise ValueError(f"Logo max. {CONFIG_LOGO_MAX // 1024} KB")
+    if ext == "png" and not data.startswith(b"\x89PNG\r\n\x1a\n"):
+        raise ValueError("Datei ist kein PNG")
+    if ext == "jpg" and not data.startswith(b"\xff\xd8\xff"):
+        raise ValueError("Datei ist kein JPG")
+    if ext == "svg":
+        data = svg_sanitize(data)
+    return ext, data
+
+
+def current_config() -> dict:
+    global CURRENT_CFG
+    if CURRENT_CFG is None:
+        try:
+            CURRENT_CFG = _merge_missing(read_config_file(), config_defaults()) if CONFIG_PATH.exists() else config_defaults()
+        except ConfigError:
+            CURRENT_CFG = config_defaults()
+    return CURRENT_CFG
+
+
+def config_revision() -> int:
+    r = current_config().get("revision", 0)
+    return r if isinstance(r, int) and not isinstance(r, bool) else 0
+
+
+def public_config(cfg: dict | None = None) -> dict:
+    """Branding-Teil für alle angemeldeten Rollen (ohne Lizenz, Update-Quelle, Mandanten-ID)."""
+    cfg = cfg or current_config()
+    d = config_defaults()
+    c = {**d["company"], **(cfg.get("company") or {})}
+    lf = c.get("logoFile") or ""
+    rev = config_revision()
+    return {
+        "revision": rev,
+        "company": {
+            "name": c["name"], "productName": c["productName"], "color": c["color"], "uiAccent": c["uiAccent"],
+            "font": c["font"], "address": c["address"], "footer": c["footer"],
+            "logoUrl": f"/api/config/logo?v={rev}" if lf else "",
+            "logoType": LOGO_MIME.get(lf.rsplit(".", 1)[-1].lower(), "") if lf else "",
+        },
+        "locale": {**d["locale"], **(cfg.get("locale") or {})},
+        "terms": {**d["terms"], **(cfg.get("terms") or {})},
+        "modules": {**d["modules"], **(cfg.get("modules") or {})},
+        "projectAreas": cfg.get("projectAreas") or d["projectAreas"],
+        "readOnly": int(cfg.get("schemaVersion", 1)) > CONFIG_SCHEMA,
+    }
+
+
+def _backup_logo(name: str) -> None:
+    """Vorheriges Logo als logo.<ext>.bak-<zeit> aufheben (letzte 5)."""
+    prev = (CONFIG_DIR / name) if name else None
+    if prev and prev.is_file():
+        shutil.copy2(prev, CONFIG_DIR / f"{name}.bak-{datetime.now().strftime('%Y%m%d-%H%M%S')}")
+        for old in sorted(CONFIG_DIR.glob("logo.*.bak-*"), key=lambda p: p.name, reverse=True)[5:]:
+            old.unlink(missing_ok=True)
+
+
+def config_apply(body: dict, logo: tuple[str, bytes] | None = None, remove_logo: bool = False) -> tuple[int, dict, str]:
+    """Wendet eine Änderung an. Rückgabe (HTTP-Status, Antwort, Audit-Detail). Revision wird geprüft."""
+    with CONFIG_LOCK:
+        cfg = json.loads(json.dumps(current_config()))
+        if int(cfg.get("schemaVersion", 1)) > CONFIG_SCHEMA:
+            return 409, mp_error("MP-CFG-003", "Firmenprofil ist schreibgeschützt (Datei stammt von neuerer Version)."), ""
+        rev = body.get("revision")
+        if not isinstance(rev, int) or isinstance(rev, bool):
+            return 400, mp_error("MP-CFG-002", "revision fehlt."), ""
+        if rev != config_revision():
+            return 409, mp_error("MP-CFG-004", "Firmenprofil wurde inzwischen geändert.", revision=config_revision(),
+                                 config=public_config(cfg)), ""
+        errs: list[str] = []
+        changed: list[str] = []
+        old_logo = (cfg.get("company") or {}).get("logoFile") or ""
+        if (body.get("company") or {}).get("logoFile") == "" if isinstance(body.get("company"), dict) else False:
+            remove_logo = True
+        for k in body:
+            if k != "revision" and k not in CONFIG_WRITE_SECTIONS and k != "projectAreas":
+                errs.append(f"{k}: nicht änderbar")
+        for sec, allowed in CONFIG_WRITE_SECTIONS.items():
+            part = body.get(sec)
+            if part is None:
+                continue
+            if not isinstance(part, dict):
+                errs.append(f"{sec}: Objekt erwartet")
+                continue
+            for k, v in part.items():
+                if k not in allowed:
+                    errs.append(f"{sec}.{k}: nicht änderbar")
+                elif k == "logoFile" and v != "":
+                    errs.append("company.logoFile: nur '' (entfernen); Logo per Upload setzen")
+                elif (cfg.setdefault(sec, {}).get(k) != v):
+                    cfg[sec][k] = v
+                    changed.append(f"{sec}.{k}")
+        if "projectAreas" in body and body["projectAreas"] != cfg.get("projectAreas"):
+            cfg["projectAreas"] = body["projectAreas"]
+            changed.append("projectAreas")
+        if errs:
+            return 400, mp_error("MP-CFG-002", "; ".join(errs[:5])), ""
+        new_file = ""
+        if logo:
+            new_file = f"logo.{logo[0]}"
+            cfg["company"]["logoFile"] = new_file
+            changed.append("company.logo")
+        if not changed:
+            return 200, {"ok": True, "unchanged": True, "config": public_config(cfg)}, ""
+        # Zuerst Logo-Datei bereitstellen (Validierung prüft ihre Existenz), dann firma.json atomar schreiben.
+        if new_file:
+            probe = [e for e in validate_config({**cfg, "company": {**cfg["company"], "logoFile": ""}})]
+            if probe:
+                return 400, mp_error("MP-CFG-002", "; ".join(probe[:5])), ""
+            _backup_logo(old_logo)
+            _atomic_write(CONFIG_DIR / new_file, logo[1])
+        else:
+            probe = validate_config(cfg)
+            if probe:
+                return 400, mp_error("MP-CFG-002", "; ".join(probe[:5])), ""
+            if remove_logo:
+                _backup_logo(old_logo)
+        cfg["revision"] = config_revision() + 1
+        try:
+            save_config(cfg)
+        except ConfigError as e:
+            return 400, mp_error(e.code, e.message), ""
+        global CURRENT_CFG
+        CURRENT_CFG = cfg
+        if old_logo and old_logo != cfg["company"].get("logoFile") and (CONFIG_DIR / old_logo).is_file():
+            (CONFIG_DIR / old_logo).unlink(missing_ok=True)
+        return 200, {"ok": True, "config": public_config(cfg)}, ", ".join(changed)[:480]
 SESSION_TTL = 12 * 60 * 60
 MAX_BODY = 8 * 1024 * 1024
 PBKDF2_ITERS = 310_000
@@ -542,8 +802,8 @@ def init_db() -> None:
                 },
                 "departments": [
                     {"id": "cnc", "name": "CNC", "planningType": "MACHINE", "active": True},
-                    {"id": "konf1", "name": "Konfektion 1 – Thomsen", "planningType": "LABOR_HOURS", "active": True},
-                    {"id": "konf2", "name": "Konfektion 2 – Keller", "planningType": "LABOR_HOURS", "active": True},
+                    {"id": "konf1", "name": "Konfektion 1", "planningType": "LABOR_HOURS", "active": True},
+                    {"id": "konf2", "name": "Konfektion 2", "planningType": "LABOR_HOURS", "active": True},
                     {"id": "konf3", "name": "Konfektion 3", "planningType": "LABOR_HOURS", "active": True},
                     {"id": "screenprint", "name": "Siebdruck", "planningType": "PROCESS", "active": True},
                     {"id": "thermoforming", "name": "Tiefziehen", "planningType": "CYCLE", "active": True}
@@ -3687,6 +3947,16 @@ class Handler(BaseHTTPRequestHandler):
             with DB_LOCK, db_session() as con:
                 status, payload = notif_get(con, user, path, parse_qs(parsed.query))
             return self.json_response(status, payload)
+        if path == "/api/config":
+            user = self.require_user()
+            if not user:
+                return
+            return self.json_response(200, public_config())
+        if path == "/api/config/logo":
+            user = self.require_user()
+            if not user:
+                return
+            return self.serve_logo()
         if path == "/api/history-archive":
             # Ältere Ist-Historie (nur lesen), neueste zuerst. Filter: from/to (YYYY-MM-DD, Fertigmeldung), limit/offset.
             user = self.require_user()
@@ -3730,19 +4000,24 @@ class Handler(BaseHTTPRequestHandler):
             nsig = qs.get("nsig", [""])[0]
             if not re.fullmatch(r"\d{1,18}:\d{1,18}", nsig):
                 nsig = ""   # V12.14.1: ungültige Signatur ignorieren, sonst käme der Poll nie zur Ruhe
+            # V12.15.0: Firmenprofil-Revision (crev) im selben Long-Poll; Änderung beendet die Wartezeit.
+            try:
+                crev = int(qs.get("crev", [""])[0])
+            except ValueError:
+                crev = None
             deadline = time.monotonic() + wait_ms / 1000.0
             with REVISION_CONDITION:
                 while True:
                     with DB_LOCK, db_session() as con:
                         row = con.execute("SELECT revision,updated_at,updated_by FROM state WHERE id=1").fetchone()
                         notif = notif_sig(con, user["username"])
-                    if int(row["revision"]) != since or wait_ms <= 0 or (nsig and nsig != notif["sig"]):
+                    if int(row["revision"]) != since or wait_ms <= 0 or (nsig and nsig != notif["sig"]) or (crev is not None and crev != config_revision()):
                         break
                     remaining = deadline - time.monotonic()
                     if remaining <= 0:
                         break
                     REVISION_CONDITION.wait(remaining)
-            return self.json_response(200, {"revision": row["revision"], "updatedAt": row["updated_at"], "updatedBy": row["updated_by"], "version": APP_VERSION, "notif": notif})
+            return self.json_response(200, {"revision": row["revision"], "updatedAt": row["updated_at"], "updatedBy": row["updated_by"], "version": APP_VERSION, "notif": notif, "cfg": config_revision()})
         if path == "/api/users":
             user = self.require_user(USER_MANAGER_ROLES)
             if not user:
@@ -3760,6 +4035,52 @@ class Handler(BaseHTTPRequestHandler):
         # Self-contained page: never expose files from BASE/data/backups/scripts.
         self.send_error(404)
         return
+
+    def _config_patch(self):
+        user = self.require_user(["admin"])
+        if not user:
+            return
+        if not self.require_current_client():
+            return
+        try:
+            body = self.read_json(64 * 1024)
+        except Exception as e:
+            return self.json_response(400, mp_error("MP-DATA-013", str(e)))
+        return self.config_write(user, body)
+
+    def serve_logo(self):
+        lf = (current_config().get("company") or {}).get("logoFile") or ""
+        p = CONFIG_DIR / lf if lf else None
+        if not p or not p.is_file():
+            return self.json_response(404, mp_error("MP-CFG-404", "Kein Logo hinterlegt."))
+        raw = p.read_bytes()
+        etag = '"' + hashlib.sha256(raw).hexdigest()[:32] + '"'
+        if self.headers.get("If-None-Match") == etag:
+            self.send_response(304)
+            self.send_header("ETag", etag)
+            self.end_headers()
+            return
+        self.send_response(200)
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Referrer-Policy", "no-referrer")
+        self.send_header("Cache-Control", "private, no-cache")
+        self.send_header("ETag", etag)
+        # SVG darf nie aktiv werden, auch nicht beim direkten Aufruf: keine Skripte, keine Ressourcen, Sandbox.
+        self.send_header("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; sandbox")
+        self.send_header("Content-Type", LOGO_MIME.get(lf.rsplit(".", 1)[-1].lower(), "application/octet-stream"))
+        self.send_header("Content-Length", str(len(raw)))
+        self.end_headers()
+        self.wfile.write(raw)
+
+    def config_write(self, user, body: dict, logo=None, remove_logo: bool = False):
+        status, payload, detail = config_apply(body, logo, remove_logo)
+        if status == 200 and detail:
+            with DB_LOCK, db_session() as con:
+                con.execute("INSERT INTO server_audit(ts,username,action,detail,revision) VALUES(?,?,?,?,NULL)",
+                            (now_iso(), user["username"], "Firmenprofil geändert", detail))
+            with REVISION_CONDITION:
+                REVISION_CONDITION.notify_all()
+        return self.json_response(status, payload)
 
     def serve_file(self, path: Path, ctype: str):
         if not path.exists():
@@ -3791,6 +4112,18 @@ class Handler(BaseHTTPRequestHandler):
             body = self.read_json(limit)
         except Exception as e:
             return self.json_response(400, mp_error("MP-DATA-013", str(e)))
+        if path == "/api/config/logo":
+            user = self.require_user(["admin"])
+            if not user:
+                return
+            if not self.require_current_client():
+                return
+            try:
+                raw = base64.b64decode(str(body.get("data", "")), validate=True)
+                ext, data = logo_check(raw, str(body.get("contentType", "")))
+            except ValueError as e:
+                return self.json_response(400, mp_error("MP-CFG-005", f"Logo abgelehnt: {e}"))
+            return self.config_write(user, {"revision": body.get("revision")}, logo=(ext, data))
         if path.startswith("/api/chat/"):
             user = self.require_user()
             if not user:
@@ -3925,6 +4258,8 @@ class Handler(BaseHTTPRequestHandler):
 
     def _do_PATCH(self):
         path = urlparse(self.path).path
+        if path == "/api/config":
+            return self._config_patch()
         if not path.startswith("/api/users/"):
             return self.json_response(404, mp_error("MP-REQ-404", "Nicht gefunden."))
         user = self.require_user(USER_MANAGER_ROLES)
@@ -3987,6 +4322,8 @@ class Handler(BaseHTTPRequestHandler):
             with DB_LOCK, db_session() as con:
                 status, payload = notif_put(con, user, path, body)
             return self.json_response(status, payload)
+        if path == "/api/config":
+            return self._config_patch()
         if path != "/api/state":
             return self.json_response(404, mp_error("MP-REQ-404", "Nicht gefunden."))
         user = self.require_user(WRITE_ROLES)

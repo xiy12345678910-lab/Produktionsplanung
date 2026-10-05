@@ -79,12 +79,24 @@ first = server.CONFIG_PATH.read_bytes()
 cfg2, _ = server.load_config()
 check(server.CONFIG_PATH.read_bytes() == first and not list(server.CONFIG_DIR.glob("*.bak-*")), "Zweiter Start: Datei byte-gleich, keine .bak")
 
-# 3) Bestand ohne data.ci: Einbauwerte des Bestandskunden
+# 3) Bestand ohne data.ci: Legacy-Seed-Datei (tools/, nicht im Paket) liefert die bisherigen Einbauwerte
 d = fresh()
 make_db(3)
+SEED = server.legacy_seed()
+check(SEED.get("company", {}).get("name") and SEED.get("logoDataUrl", "").startswith("data:image/jpeg;base64,"), "Legacy-Seed-Datei tools/legacy_employer_seed.json vorhanden")
 cfg, _ = server.load_config()
-check(cfg["company"]["name"] == server.LEGACY_SEED["company"]["name"] and cfg["company"]["color"] == "#E2382A", "Bestand ohne data.ci: bisherige Einbauwerte")
+check(cfg["company"]["name"] == SEED["company"]["name"] and cfg["company"]["color"] == "#E2382A", "Bestand ohne data.ci: Werte der Legacy-Seed-Datei")
 check(cfg["company"]["logoFile"] in ("logo.jpg", "logo.png") and (server.CONFIG_DIR / cfg["company"]["logoFile"]).stat().st_size <= server.CONFIG_LOGO_MAX, "Bestand ohne data.ci: bisheriges Logo übernommen (<= 420 KB)")
+check(not hasattr(server, "LEGACY_SEED"), "server.py enthält keine eingebauten Firmenwerte mehr")
+
+# 3b) Ohne Seed-Datei (Kundenpaket): Bestand wird aus data.ci + neutralen Werten migriert
+d = fresh()
+make_db(3)
+_old = server.LEGACY_SEED_PATH
+server.LEGACY_SEED_PATH = d / "gibt-es-nicht.json"
+cfg, _ = server.load_config()
+check(cfg["company"]["name"] == "" and cfg["tenantId"] == "firma" and cfg["terms"]["projectNumber"] == "Projekt" and cfg["company"]["logoFile"] == "", "Bestand ohne Seed-Datei und ohne data.ci: neutral")
+server.LEGACY_SEED_PATH = _old
 
 # 4) Revision 1 (nie gespeichert) gilt nicht als Bestand
 d = fresh()
@@ -229,6 +241,21 @@ for i in range(4):
     os.utime(b / "backups" / f"firma_2020-01-0{i+1}_000000.zip", (1000 + i, 1000 + i))
 m.prune(b / "backups")
 check(len(list((b / "backups").glob("firma_*.zip"))) == 2, "ZIP-Rotation behält KEEP Stück")
+
+# 9) V12.15.0: UI-Akzent wandert einmalig aus dem Datenstand in die Config (Anzeige bleibt gleich)
+d = fresh()
+con = sqlite3.connect(server.DB_PATH)
+con.execute("CREATE TABLE state(id INTEGER PRIMARY KEY, revision INTEGER, json TEXT)")
+con.execute("INSERT INTO state VALUES(1,5,?)", (json.dumps({"ui": {"accent": "#aa0011"}}),))
+con.commit(); con.close()
+server.CONFIG_DIR.mkdir()
+server.CONFIG_PATH.write_text(json.dumps({"schemaVersion": 1, "tenantId": "abc", "company": {"name": "X", "uiAccent": "#1f5eff"}}), encoding="utf-8")
+cfg, _ = server.load_config()
+check(cfg["company"]["uiAccent"] == "#aa0011" and cfg["uiAccentSynced"] is True, "Akzent aus data.ui.accent einmalig in die Config übernommen")
+first = server.CONFIG_PATH.read_bytes()
+con = sqlite3.connect(server.DB_PATH); con.execute("UPDATE state SET json=?", (json.dumps({"ui": {"accent": "#00ff00"}}),)); con.commit(); con.close()
+cfg, _ = server.load_config()
+check(server.CONFIG_PATH.read_bytes() == first and cfg["company"]["uiAccent"] == "#aa0011", "Zweiter Start: Config gewinnt, Datenstand ändert nichts mehr")
 
 print(f"\n{sum(RESULTS)}/{len(RESULTS)} bestanden")
 sys.exit(0 if all(RESULTS) else 1)

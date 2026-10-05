@@ -1,4 +1,4 @@
-﻿# Maschinenplanung - Update direkt von GitHub (fuer den normalen Windows-Benutzer, z. B. boensch).
+﻿# Maschinenplanung - Update direkt von GitHub (fuer den normalen Windows-Benutzer, z. B. <Benutzername>).
 #
 # V12.10.2 - gesicherte Update-Kette:
 #   - Quelle ist ein Release (Tag), dessen Commit in "main" liegt - kein beweglicher Branch-Kopf.
@@ -18,11 +18,24 @@ param(
     [string]$Sha256,
     [string]$Branch,
     [switch]$UnsicherBranch,
-    [string]$Repo = 'xiy12345678910-lab/Produktionsplanung',
+    [string]$Repo,
     [string]$Ziel = (Join-Path $env:USERPROFILE 'Downloads\Maschinenplanung_Update'),
     [switch]$NurHerunterladen
 )
 $ErrorActionPreference = 'Stop'
+# V12.15.0: Quelle aus LAN_CONFIG.json (Feld UpdateRepo, "konto/repo") im Live-Ordner bzw. neben dem Skript.
+# Ohne Eintrag gilt unveraendert der bisherige Standard.
+if (-not $Repo) {
+    $Repo = 'xiy12345678910-lab/Produktionsplanung'
+    foreach ($cfgFile in @('C:\ProgramData\Maschinenplanung\LAN_CONFIG.json', (Join-Path $PSScriptRoot 'LAN_CONFIG.json'))) {
+        try {
+            if (Test-Path -LiteralPath $cfgFile) {
+                $cfgRepo = [string](Get-Content -LiteralPath $cfgFile -Raw | ConvertFrom-Json).UpdateRepo
+                if ($cfgRepo -match '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$') { $Repo = $cfgRepo; break }
+            }
+        } catch { }
+    }
+}
 # Windows PowerShell 5.1 nutzt sonst ggf. TLS 1.0 - GitHub verlangt TLS 1.2
 [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
 $ProgressPreference = 'SilentlyContinue'   # Fortschrittsbalken bremst Invoke-WebRequest stark

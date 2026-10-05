@@ -1,4 +1,4 @@
-MASCHINENPLANUNG V12.14.1 - FEHLERCODES
+MASCHINENPLANUNG V12.15.0 - FEHLERCODES
 ======================================
 
 Jeder Fehler wird dem Mitarbeiter als Klartext + Code angezeigt.
@@ -395,4 +395,12 @@ MP-CFG-001   firma.json nicht lesbar oder kein JSON. Start verweigert, Datei unv
              Sicherung steht in der Meldung (config\firma.json.bak-<zeit>), zurueckkopieren oder Restore -MitConfig.
 MP-CFG-002   Feld in firma.json ungueltig (Meldung nennt Feld, z. B. company.color). Start verweigert.
 MP-CFG-003   schemaVersion neuer als dieses Programm (nur Warnung): Datei wird gelesen, nicht geaendert.
+             Beim Speichern im Firmenprofil: schreibgeschuetzt (409), Datei bleibt unveraendert.
+
+V12.15.0 NEU (Firmenprofil-API)
+MP-CFG-004   Firmenprofil wurde inzwischen von jemand anderem geaendert (409). Die Antwort enthaelt den aktuellen
+             Stand, die Oberflaeche laedt ihn neu; Eingabe bitte wiederholen.
+MP-CFG-005   Logo abgelehnt: nur PNG, JPG oder SVG bis 420 KB; Dateiinhalt muss zum Typ passen; SVG ohne Script,
+             eingebettete Seiten/Bilder, Animation, Event-Handler und externe Verweise.
+MP-CFG-404   Kein Logo hinterlegt (GET /api/config/logo).
 

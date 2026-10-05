@@ -8,13 +8,31 @@ from zoneinfo import ZoneInfo
 # Windows-Python bringt keine IANA-Zeitzonendatenbank mit; ohne das Paket
 # "tzdata" schlägt ZoneInfo fehl. Dann wird die Systemzeitzone des Servers
 # verwendet (astimezone() ohne Argument, inkl. Sommer-/Winterzeit).
-try:
-    LOCAL_TZ = ZoneInfo(os.environ.get("MP_TIMEZONE", "Europe/Berlin"))
-except Exception:
+def _config_timezone():
+    """V12.15.0: locale.timezone aus config/firma.json (MP_CONFIG_DIR bzw. <Programmordner>/config), sonst ''."""
     try:
-        LOCAL_TZ = ZoneInfo("Europe/Berlin")
+        import json
+        from pathlib import Path
+        d = Path(os.environ.get("MP_CONFIG_DIR") or (Path(__file__).resolve().parent / "config"))
+        tz = json.loads((d / "firma.json").read_text(encoding="utf-8-sig")).get("locale", {}).get("timezone", "")
+        return tz if isinstance(tz, str) else ""
     except Exception:
-        LOCAL_TZ = None
+        return ""
+
+
+def _pick_tz():
+    # Vorrang: Umgebung MP_TIMEZONE > Config locale.timezone > Europe/Berlin
+    for name in (os.environ.get("MP_TIMEZONE", ""), _config_timezone(), "Europe/Berlin"):
+        if not name:
+            continue
+        try:
+            return ZoneInfo(name)
+        except Exception:
+            continue
+    return None
+
+
+LOCAL_TZ = _pick_tz()
 
 def parse_dt(value):
     if not isinstance(value, str) or not value.strip():

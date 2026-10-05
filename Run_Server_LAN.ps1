@@ -52,6 +52,8 @@ try {
         profile               = $lan.Profile
         updated_at            = (Get-Date).ToString('o')
     }
+    # V12.15.0: manuell eingetragenes UpdateRepo ("konto/repo") bleibt beim Neuschreiben erhalten.
+    try { $oldRepo = [string](Get-Content -LiteralPath "$Base\LAN_CONFIG.json" -Raw | ConvertFrom-Json).UpdateRepo; if ($oldRepo) { $config['UpdateRepo'] = $oldRepo } } catch { }
     $config | ConvertTo-Json | Set-Content -Path "$Base\LAN_CONFIG.json" -Encoding UTF8
     @(
         "PC-Name: http://$env:COMPUTERNAME`:$Port",

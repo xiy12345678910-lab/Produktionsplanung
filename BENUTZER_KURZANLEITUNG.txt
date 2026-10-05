@@ -1,4 +1,4 @@
-MASCHINENPLANUNG V12.14.1 - KURZANLEITUNG FUER BENUTZER
+MASCHINENPLANUNG V12.15.0 - KURZANLEITUNG FUER BENUTZER
 ======================================================
 
 ANMELDEN
@@ -18,6 +18,9 @@ RUECKGAENGIG
 BENACHRICHTIGUNGEN
 - Glocke 🔔 oben rechts: Zahl = neu. Klick oeffnet die Liste, Klick auf einen Eintrag fuehrt zum Ziel und markiert ihn als gelesen.
 - ✓ alle gelesen, ⚙ Einstellungen (Arten an/aus, Ruhezeit). Meldung im Browser nur mit https.
+
+FIRMENPROFIL (nur Admin)
+- System > Firma & System: Name, Logo (⤒ hochladen, ✕ entfernen), Farben, Schrift, Begriff fuer die Projektnummer. Aenderungen sehen alle sofort.
 
 DARSTELLUNG
 - Oben rechts ☀ / ☾ / ▣ klicken: Hell -> Dunkel -> Halle (gross, hoher Kontrast). Gilt nur fuer diesen PC.

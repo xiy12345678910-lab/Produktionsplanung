@@ -1,4 +1,4 @@
-MASCHINENPLANUNG V12.14.1 - WINDOWS-SERVER (LAN ONLY)
+MASCHINENPLANUNG V12.15.0 - WINDOWS-SERVER (LAN ONLY)
 =====================================================
 
 1. VORAUSSETZUNGEN
@@ -32,7 +32,7 @@ MASCHINENPLANUNG V12.14.1 - WINDOWS-SERVER (LAN ONLY)
    7) Ab V12.4.5/V12.6 wird beim ersten Start die Benutzertabelle um neue Rollen (Arbeitsvorbereitung,
       Vertrieb) erweitert. Dabei werden alle Sitzungen beendet: jeder meldet sich einmal neu an.
 
-2b. UPDATE DIREKT VON GITHUB (Windows-Benutzer, z. B. boensch) - ab V12.10.2 nur aus Releases
+2b. UPDATE DIREKT VON GITHUB (Windows-Benutzer, z. B. <Benutzername>) - ab V12.10.2 nur aus Releases
    Normale PowerShell (kein Administrator):
         powershell -ExecutionPolicy Bypass -File C:\ProgramData\Maschinenplanung\Update_von_GitHub.ps1
    - Nimmt das neueste GitHub-Release; dessen Commit muss in "main" liegen. Bestimmte Version: -Tag v12.10.2
@@ -43,8 +43,8 @@ MASCHINENPLANUNG V12.14.1 - WINDOWS-SERVER (LAN ONLY)
    - Branch-Stand nur zum Testen: -Branch <name> -UnsicherBranch
    - Nur herunterladen (ohne Installation): -NurHerunterladen
    ERSTES Update auf V12.10.2 (alter Updater kennt noch keine Releases):
-        $B = 'claude/new-session-95ro2l'
-        irm "https://raw.githubusercontent.com/xiy12345678910-lab/Produktionsplanung/$B/Update_von_GitHub.ps1" -OutFile "$env:USERPROFILE\Downloads\Update_von_GitHub.ps1"
+        $B = '<Branch>'
+        irm "https://raw.githubusercontent.com/<GitHub-Konto>/<Repo>/$B/Update_von_GitHub.ps1" -OutFile "$env:USERPROFILE\Downloads\Update_von_GitHub.ps1"
         powershell -ExecutionPolicy Bypass -File "$env:USERPROFILE\Downloads\Update_von_GitHub.ps1" -Branch $B -UnsicherBranch
    RELEASE ANLEGEN (GitHub, einmal je Version): Stand nach main mergen -> Releases -> "Draft a new
    release" -> Tag vX.Y.Z auf main -> Veroeffentlichen.
@@ -56,6 +56,9 @@ MASCHINENPLANUNG V12.14.1 - WINDOWS-SERVER (LAN ONLY)
    - Updates, Rollback, Umzug und Vorabtest behalten sie; UPDATE_LIVE.ps1 kopiert nur Programmdateien.
    - Backup_Datenbank.py legt zu jeder Sicherung firma_<zeit>.zip an.
      Restore: .\Restore_Datenbank.ps1 -MitConfig
+   - Aenderungen macht der Admin in der Oberflaeche (System > Firma & System > Firmenprofil), nicht per Dateiedit.
+   - Update von V12.13 oder aelter: erst V12.14.1 installieren, dann V12.15.0 (Bestandswerte stehen danach in firma.json).
+   - Optional in LAN_CONFIG.json: "UpdateRepo": "konto/repo" (Quelle fuer Update_von_GitHub.ps1).
    - Ungueltige Datei: Server startet nicht, Meldung MP-CFG-001/002 (siehe FEHLERCODES.txt).
 
 3. ERSTINSTALLATION (neuer PC)
@@ -70,7 +73,7 @@ MASCHINENPLANUNG V12.14.1 - WINDOWS-SERVER (LAN ONLY)
      60 Sicherungen (ca. 30 Tage) in backups\.
    - Zweitkopie (dringend empfohlen): Datei BACKUP_ZIEL.txt im Live-Ordner anlegen und als erste
      Zeile das Ziel eintragen, z. B.  \\NAS\Sicherung\Maschinenplanung
-     Der Computer (SYSTEM-Konto, im Netz als WTPC207$) braucht dort Schreibrechte.
+     Der Computer (SYSTEM-Konto, im Netz als <Rechnername>$) braucht dort Schreibrechte.
 
 5. VERWALTUNG (PowerShell im Live-Ordner C:\ProgramData\Maschinenplanung)
    .\Server_Status.ps1          Status, Version, letztes Backup (rot bei Fehler/>26 h), Firewall
