@@ -1,6 +1,6 @@
 # Übergabe – Produktionsplanung (Stand 05.10.2026)
 
-Branch: `claude/new-session-95ro2l` (Basis `claude/new-session-mpx5ch`) · Live-fähiger Stand: **V12.11.0** (getestet, Abnahme siehe unten)
+Branch: `claude/new-session-95ro2l` (Basis `claude/new-session-mpx5ch`) · Live-fähiger Stand: **V12.12.0** (getestet, Abnahme siehe unten)
 
 ## 1. Fertig und getestet (per `UPDATE_LIVE.ps1` einspielbar)
 
@@ -17,6 +17,7 @@ Branch: `claude/new-session-95ro2l` (Basis `claude/new-session-mpx5ch`) · Live-
 | 12.10.2 | Betrieb (V-01, V-05): Update nur aus Releases auf main mit festem Commit/SHA256 und geschütztem Staging; Backup über .tmp + Prüfung, `Restore_Datenbank.ps1`, Backup-Warnungen, `update_backups` rotiert | `tests/test_backup.py` 11/11, `tests/ps_syntax.ps1` 15/15 |
 | 12.10.2 | V-11 CI (`.github/workflows/ci.yml`), `package.json` (Playwright 1.56.1), `requirements.txt` (tzdata mit Hash), Versionsprüfung; V-07 Python-ACL-Prüfung | `tests/test_version.py` 9/9 |
 | 12.11.0 | Darstellung Hell/Dunkel/Halle (CSS-Variablen je Rolle, Kontrast ≥ 4,5 bzw. ≥ 7, Halle ≥ 14 px, Status-Symbole, `?theme=&view=&dept=`) | `tests/e2e_theme.mjs` 20/20 |
+| 12.12.0 | Undo/Redo (↶ ↷, Strg+Z/Y): Diff der geänderten Datensätze je save(), Konfliktprüfung gegen Fremdänderungen, max. 50, Rücknahme abgelehnter Änderungen | `tests/e2e_undo.mjs` 12/12 |
 | alle | Rollen-Rundgang (8 Rollen × alle Ansichten × Desktop/Handy) | `tests/e2e_roles.mjs` 374/374 |
 | alle | Regression Rechte/Migration (künstliche DB über `tests/make_test_db.py`) | `tests/test_regression.py` 151/151 |
 | alle | Server-Regeln ohne Browser | `tests/test_v128.py` 35/35 |

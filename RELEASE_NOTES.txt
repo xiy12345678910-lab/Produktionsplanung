@@ -1,3 +1,19 @@
+MASCHINENPLANUNG V12.12.0 - RELEASE NOTES
+=========================================
+Datum: 05.10.2026 · Basis: V12.11.0 · Update mit UPDATE_LIVE.ps1, Daten bleiben erhalten
+
+RUECKGAENGIG / WIEDERHOLEN
+- Knoepfe ↶ ↷ oben rechts (Tooltip nennt die Aktion), Strg+Z / Strg+Y (bzw. Strg+Umschalt+Z).
+- Gilt fuer Planungsaktionen: Verschieben, Prioritaet, Status geplant/freigegeben, Termine,
+  Auftrag anlegen/loeschen, Personalzuordnung, Abwesenheit, Formate, Projekte.
+  Nie rueckgaengig: Produktion starten/fertig melden, Import, Planstand wiederherstellen, Benutzer.
+- Bis 50 Schritte je Sitzung, nur im Speicher. Wurde derselbe Datensatz inzwischen von jemand anderem
+  geaendert, wird nichts veraendert (MP-UNDO-001, Meldung nennt den Benutzer).
+- In Eingabefeldern bleibt Strg+Z das normale Browser-Rueckgaengig. Lesende sehen keine Knoepfe.
+
+TESTS
+- Neu: tests/e2e_undo.mjs 12/12.
+
 MASCHINENPLANUNG V12.11.0 - RELEASE NOTES
 =========================================
 Datum: 05.10.2026 · Basis: V12.10.2 (enthaelt alle Hotfixes) · Update mit UPDATE_LIVE.ps1, Daten bleiben erhalten
