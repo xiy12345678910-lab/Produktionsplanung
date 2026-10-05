@@ -1,4 +1,4 @@
-MASCHINENPLANUNG V12.8.1 - FEHLERCODES
+MASCHINENPLANUNG V12.8.2 - FEHLERCODES
 ======================================
 
 Jeder Fehler wird dem Mitarbeiter als Klartext + Code angezeigt.
@@ -355,3 +355,10 @@ MP-MACH-015  Parallelplaetze einer Maschine/Linie muessen eine ganze Zahl von 1 
 MP-MACH-016  Parallelplaetze erst verringern, wenn auf der Ressource nichts freigegeben ist oder laeuft.
 MP-PROD-010  (geaendert) Mehr laufende/pausierte Auftraege auf einer Maschine als Parallelplaetze.
 MP-PLAN-058  (geaendert) Freigabe ueberschreitet die Parallelplaetze der Maschine/Linie (feste Belegung).
+
+V12.8.2 NEU (Bereiche anlegen, Bereichsarten)
+MP-DEPT-004  Bereichsart ungueltig bzw. Vertrieb/Entwicklung ohne Maschinen, Auftraege, Formate.
+MP-DEPT-005  Bereichsname fehlt/zu lang/doppelt oder ID fuer feste Projektbereiche reserviert.
+MP-DEPT-006  Bereich mit offenen Auftraegen kann nicht deaktiviert werden.
+MP-GF-030    (erweitert) GF legt Bereiche an (Name, Art, aktiv) und nur die erste Maschine/Linie
+             eines Bereichs; keine Loeschung von Bereichen, keine Aenderung bestehender Maschinen.

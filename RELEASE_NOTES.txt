@@ -1,3 +1,23 @@
+MASCHINENPLANUNG V12.8.2 - RELEASE NOTES
+========================================
+Datum: 05.10.2026 · Basis: V12.8.1 · Update mit UPDATE_LIVE.ps1, Daten bleiben erhalten
+
+GF LEGT BEREICHE AN
+- GF-Ansicht → "Bereiche anlegen & verwalten": neuer Bereich mit Art Produktion, Vertrieb oder
+  Entwicklung. Produktion: gleich die erste Maschine oder Linie mit Schichtmodell (1-/2-schichtig)
+  und Umruestzeit. Bestehende Bereiche umbenennen, Art aendern, deaktivieren (nicht loeschen).
+- Vertrieb/Entwicklung bearbeiten nur Projektaufgaben: keine Maschinen, Auftraege, Formate,
+  Fertigmeldungen (serverseitig MP-DEPT-004). Ihre Bereichsleitung startet in "Projekte" und sieht
+  keinen Wochenplan, kein Personal und kein System.
+- Bereichslisten zeigen nur Produktionsbereiche: Bereichsauswahl, Auftragsdialog,
+  Maschineneinstellungen, GF-Raster, Mitarbeiter-Stammbereich. Projektprozesse koennen allen
+  Bereichen zugeordnet werden; die Arbeitsvorbereitung plant nur Prozesse in Produktionsbereichen.
+- Deaktivieren nur ohne offene Auftraege (MP-DEPT-006); Art aendern nur ohne Maschinen (MP-DEPT-004).
+- Fehlerbehebung zu V12.8.0: Beim Serverstart werden die Formatlisten angelegt. Ohne sie haette der
+  erste Speichervorgang von GF, Projektmanagement und Vertrieb mit "darf 'formats'/'baseFormats'
+  nicht aendern" abgebrochen.
+- Tests: tests/test_v128.py (Server-Regeln), tests/e2e_departments.mjs.
+
 MASCHINENPLANUNG V12.8.1 - RELEASE NOTES
 ========================================
 Datum: 05.10.2026 · Basis: V12.8.0 · Update mit UPDATE_LIVE.ps1, Daten bleiben erhalten

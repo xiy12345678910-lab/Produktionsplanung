@@ -25,7 +25,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-APP_VERSION = "12.8.1"
+APP_VERSION = "12.8.2"
 HOST = os.environ.get("MP_HOST", "0.0.0.0")
 PORT = int(os.environ.get("MP_PORT", "8765"))
 BASE = Path(__file__).resolve().parent
@@ -230,7 +230,26 @@ def init_db() -> None:
         migrate_state_v1261(con)
         migrate_state_v1270(con)
         normalize_state_v1270(con)
+        migrate_state_v1280(con)
         archive_history_on_start(con)
+
+
+def migrate_state_v1280(con: sqlite3.Connection) -> None:
+    """V12.8.0: Formatlisten anlegen. Der Client führt sie immer; fehlten sie im Serverstand,
+    sähe der erste Speichervorgang von GF/PM/Vertrieb wie eine unerlaubte Änderung aus."""
+    row = con.execute("SELECT json FROM state WHERE id=1").fetchone()
+    if not row:
+        return
+    state = json.loads(row["json"])
+    changed = False
+    for key in ("formats", "baseFormats"):
+        if not isinstance(state.get(key), list):
+            state[key] = []
+            changed = True
+    if changed:
+        con.execute("UPDATE state SET json=?,updated_at=?,updated_by=? WHERE id=1",
+                    (json.dumps(state, ensure_ascii=False, separators=(",", ":")), now_iso(), "V12.8.0 migration"))
+        print("DB-MIGRATION state: V12.8.0 Formatlisten angelegt")
 
 
 def migrate_state_v1242(con: sqlite3.Connection) -> None:
@@ -1105,6 +1124,13 @@ def validate_formats(new: dict, dept_ids: set) -> tuple[bool, str, str]:
 
 
 TEMPLATE_KINDS = {"pm", "av"}
+# V12.8.2: Bereichsarten. Produktion plant über Maschinen/Linien, Vertrieb/Entwicklung nur Projektaufgaben.
+DEPARTMENT_KINDS = {"production", "sales", "development"}
+PROJECT_FIXED_AREA_IDS = {"sales", "pm", "engineering", "calculation", "purchasing", "quality", "av"}
+
+
+def production_department_ids(state: dict) -> set:
+    return {str(d.get("id")) for d in (state.get("departments") or []) if isinstance(d, dict) and str(d.get("kind") or "production") == "production"}
 
 
 def validate_process_templates(templates) -> tuple[bool, str, str]:
@@ -1165,6 +1191,7 @@ def validate_state(old: dict, new: dict) -> tuple[bool, str, str]:
 
     dept_ids = set()
     dept_types = {}
+    dept_kinds = {}
     valid_types = {"MACHINE", "LABOR_HOURS", "PROCESS", "CYCLE"}
     for dep in departments:
         if not isinstance(dep, dict) or not re.fullmatch(r"[A-Za-z0-9_-]{1,40}", str(dep.get("id") or "")):
@@ -1175,8 +1202,29 @@ def validate_state(old: dict, new: dict) -> tuple[bool, str, str]:
             return False, "MP-DEPT-002", f"Doppelte Bereichs-ID '{did}'."
         if ptype not in valid_types:
             return False, "MP-DEPT-003", f"Bereich '{did}' hat einen ungültigen Planungstyp."
+        kind = str(dep.get("kind") or "production")
+        if kind not in DEPARTMENT_KINDS:
+            return False, "MP-DEPT-004", f"Bereich '{did}' hat eine ungültige Art."
+        name = str(dep.get("name") or "").strip()
+        if not name or len(name) > 60:
+            return False, "MP-DEPT-005", f"Bereich '{did}': Name fehlt oder ist zu lang (max. 60)."
+        if did in PROJECT_FIXED_AREA_IDS:
+            return False, "MP-DEPT-005", f"Bereichs-ID '{did}' ist für feste Projektbereiche reserviert."
         dept_ids.add(did)
         dept_types[did] = ptype
+        dept_kinds[did] = kind
+
+    # V12.8.2: Vertrieb/Entwicklung bearbeiten nur Projektaufgaben – keine Maschinen, Aufträge, Formate.
+    for name, what in (("machines", "Maschine/Linie"), ("workSteps", "Auftrag"), ("formats", "Format"), ("baseFormats", "Grundformat")):
+        for rec in new.get(name) or []:
+            if isinstance(rec, dict) and dept_kinds.get(str(rec.get("departmentId") or "cnc"), "production") != "production":
+                return False, "MP-DEPT-004", f"Bereich '{rec.get('departmentId')}' ist kein Produktionsbereich – {what} nicht zulässig."
+    old_inactive = {str(d.get("id")) for d in (old.get("departments") or []) if isinstance(d, dict) and d.get("active") is False}
+    for dep in departments:
+        if dep.get("active") is False and str(dep.get("id")) not in old_inactive:
+            did = str(dep.get("id"))
+            if any(isinstance(x, dict) and str(x.get("departmentId")) == did and str(x.get("status") or "planned") in {"planned", "released", "running", "paused"} for x in work_steps if isinstance(work_steps, list)):
+                return False, "MP-DEPT-006", f"Bereich '{dep.get('name') or did}' hat noch offene Aufträge und kann nicht deaktiviert werden."
 
     if not isinstance(projects, list):
         return False, "MP-PM-001", "Projekt-/Auftragsstamm ist ungültig."
@@ -1673,7 +1721,7 @@ def validate_state(old: dict, new: dict) -> tuple[bool, str, str]:
                 return False, "MP-PROD-019", f"Auftrag '{o.get('order') or oid}': Laufzeitpunkt fehlt."
 
         if status in {"running", "paused"}:
-            # V12.8.1: bis zu 'lanes' laufende/pausierte Aufträge je Maschine/Linie (Parallelbelegung)
+            # V12.8.2: bis zu 'lanes' laufende/pausierte Aufträge je Maschine/Linie (Parallelbelegung)
             running_here = locked_by_machine.setdefault(mid, set())
             running_here.add(oid)
             if len(running_here) > machine_lanes(new, mid):
@@ -1836,11 +1884,42 @@ def _need_map(state: dict) -> dict:
     return {_need_key(x): x for x in (state.get("departmentStaffNeeds") or []) if isinstance(x, dict)}
 
 
+def _gf_departments_change(old: dict, new: dict) -> tuple[bool, str]:
+    """V12.8.2: GF legt Bereiche an (Name, Art, aktiv) und richtet einem neuen Produktionsbereich
+    die erste Maschine/Linie ein. Bereiche werden nicht gelöscht, nur deaktiviert."""
+    da, db = _record_map(old.get("departments")), _record_map(new.get("departments"))
+    if set(da) - set(db):
+        return False, "GF löscht keine Bereiche – stattdessen deaktivieren."
+    for did, b in db.items():
+        a = da.get(did)
+        if a is None:
+            if set(b) - {"id", "name", "kind", "active", "planningType"} or str(b.get("planningType") or "") != "MACHINE":
+                return False, "Neuer Bereich: nur Name, Art und aktiv (Planung über Maschinen/Linien)."
+            continue
+        diff = {k for k in set(a) | set(b) if canonical(a.get(k)) != canonical(b.get(k))}
+        if diff - {"name", "kind", "active"}:
+            return False, f"GF ändert an Bereichen nur Name, Art und aktiv ({sorted(diff)[0]})."
+    ma, mb = _record_map(old.get("machines")), _record_map(new.get("machines"))
+    old_with_machines = {str(m.get("departmentId") or "cnc") for m in ma.values()}
+    for mid in set(ma) | set(mb):
+        a, b = ma.get(mid), mb.get(mid)
+        if canonical(a) == canonical(b):
+            continue
+        if a is not None:
+            return False, "Bestehende Maschinen/Linien pflegt der Bereich bzw. Admin."
+        if str(b.get("departmentId") or "cnc") in old_with_machines:
+            return False, "GF legt nur die erste Maschine/Linie eines Bereichs an."
+    return True, ""
+
+
 def gf_change_allowed(old: dict, new: dict) -> tuple[bool, str]:
-    allowed_root = {"departmentStaffNeeds", "weeklyEmployeeDeployments", "exceptions", "audit", "meta", "ui", "employees"}
+    allowed_root = {"departmentStaffNeeds", "weeklyEmployeeDeployments", "exceptions", "audit", "meta", "ui", "employees", "departments", "machines"}
     for key in set(old) | set(new):
         if key not in allowed_root and canonical(old.get(key)) != canonical(new.get(key)):
             return False, f"GF darf operative Produktionsdaten '{key}' nicht ändern."
+    ok, reason = _gf_departments_change(old, new)
+    if not ok:
+        return False, reason
     ea, eb = _record_map(old.get("employees")), _record_map(new.get("employees"))
     if set(ea) != set(eb):
         return False, "GF legt keine Mitarbeiter an und entfernt keine."
@@ -1915,7 +1994,7 @@ def project_changes_allowed(old: dict, new: dict, role: str, username: str, depa
     elif role == "sales":
         own_areas = {"sales"}
     elif role == "production_planning":
-        own_areas = {str(d.get("id")) for d in (new.get("departments") or []) if isinstance(d, dict)} | {"av"}
+        own_areas = production_department_ids(new) | {"av"}
     else:
         own_areas = set()
     fields = PROJECT_FIELDS.get(kind, set())
