@@ -26,7 +26,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-APP_VERSION = "12.10.1"
+APP_VERSION = "12.10.2"
 HOST = os.environ.get("MP_HOST", "0.0.0.0")
 PORT = int(os.environ.get("MP_PORT", "8765"))
 BASE = Path(__file__).resolve().parent
@@ -2966,7 +2966,7 @@ class Handler(BaseHTTPRequestHandler):
         host, port = split_host_port(self.headers.get("Host", ""))
         if not host_name_allowed(host, bind_ip) or port not in (None, bind_port):
             self.close_connection = True
-            self.json_response(421, mp_error("MP-REQ-421", "Unbekannter Server-Name. Bitte die vom Admin genannte Adresse verwenden."))
+            self.json_response(421, mp_error("MP-REQ-421", "Falsche Adresse. Bitte die Server-Adresse vom Admin nutzen."))
             return False
         if write:
             origin = str(self.headers.get("Origin", "") or "").strip()
@@ -2990,7 +2990,7 @@ class Handler(BaseHTTPRequestHandler):
             sys.stderr.write(f"MP-SRV-500 {self.command} {urlparse(self.path).path}: {type(e).__name__}: {e}\n")
             self.close_connection = True
             try:
-                self.json_response(500, mp_error("MP-SRV-500", "Interner Serverfehler. Bitte erneut versuchen oder Admin informieren."))
+                self.json_response(500, mp_error("MP-SRV-500", "Serverfehler. Bitte erneut versuchen."))
             except Exception:
                 pass
 

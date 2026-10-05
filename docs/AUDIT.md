@@ -1,6 +1,11 @@
 # Audit & Verbesserungsliste – Produktionsplanung V12.10.1
 
-Stand: 05.10.2026 · Branch `claude/new-session-mpx5ch` · Nur Analyse, kein Code geändert.
+Stand: 05.10.2026 · Branch `claude/new-session-mpx5ch` · Analyse von V12.10.1.
+
+> **Umsetzung V12.10.2** (Branch `claude/new-session-95ro2l`): V-02, V-03, V-04, V-12 und die README-Version sind erledigt.
+> Abweichung zu N8: `or` statt `and` hätte Altbestände blockiert (fertige Aufträge wandern in die Historie, gelöschte bleiben verknüpft).
+> Umgesetzt ist daher: Eine **neue** Verknüpfung muss auf einen vorhandenen oder fertigen Auftrag zeigen.
+> Bei B-M5 ist nur das Schreibrecht der AV entfernt; `formats` wird im GET noch nicht je Rolle ausgeblendet.
 Umfang: `server.py` (3264 Z.), `index.html` (532 KB), PowerShell-/Backup-Tooling, Tests, Doku.
 
 ## 0. Zusammenfassung

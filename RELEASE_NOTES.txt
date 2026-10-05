@@ -1,3 +1,41 @@
+MASCHINENPLANUNG V12.10.2 - RELEASE NOTES
+=========================================
+Datum: 05.10.2026 · Basis: V12.10.1 · Hotfix aus docs/AUDIT.md (V-02, V-03, V-04, V-12)
+Update mit UPDATE_LIVE.ps1, Daten bleiben erhalten
+
+KEINE AENDERUNGEN MEHR VERLIEREN
+- Tab schliessen mit ungespeicherter Aenderung: Browser fragt nach.
+- Voller Browser-Speicher blockiert das Speichern nicht mehr (Cache ohne Audit/Historie).
+- Kurzer Netzaussetzer: erst nach 3 Fehlern "SERVER OFFLINE", Wiederholung mit Pause 1-30 s,
+  kein Abruf bei verborgenem Tab.
+- Konflikt mit Kollegen (MP-SYNC-004): eigene Eingabe unter System -> "⤓ Verworfene Aenderung".
+
+SICHERHEIT
+- Anmeldesperre je Benutzer und je IP: eigener Login setzt fremde Fehlversuche nicht mehr zurueck,
+  parallele Versuche zaehlen alle. Gilt auch fuer "Passwort aendern".
+- Verbindungen: 30 s Timeout, max. 256 gleichzeitig, Anmeldedaten max. 16 KB, grosse Daten nur
+  mit Sitzung.
+- Aufruf nur ueber Server-IP oder PC-Namen (Schutz gegen DNS-Rebinding, MP-REQ-421). Weitere Namen
+  (DNS-Alias): Umgebungsvariable MP_ALLOWED_HOSTS="name1,name2".
+- Fremde Webseiten koennen nicht mehr anmelden/speichern (Origin-Pruefung, MP-REQ-403).
+- Unerwartete Serverfehler liefern MP-SRV-500 statt Verbindungsabbruch.
+
+RECHTE & DATEN
+- Arbeitsvorbereitung kann Formate serverseitig nicht mehr aendern (wie seit V12.10.0 in der Oberflaeche).
+- Format-Verknuepfung auf einen nicht vorhandenen Auftrag wird abgelehnt (MP-FMT-010); bestehende
+  Altverknuepfungen bleiben speicherbar.
+- meta/ui/planVersions werden typgeprueft (MP-DATA-014); Benutzer "aktiv" nur true/false.
+
+KORREKTUREN
+- CSV-Export: Start/Ende in Ortszeit, Schutz gegen Formeln (=, +, -, @), Dateiname
+  Produktionsplanung_Auftraege_<Datum>.csv.
+- Arbeitstage (PM/AV-Vergleich, Kundenplan) beruecksichtigen Feiertage/Betriebsferien und Sonderschichten.
+- Auswertung: Fertigmeldungen 00:00-02:00 Uhr zaehlen zum richtigen Tag.
+- Nachrichten: schneller Kanalwechsel zeigt keine Nachrichten des alten Kanals mehr.
+
+TESTS
+- Neu: tests/test_v12102.py 27/27, tests/e2e_v12102.mjs 21/21.
+
 MASCHINENPLANUNG V12.10.1 - RELEASE NOTES
 =========================================
 Datum: 05.10.2026 · Basis: V12.10.0 · Update mit UPDATE_LIVE.ps1, Daten bleiben erhalten
