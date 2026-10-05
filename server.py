@@ -25,14 +25,14 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-APP_VERSION = "12.8.0"
+APP_VERSION = "12.8.1"
 HOST = os.environ.get("MP_HOST", "0.0.0.0")
 PORT = int(os.environ.get("MP_PORT", "8765"))
 BASE = Path(__file__).resolve().parent
 if str(BASE) not in sys.path:
     # Anhängen statt voranstellen: Standardbibliothek hat immer Vorrang vor Dateien im Programmordner.
     sys.path.append(str(BASE))
-from release_gates import validate_release_feasibility
+from release_gates import machine_lanes, validate_release_feasibility
 
 DATA_DIR = BASE / "data"
 DB_PATH = DATA_DIR / "maschinenplanung.sqlite3"
@@ -1324,6 +1324,9 @@ def validate_state(old: dict, new: dict) -> tuple[bool, str, str]:
         crew = _finite_float(m.get("crew", 1))
         if crew is None or crew < 1 or not crew.is_integer() or crew > 99:
             return False, "MP-MACH-010", f"Besetzung von '{m.get('name') or mid}' muss eine ganze Zahl von 1 bis 99 sein."
+        lanes = m.get("lanes")
+        if lanes not in (None, "") and not _num_in(lanes, 1, 20, True):
+            return False, "MP-MACH-015", f"Parallelplätze von '{m.get('name') or mid}' müssen eine ganze Zahl von 1 bis 20 sein."
         if str(m.get("kind") or "machine") not in {"machine", "line"}:
             return False, "MP-MACH-011", f"Ressource '{m.get('name') or mid}' hat einen ungültigen Typ."
     if len(mids) != len(set(mids)):
@@ -1508,7 +1511,7 @@ def validate_state(old: dict, new: dict) -> tuple[bool, str, str]:
 
     seen_orders = set()
     seen_pos = set()
-    locked_by_machine: dict[str, str] = {}
+    locked_by_machine: dict[str, set] = {}
     old_orders = {str(o.get("id")): o for o in (old.get("workSteps") or []) if isinstance(o, dict) and o.get("id") and o.get("planningType") == "MACHINE"}
     planning_fields = (
         "projectId", "fs", "ab", "wt", "sequence", "departmentId", "planningType", "predecessorIds", "pos", "machineId", "altMachineId", "allowAlternative", "order", "articleNo", "description",
@@ -1670,9 +1673,11 @@ def validate_state(old: dict, new: dict) -> tuple[bool, str, str]:
                 return False, "MP-PROD-019", f"Auftrag '{o.get('order') or oid}': Laufzeitpunkt fehlt."
 
         if status in {"running", "paused"}:
-            if mid in locked_by_machine and locked_by_machine[mid] != oid:
-                return False, "MP-PROD-010", f"Auf Maschine '{mid}' sind mehrere laufende/pausierte Aufträge hinterlegt."
-            locked_by_machine[mid] = oid
+            # V12.8.1: bis zu 'lanes' laufende/pausierte Aufträge je Maschine/Linie (Parallelbelegung)
+            running_here = locked_by_machine.setdefault(mid, set())
+            running_here.add(oid)
+            if len(running_here) > machine_lanes(new, mid):
+                return False, "MP-PROD-010", f"Auf Maschine '{mid}' sind mehr laufende/pausierte Aufträge hinterlegt als Parallelplätze."
 
         oo = old_orders.get(oid)
         if not oo:

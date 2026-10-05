@@ -1,4 +1,4 @@
-MASCHINENPLANUNG V12.8.0 - FEHLERCODES
+MASCHINENPLANUNG V12.8.1 - FEHLERCODES
 ======================================
 
 Jeder Fehler wird dem Mitarbeiter als Klartext + Code angezeigt.
@@ -349,3 +349,9 @@ MP-FMT-024  Einplanen: Format passt nicht auf die Maschine (max. Formatgroesse/Z
 MP-FMT-025  Format-Auftrag ist bereits freigegeben/gestartet und kann nicht mehr geaendert werden.
 MP-FMT-026  Uebernommene Auftraege sind bereits freigegeben/gestartet.
 MP-MACH-014  Maschine: Taktliste (Name, 1–3600 s, max. 30) oder max. Formatgroesse/Ziehtiefe ungueltig.
+
+V12.8.1 NEU (Parallelbelegung)
+MP-MACH-015  Parallelplaetze einer Maschine/Linie muessen eine ganze Zahl von 1 bis 20 sein.
+MP-MACH-016  Parallelplaetze erst verringern, wenn auf der Ressource nichts freigegeben ist oder laeuft.
+MP-PROD-010  (geaendert) Mehr laufende/pausierte Auftraege auf einer Maschine als Parallelplaetze.
+MP-PLAN-058  (geaendert) Freigabe ueberschreitet die Parallelplaetze der Maschine/Linie (feste Belegung).

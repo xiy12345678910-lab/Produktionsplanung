@@ -148,6 +148,29 @@ def fixed_segments(state):
 def overlaps(a,b):
     return a["start"]<b["end"] and a["end"]>b["start"]
 
+def machine_lanes(state,mid):
+    """Parallelplätze einer Maschine/Linie (V12.8.1): wie viele Aufträge gleichzeitig laufen dürfen."""
+    try:
+        n=int(float(machine(state,mid).get("lanes") or 1))
+    except (TypeError,ValueError):
+        n=1
+    return max(1,min(20,n))
+
+def max_parallel(seg,others):
+    """Höchste Zahl gleichzeitig aktiver Segmente aus others innerhalb von seg."""
+    rel=[x for x in others if overlaps(seg,x)]
+    if not rel:
+        return 0
+    points=sorted({seg["start"],seg["end"],*[x["start"] for x in rel],*[x["end"] for x in rel]})
+    best=0
+    for i in range(len(points)-1):
+        a,z=points[i],points[i+1]
+        if z<=a or z<=seg["start"] or a>=seg["end"]:
+            continue
+        mid=a+(z-a)/2
+        best=max(best,sum(1 for x in rel if x["start"]<=mid<x["end"]))
+    return best
+
 def segment_in_calendar(state,seg):
     if seg["start"].date()!=seg["end"].date():
         return False
@@ -339,11 +362,10 @@ def validate_release_feasibility(old,new):
                 return False,"MP-PLAN-056",f"Freigabe '{name}' liegt außerhalb von Schicht/Kalender oder über einer Pause."
             if hits_machine_block(new,seg):
                 return False,"MP-PLAN-057",f"Freigabe '{name}' kollidiert mit einer Maschinensperre."
-            for other in fixed:
-                if other["orderId"]==oid or other["machineId"]!=seg["machineId"]:
-                    continue
-                if overlaps(seg,other):
-                    return False,"MP-PLAN-058",f"Freigabe '{name}' kollidiert mit einer festen Maschinenbelegung."
+            # V12.8.1: Maschinen/Linien mit Parallelplätzen dürfen bis zu 'lanes' Aufträge gleichzeitig fahren.
+            same=[x for x in fixed if x["orderId"]!=oid and x["machineId"]==seg["machineId"]]
+            if max_parallel(seg,same)+1>machine_lanes(new,seg["machineId"]):
+                return False,"MP-PLAN-058",f"Freigabe '{name}' kollidiert mit einer festen Maschinenbelegung."
             ok,count,req=personnel_cover(new,seg)
             if not ok:
                 return False,"MP-PERS-033",f"Freigabe '{name}' ist personell unterdeckt ({count}/{req})."

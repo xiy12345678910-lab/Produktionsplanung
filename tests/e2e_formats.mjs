@@ -66,7 +66,7 @@ const browser = await chromium.launch();
 const errors = [];
 
 async function open(user) {
-  const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
+  const page = await browser.newPage({ viewport: { width: 1600, height: 1000 }, timezoneId: 'Europe/Berlin' });
   page.on('pageerror', e => errors.push(`${user}: ${e.message}`));
   await page.goto(BASE);
   await page.fill('#loginUser', user);
@@ -225,7 +225,7 @@ try {
     const r = await (await fetch('/api/state', { cache: 'no-store' })).json();
     r.data.formats[0].name = 'fremd';
     const res = await fetch('/api/state', { method: 'PUT', headers: { 'Content-Type': 'application/json', 'X-MP-Client-Version': (await (await fetch('/api/health')).json()).version }, body: JSON.stringify({ revision: r.revision, data: r.data, action: 'Test' }) });
-    return [res.status, (await res.json()).code];
+    return [res.status, (await res.json()).errorCode];
   });
   check(cncDenied[0] === 403, `CNC-Leitung: Format Tiefziehen per API abgelehnt (${cncDenied.join(' ')})`);
   await cnc.close();

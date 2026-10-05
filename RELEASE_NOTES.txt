@@ -1,3 +1,22 @@
+MASCHINENPLANUNG V12.8.1 - RELEASE NOTES
+========================================
+Datum: 05.10.2026 · Basis: V12.8.0 · Update mit UPDATE_LIVE.ps1, Daten bleiben erhalten
+
+PARALLELBELEGUNG (Konfektion, Tiefziehen, jede Maschine/Linie)
+- System → Maschinen/Linien: neue Spalte "Parallel" (1–20). So viele Auftraege laufen auf der
+  Ressource gleichzeitig. Standard 1 = Verhalten wie bisher (das Feld wird dann nicht gespeichert).
+- Planung: Ein Auftrag kollidiert erst, wenn alle Parallelplaetze belegt sind; der naechste beginnt,
+  sobald ein Platz frei wird (vorwaerts und rueckwaerts, fixe Starts, Freigaben, laufende Auftraege).
+- Produktion: bis zu "Parallel" Auftraege gleichzeitig laufend/pausiert je Ressource.
+- Server prueft dieselben Regeln: MP-PROD-010 (laufend/pausiert) und MP-PLAN-058 (Freigabe gegen
+  feste Belegung) zaehlen jetzt die Parallelplaetze.
+- Wochenplan: Ressourcen mit Parallelplaetzen zeigen "∥ n parallel".
+- Verringern der Parallelplaetze ist gesperrt, solange auf der Ressource etwas freigegeben ist oder
+  laeuft (MP-MACH-016).
+- Hinweis: Personalbedarf (Personal/Schicht) und Linienbesetzung gelten weiterhin je Ressource,
+  nicht je Parallelplatz.
+- Test: tests/e2e_parallel.mjs.
+
 MASCHINENPLANUNG V12.8.0 - RELEASE NOTES
 ========================================
 Datum: 05.10.2026 · Basis: V12.7.6 · Update mit UPDATE_LIVE.ps1, Daten bleiben erhalten
