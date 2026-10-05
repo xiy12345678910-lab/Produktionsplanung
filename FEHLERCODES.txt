@@ -1,4 +1,4 @@
-MASCHINENPLANUNG V12.17.1 - FEHLERCODES
+MASCHINENPLANUNG V12.17.2 - FEHLERCODES
 ======================================
 
 Jeder Fehler wird dem Mitarbeiter als Klartext + Code angezeigt.
@@ -418,6 +418,8 @@ MP-DEPT-007  Bereichs-Eigenschaft formats/sharedOperators ist kein true/false.
 
 V12.17.0 (Einrichtungsassistent)
 Keine neuen Codes. Der Assistent nutzt MP-CFG-00x (Firmenprofil), MP-TPL-040 (Vorlage), MP-AUTH-010/011/017/023/024 (Benutzer, Passwort), MP-DEPT-004/005.
+
+V12.17.2 (Hotfix: keine neuen Codes. Die ACL-Pruefung meldet "hat Schreibrechte" nur noch bei echten Schreib-Bits.)
 
 V12.17.1 (Personal-Gate fuer Linien)
 MP-PERS-003  Unbesetzt: Auftrag nicht planbar, weil das Gate EIN ist und fuer die geforderte Personenzahl (Linie: crew) kein Personal zugeordnet ist.

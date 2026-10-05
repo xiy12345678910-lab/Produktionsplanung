@@ -1,3 +1,23 @@
+MASCHINENPLANUNG V12.17.2 - RELEASE NOTES
+=========================================
+Datum: 05.10.2026 · Basis: V12.17.1 · Update mit UPDATE_LIVE.ps1, Daten bleiben erhalten
+
+HOTFIX NACH ECHTER WINDOWS-INSTALLATION
+- Falscher Alarm "Live-Ordner/Python ist fuer Nicht-Admins beschreibbar": Die Schreibrechte-Maske enthielt ueber FullControl/Modify
+  auch alle Lese-Bits, daher galt jede reine Lese-Berechtigung (Benutzer: ReadAndExecute, Synchronize) als Schreibrecht.
+  Neu: Test-MPRightsWritable prueft nur echte Schreib-Bits (WriteData, AppendData, WriteExtendedAttributes, WriteAttributes,
+  DeleteSubdirectoriesAndFiles, Delete, ChangePermissions, TakeOwnership) und die rohen generischen Rechte
+  GENERIC_WRITE 0x40000000 / GENERIC_ALL 0x10000000. GENERIC_READ/GENERIC_EXECUTE (GR/GE) schlagen nicht an.
+  Betrifft CHECK_LAN_SICHERHEIT.ps1, UPDATE_LIVE.ps1 und Setup_Windows.ps1 (Test-MPPythonLocationSafe). Echte Schreibrechte
+  (z. B. Benutzer Modify, Authentifizierte Benutzer Write) werden weiter erkannt.
+- CHECK_LAN_SICHERHEIT.ps1: keine roten Fehlermeldungen mehr, wenn Alt-Firewallregel/Alt-Task (zu Recht) fehlen.
+- Firma_Einrichten.ps1: Abschlusszeile nennt wieder den Config-Pfad.
+- Server_Status.ps1: Task-Ergebnis 267009 wird als "laeuft" angezeigt (weitere bekannte Codes in Klartext).
+- Server: Verbindungsabbruch durch den Browser (Tab neu geladen/geschlossen waehrend Long-Poll /api/revision; WinError 10053/10054,
+  EPIPE) ist kein Serverfehler mehr: keine 500-Antwort, kein MP-SRV-500 im Log. Mehrzeilige Fehlermeldungen stehen einzeilig im Log.
+- Run_Server_LAN.ps1: Python-stderr landet 1:1 im Log (kein "System.Management.Automation.RemoteException" mehr, keine zerrissenen Zeilen).
+- Tests: tests/test_client_abort.py; tests/ps_acl.ps1 (Bitpruefung mit Rohwerten, unter Windows zusaetzlich echte ACLs per icacls), im CI-Job powershell.
+
 MASCHINENPLANUNG V12.17.1 - RELEASE NOTES
 =========================================
 Datum: 05.10.2026 · Basis: V12.17.0 · Update mit UPDATE_LIVE.ps1, Daten bleiben erhalten

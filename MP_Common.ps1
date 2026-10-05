@@ -158,17 +158,41 @@ function Protect-MPInstall([string]$Base) {
     }
 }
 
+function Get-MPTaskResultText([int64]$Result) {
+    # V12.17.2: Klartext fuer LastTaskResult (267009 = 0x41301 "Task laeuft gerade" wirkte wie ein Fehler).
+    switch ($Result) {
+        0        { return 'OK' }
+        2        { return 'Backup lokal OK, Zweitkopie fehlgeschlagen' }
+        267008   { return 'bereit' }
+        267009   { return 'laeuft' }
+        267010   { return 'deaktiviert' }
+        267011   { return 'noch nie gelaufen' }
+        267014   { return 'wurde beendet' }
+        default  { return ('Ergebnis {0} (0x{1:X})' -f $Result, $Result) }
+    }
+}
+
+function Test-MPRightsWritable([int64]$Rights) {
+    # V12.17.2: Nur echte Schreib-Bits zaehlen. FullControl/Modify enthalten auch Lese-Bits
+    # (ReadData, ReadAttributes, ReadPermissions, Synchronize ...), die allein kein Schreibrecht sind.
+    # WriteData 0x2, AppendData 0x4, WriteExtendedAttributes 0x10, DeleteSubdirectoriesAndFiles 0x40,
+    # WriteAttributes 0x100, Delete 0x10000, ChangePermissions 0x40000, TakeOwnership 0x80000
+    # plus rohe generische Rechte (bei inherit-only ACEs als Zahl): GENERIC_WRITE 0x40000000, GENERIC_ALL 0x10000000.
+    # GENERIC_READ (0x80000000) und GENERIC_EXECUTE (0x20000000) zaehlen nicht.
+    [int64]$mask = 0x2 + 0x4 + 0x10 + 0x40 + 0x100 + 0x10000 + 0x40000 + 0x80000 + 0x40000000 + 0x10000000
+    return (($Rights -band $mask) -ne 0)
+}
+
 function Test-MPFolderAclSafe([string]$Path, [bool]$CheckOwner = $true) {
     # Liefert $null wenn sicher, sonst eine Beschreibung des Problems.
     $acl = Get-Acl -LiteralPath $Path
     # SYSTEM, Administratoren, ERSTELLER-BESITZER, TrustedInstaller (Windows-Installer unter C:\Program Files)
     $trusted = @('S-1-5-18', 'S-1-5-32-544', 'S-1-3-0', 'S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464')
-    $writeRights = [Security.AccessControl.FileSystemRights]'Write,Modify,FullControl,CreateFiles,AppendData,WriteData,ChangePermissions,TakeOwnership,Delete'
     foreach ($ace in $acl.Access) {
         if ($ace.AccessControlType -ne 'Allow') { continue }
         try { $sid = $ace.IdentityReference.Translate([Security.Principal.SecurityIdentifier]).Value } catch { $sid = [string]$ace.IdentityReference }
         if ($trusted -contains $sid) { continue }
-        if (($ace.FileSystemRights -band $writeRights) -ne 0) {
+        if (Test-MPRightsWritable ([int64]$ace.FileSystemRights)) {
             return "$($ace.IdentityReference) hat Schreibrechte ($($ace.FileSystemRights))"
         }
     }

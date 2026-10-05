@@ -27,7 +27,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-APP_VERSION = "12.17.1"
+MP_DEBUG_ABORTS = os.environ.get('MP_DEBUG_ABORTS') == '1'
+APP_VERSION = "12.17.2"
 HOST = os.environ.get("MP_HOST", "0.0.0.0")
 PORT = int(os.environ.get("MP_PORT", "8765"))
 BASE = Path(__file__).resolve().parent
@@ -4171,7 +4172,8 @@ class Handler(BaseHTTPRequestHandler):
             return
         try:
             return super().handle()
-        except (BrokenPipeError, ConnectionResetError):
+        except ConnectionError:
+            # V12.17.2: ConnectionAbortedError (WinError 10053), ConnectionResetError (10054), BrokenPipeError.
             # Browser hat die Verbindung (z. B. Long-Poll beim Schließen des Tabs) beendet.
             return
 
@@ -4246,11 +4248,17 @@ class Handler(BaseHTTPRequestHandler):
             return
         try:
             return fn()
-        except (BrokenPipeError, ConnectionResetError, socket.timeout):
-            raise
+        except (ConnectionError, socket.timeout):
+            # V12.17.2: Client-Abbruch (Tab zu/neu geladen, Long-Poll laeuft noch) ist kein Serverfehler:
+            # keine 500-Antwort auf die tote Verbindung, kein MP-SRV-500, nur eine Debug-Zeile.
+            self.close_connection = True
+            if MP_DEBUG_ABORTS:
+                sys.stdout.write("DEBUG client abort %s %s\n" % (self.command, urlparse(self.path).path))
+            return
         except Exception as e:
             # V12.10.2: unerwartete Fehler -> 500 mit Fehlercode statt Verbindungsabbruch.
-            sys.stderr.write(f"MP-SRV-500 {self.command} {urlparse(self.path).path}: {type(e).__name__}: {e}\n")
+            msg = " ".join(str(e).split())  # eine Logzeile, auch bei mehrzeiligen Windows-Meldungen
+            sys.stderr.write(f"MP-SRV-500 {self.command} {urlparse(self.path).path}: {type(e).__name__}: {msg}\n")
             self.close_connection = True
             try:
                 self.json_response(500, mp_error("MP-SRV-500", "Serverfehler. Bitte erneut versuchen."))

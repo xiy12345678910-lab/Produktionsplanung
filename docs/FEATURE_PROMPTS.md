@@ -10,6 +10,7 @@
 | 4 | A | Firmen-Config `config\firma.json` außerhalb des Pakets (docs/PRODUKT_MULTI_FIRMA.md) | erledigt V12.14.0 (Datei, Migration, Validierung, Update/Rollback/Umzug/Vorabtest/Backup), Korrektur Long-Poll V12.14.1, Rest V12.15.0 (API, Firmenprofil-UI, Arbeitgeberdaten aus dem Paket; Export/Import-ZIP bewusst offen), Datenerhalt-Test + Windows-Deploy in CI V12.15.1 |
 | 5 | B | Branchenvorlagen, Module | erledigt V12.16.0 (Vorlagen als Paketdateien vorlage_*.json, Anwenden nur ergaenzend, Module ein/aus mit Server-Sperre MP-MOD-001, Bereichs-Eigenschaften, Begriffe/Rollenbezeichnungen; offen: Modul export; Projektbereiche aus Config mit V12.17.0 erledigt) |
 | 6 | C1 | Einrichtungsassistent | erledigt V12.17.0 (5 Schritte, neutraler Seed, setupDone, Projektbereiche aus Config; offen: Demo-Daten und Feiertage je Bundesland = C2) |
+| 7b | – | Hotfix V12.17.2: ACL-Fehlalarm, Fehlerrauschen, Firma_Einrichten-Pfad, Task-Ergebnis | erledigt V12.17.2 |
 | 7a | – | Fix V12.17.1: Personal-Gate für Linien (crew) | erledigt V12.17.1 |
 | 7 | – | **Windows-Installation beim Arbeitgeber (Prio 2, jetzt)**: Update 12.10.1 → 12.17.0 nach `docs/INSTALL_ARBEITGEBER.md`; danach Pause, bis der Nutzer getestet hat | jetzt |
 | 8 | 17 | Qualifikationsmatrix | offen |

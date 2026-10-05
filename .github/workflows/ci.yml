@@ -32,6 +32,7 @@ jobs:
           python tests/test_v129.py
           python tests/test_notifications.py
           python tests/test_v12102.py
+          python tests/test_client_abort.py
           python tests/test_firma_config.py
           python tests/test_config_update.py
           python tests/test_config_api.py
@@ -82,6 +83,9 @@ jobs:
       - name: Syntax aller Skripte
         shell: pwsh
         run: ./tests/ps_syntax.ps1
+      - name: ACL-Pruefung (Bits und echte ACLs)
+        shell: pwsh
+        run: ./tests/ps_acl.ps1
       - name: PSScriptAnalyzer (Fehler)
         shell: pwsh
         run: |

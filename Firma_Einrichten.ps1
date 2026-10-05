@@ -21,7 +21,8 @@ if ($Vorlage) {
 } else { $arg = 'neutral' }
 $PythonExe = Get-MPPython
 New-Item -ItemType Directory -Path $Ziel -Force | Out-Null
-$env:MP_CONFIG_DIR = Join-Path $Ziel $MP_ConfigDir
+$CfgDir = Join-Path $Ziel $MP_ConfigDir
+$env:MP_CONFIG_DIR = $CfgDir
 try {
     & $PythonExe -X utf8 -I (Join-Path $Here 'server.py') --firma-einrichten $arg
     $code = $LASTEXITCODE
@@ -30,4 +31,4 @@ try {
 }
 if ($code -eq 4) { Write-Host 'Es gibt bereits eine firma.json - nichts geaendert.' -ForegroundColor Yellow; exit 0 }
 if ($code -ne 0) { throw "Firmenprofil konnte nicht angelegt werden (Exitcode $code)." }
-Write-Host "Fertig: $($env:MP_CONFIG_DIR) - jetzt UPDATE_LIVE.ps1 starten." -ForegroundColor Green
+Write-Host "Fertig: $CfgDir - jetzt UPDATE_LIVE.ps1 starten." -ForegroundColor Green

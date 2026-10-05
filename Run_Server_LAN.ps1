@@ -96,7 +96,12 @@ try {
 $ErrorActionPreference = 'Continue'
 [Console]::OutputEncoding = [Text.Encoding]::UTF8
 & $PythonExe -X utf8 -u -I "$Base\server.py" --host $lan.IP --port $Port --allowed-subnet $Subnet 2>&1 |
-    ForEach-Object { Write-Log ([string]$_) }
+    ForEach-Object {
+        # V12.17.2: Windows PowerShell 5.1 wickelt stderr-Zeilen in ErrorRecords; Text 1:1 uebernehmen,
+        # leere Platzhalter ("System.Management.Automation.RemoteException") weglassen.
+        $line = if ($_ -is [Management.Automation.ErrorRecord]) { $_.ToString() } else { [string]$_ }
+        if ($line -and $line -ne 'System.Management.Automation.RemoteException') { Write-Log $line }
+    }
 $code = $LASTEXITCODE
 Write-Log "=== server.py beendet (Exitcode $code) ==="
 exit $code
