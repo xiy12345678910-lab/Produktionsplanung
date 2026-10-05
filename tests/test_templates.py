@@ -34,7 +34,7 @@ server.DATA_DIR.mkdir()
 server.DB_PATH = server.DATA_DIR / "maschinenplanung.sqlite3"
 server.PBKDF2_ITERS = 1000
 server.ALLOWED_NETWORK = server.ipaddress.ip_network("127.0.0.0/8")
-server.init_db()
+server.init_db(seed="werbetechnik")
 server.load_config()
 USERS = [("adm", "admin", ""), ("pm1", "project_management", ""), ("lead", "department_lead", "cnc"), ("view", "viewer", "")]
 with server.db_session() as con:

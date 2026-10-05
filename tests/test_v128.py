@@ -28,7 +28,7 @@ def check(cond: bool, label: str) -> None:
 tmp = Path(tempfile.mkdtemp(prefix="mp-v128-"))
 server.DATA_DIR = tmp
 server.DB_PATH = tmp / "maschinenplanung.sqlite3"
-server.init_db()
+server.init_db(seed="werbetechnik")
 with server.db_session() as con:
     BASE = json.loads(con.execute("SELECT json FROM state WHERE id=1").fetchone()["json"])
 

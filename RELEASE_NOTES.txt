@@ -1,5 +1,30 @@
-MASCHINENPLANUNG V12.16.0 - RELEASE NOTES
+MASCHINENPLANUNG V12.17.0 - RELEASE NOTES
 =========================================
+Datum: 05.10.2026 · Basis: V12.16.0 · Update mit UPDATE_LIVE.ps1, Daten bleiben erhalten
+
+PAKET C1: EINRICHTUNGSASSISTENT
+- Neuinstallation startet NEUTRAL: keine Bereiche, keine Maschinen, keine Werbetechnik-Daten. Der Assistent (Vollbild-Dialog
+  beim ersten Admin-Login) richtet sie ein. Fuenf Schritte mit Fortschrittspunkten, jeder ueberspringbar, ohne Erklaertext:
+  1 Firma (Name, Logo, Farbe), 2 Branche (Karten, Vorschau als Chips, Anwenden beim Weiter), 3 Module, 4 Bereiche/Maschinen
+  (umbenennen, anlegen, Maschinen +/-), 5 Benutzer anlegen (optional) und Admin-Passwort aendern, solange es das Startpasswort ist.
+- Jeder Schritt speichert sofort. Schliessen (x) = spaeter fortsetzen; der Stand bleibt, der Assistent kommt beim naechsten
+  Admin-Login wieder. Erst "Fertig" setzt setupDone=true in config\firma.json. Erneut aufrufbar: System > Firmenprofil >
+  Assistent (dann ohne Entfernen von Bereichen/Maschinen).
+- Bestand bekommt NIE einen Assistenten: setupDone=false nur bei Neuinstallation (Revision <= 1 und keinerlei Planungsdaten,
+  keine Config, kein Firma_Einrichten). Vorhandene firma.json ohne das Feld erhaelt true (additiv). Bereiche, Maschinen,
+  Auftraege und alle Daten bleiben unveraendert.
+- Projektbereiche kommen jetzt aus der Config (projectAreas) statt aus der festen Liste im Client. Bestand: dieselben
+  sieben Bereiche in gleicher Reihenfolge (stehen seit V12.14 in der Config). Eine Vorlage ergaenzt fehlende Projektbereiche,
+  benennt oder entfernt nie.
+- Client: ein leerer Serverstand bleibt leer (frueher wurden Maschine 1-3/Werbetechnik-Bereiche lokal ergaenzt).
+- Server: GET /api/config liefert setupDone (und fuer den Admin adminPwUnchanged), PATCH /api/config nimmt setupDone (nur Admin).
+  init_db(seed="werbetechnik") erhaelt den alten Startbestand nur fuer Tests.
+- Bewusst nicht (Paket C2): Demo-Daten, Feiertage nach Bundesland, Sprache/Zeitzone/Bundesland im Assistenten, Lizenzschritt,
+  eigener Admin-Schritt ohne Skript (der Installer legt den Admin weiterhin an).
+- Keine neuen Fehlercodes. CI: windows-deploy um V12.10.1 ohne Firmenwerte (noci) ergaenzt.
+TESTS: neu tests/test_setup.py, tests/e2e_setup.mjs; tests/test_deploy_upgrade.py um Bestand-ohne-Assistent und Neuinstallation erweitert.
+
+V12.16.0
 Datum: 05.10.2026 · Basis: V12.15.1 · Update mit UPDATE_LIVE.ps1, Daten bleiben erhalten
 
 PAKET B: BRANCHENVORLAGEN, MODULE EIN/AUS, BEGRIFFE

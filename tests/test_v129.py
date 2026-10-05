@@ -26,7 +26,7 @@ def check(cond: bool, label: str) -> None:
 tmp = Path(tempfile.mkdtemp(prefix="mp-v129-"))
 server.DATA_DIR = tmp
 server.DB_PATH = tmp / "maschinenplanung.sqlite3"
-server.init_db()
+server.init_db(seed="werbetechnik")
 ago = lambda d: (datetime.now(timezone.utc) - timedelta(days=d)).isoformat()  # noqa: E731
 U = {u: {"username": u, "role": r} for u, r in (("Jörg", "viewer"), ("Groß", "viewer"), ("anna", "admin"), ("fremd", "viewer"))}
 

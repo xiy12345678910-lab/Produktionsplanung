@@ -26,7 +26,7 @@ def check(cond: bool, label: str) -> None:
 tmp = Path(tempfile.mkdtemp(prefix="mp-notif-"))
 server.DATA_DIR = tmp
 server.DB_PATH = tmp / "maschinenplanung.sqlite3"
-server.init_db()
+server.init_db(seed="werbetechnik")
 USERS = [("adm", "admin", ""), ("gf1", "gf", ""), ("pm1", "project_management", ""), ("av1", "production_planning", ""),
          ("lead_cnc", "department_lead", "cnc"), ("lead_tf", "department_lead", "thermoforming"), ("sales1", "sales", ""), ("view1", "viewer", "")]
 U = {n: {"username": n, "role": r, "department_id": d} for n, r, d in USERS}

@@ -1,4 +1,4 @@
-MASCHINENPLANUNG V12.16.0 - KURZANLEITUNG FUER BENUTZER
+MASCHINENPLANUNG V12.17.0 - KURZANLEITUNG FUER BENUTZER
 ======================================================
 
 ANMELDEN
@@ -135,3 +135,7 @@ FEHLERCODES
 MODULE UND VORLAGEN (nur Admin, System > Firmenprofil)
 - Schalter fuer Module blenden Bereiche aus, die der Betrieb nicht nutzt; die Daten bleiben erhalten.
 - Vorlage waehlen, Vorschau pruefen, Pfeil druecken: ergaenzt nur Fehlendes, nichts wird ueberschrieben.
+
+EINRICHTUNGSASSISTENT (nur Admin, neue Installation)
+- Erscheint beim ersten Admin-Login: Firma, Branche, Module, Bereiche, Benutzer. Jeder Schritt laesst sich ueberspringen; x = spaeter weitermachen.
+- Erneut: System > Firmenprofil > Assistent.

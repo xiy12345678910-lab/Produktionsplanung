@@ -22,7 +22,7 @@ if (target / "maschinenplanung.sqlite3").exists():
     sys.exit(f"{target} enthält schon eine Datenbank – bitte leeren Ordner angeben.")
 server.DATA_DIR = target
 server.DB_PATH = target / "maschinenplanung.sqlite3"
-server.init_db()
+server.init_db(seed="werbetechnik")
 
 with server.DB_LOCK, server.db_session() as con:
     old = json.loads(con.execute("SELECT json FROM state WHERE id=1").fetchone()["json"])

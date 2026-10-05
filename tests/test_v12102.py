@@ -29,7 +29,7 @@ tmp = Path(tempfile.mkdtemp(prefix="mp-v12102-"))
 server.DATA_DIR = tmp
 server.DB_PATH = tmp / "maschinenplanung.sqlite3"
 server.PBKDF2_ITERS = 1000  # Test schneller; Sperrlogik ist unabhängig von der Iterationszahl
-server.init_db()
+server.init_db(seed="werbetechnik")
 PW = "Test-Passwort-1"
 with server.db_session() as con:
     for name, role in (("admin", "admin"), ("viewer", "viewer")):

@@ -27,7 +27,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-APP_VERSION = "12.16.0"
+APP_VERSION = "12.17.0"
 HOST = os.environ.get("MP_HOST", "0.0.0.0")
 PORT = int(os.environ.get("MP_PORT", "8765"))
 BASE = Path(__file__).resolve().parent
@@ -190,6 +190,8 @@ def validate_config(cfg) -> list[str]:
             and isinstance(a.get("name"), str) and 0 < len(a["name"]) <= 60 for a in pa)
         if not ok or len({a["id"] for a in pa}) != len(pa):
             errs.append("projectAreas: Liste aus {id, name} (eindeutige id) erwartet")
+    if cfg.get("setupDone") is not None and not isinstance(cfg["setupDone"], bool):
+        errs.append("setupDone: true/false erwartet")
     sec("license")
     u = sec("update")
     text("update", u, "channel", 20)
@@ -294,6 +296,29 @@ def _existing_state() -> dict | None:
         return None
 
 
+def install_is_fresh() -> bool:
+    """V12.17.0: Neuinstallation = keine Datenbank oder Revision <= 1 ohne jede Planungsdaten. Nur dann startet der
+    Einrichtungsassistent (setupDone=false). Bestand (Revision > 1 oder vorhandene Daten) gilt immer als eingerichtet."""
+    if not DB_PATH.exists():
+        return True
+    try:
+        con = sqlite3.connect(f"file:{DB_PATH.as_posix()}?mode=ro", uri=True)
+        try:
+            row = con.execute("SELECT revision,json FROM state WHERE id=1").fetchone()
+        finally:
+            con.close()
+        if not row:
+            return True
+        if int(row[0]) > 1:
+            return False
+        st = json.loads(row[1])
+        if not isinstance(st, dict):
+            return False
+        return not any(st.get(k) for k in ("departments", "machines", "workSteps", "projects", "employees", "history", "exceptions"))
+    except (sqlite3.Error, ValueError, TypeError):
+        return False
+
+
 NEUTRAL_HINT = ("Vor dem Update 'Firma_Einrichten.ps1 -Vorlage <datei>' ausfuehren (Vorlage vom Entwickler) "
                 "oder bewusst neutral starten mit 'Firma_Einrichten.ps1 -Neutral'.")
 
@@ -355,6 +380,9 @@ def migrate_firma_config(seed: dict | None = None, neutral_ok: bool = False) -> 
     # Per Vorlage ohne Datenbank: Akzent aus data.ui.accent beim ersten Serverstart nachziehen.
     cfg["uiAccentSynced"] = not (by_template and not _existing_state())
     cfg["ciSynced"] = True
+    # V12.17.0: nur eine echte Neuinstallation ohne Vorlage/Daten bekommt den Einrichtungsassistenten.
+    if st is None and not by_template and install_is_fresh():
+        cfg["setupDone"] = False
     save_config(cfg)
     return cfg
 
@@ -591,6 +619,7 @@ def public_config(cfg: dict | None = None) -> dict:
         "modules": modules_effective(cfg),
         "projectAreas": cfg.get("projectAreas") or d["projectAreas"],
         "readOnly": int(cfg.get("schemaVersion", 1)) > CONFIG_SCHEMA,
+        "setupDone": cfg.get("setupDone") is not False,
     }
 
 
@@ -670,8 +699,14 @@ def config_apply(body: dict, logo: tuple[str, bytes] | None = None, remove_logo:
         if (body.get("company") or {}).get("logoFile") == "" if isinstance(body.get("company"), dict) else False:
             remove_logo = True
         for k in body:
-            if k != "revision" and k not in CONFIG_WRITE_SECTIONS and k != "projectAreas":
+            if k != "revision" and k not in CONFIG_WRITE_SECTIONS and k not in ("projectAreas", "setupDone"):
                 errs.append(f"{k}: nicht änderbar")
+        if "setupDone" in body:
+            if not isinstance(body["setupDone"], bool):
+                errs.append("setupDone: true/false erwartet")
+            elif (cfg.get("setupDone") is not False) != body["setupDone"]:
+                cfg["setupDone"] = body["setupDone"]
+                changed.append("setupDone")
         for sec, allowed in CONFIG_WRITE_SECTIONS.items():
             part = body.get(sec)
             if part is None:
@@ -840,7 +875,25 @@ def migrate_users_schema(con: sqlite3.Connection) -> None:
     print("DB-MIGRATION users: Rollenschema aktualisiert (u. a. Arbeitsvorbereitung); Sitzungen zurückgesetzt")
 
 
-def init_db() -> None:
+# V12.17.0: Startbestand der Werbetechnik (bis V12.16.x fest im Seed). Nur noch für Tests (init_db(seed="werbetechnik")).
+LEGACY_MACHINES = [
+    {"id": "m1", "name": "Maschine 1", "departmentId": "cnc", "setupMinutes": 0, "start": "2026-09-07T06:30", "committedUntil": "", "defaultShiftMode": "1", "staffRequired": 1},
+    {"id": "m2", "name": "Maschine 2", "departmentId": "cnc", "setupMinutes": 0, "start": "2026-09-07T06:30", "committedUntil": "", "defaultShiftMode": "1", "staffRequired": 1},
+    {"id": "m3", "name": "Maschine 3", "departmentId": "cnc", "setupMinutes": 0, "start": "2026-09-07T06:30", "committedUntil": "", "defaultShiftMode": "1", "staffRequired": 1},
+]
+LEGACY_DEPARTMENTS = [
+    {"id": "cnc", "name": "CNC", "planningType": "MACHINE", "active": True, "sharedOperators": True},
+    {"id": "konf1", "name": "Konfektion 1", "planningType": "LABOR_HOURS", "active": True},
+    {"id": "konf2", "name": "Konfektion 2", "planningType": "LABOR_HOURS", "active": True},
+    {"id": "konf3", "name": "Konfektion 3", "planningType": "LABOR_HOURS", "active": True},
+    {"id": "screenprint", "name": "Siebdruck", "planningType": "PROCESS", "active": True},
+    {"id": "thermoforming", "name": "Tiefziehen", "planningType": "CYCLE", "active": True, "formats": True},
+]
+
+
+def init_db(seed: str = "neutral") -> None:
+    """seed="neutral": Neuinstallation ohne Bereiche/Maschinen (V12.17.0, der Einrichtungsassistent setzt sie auf).
+    seed="werbetechnik": alter Startbestand, nur für Tests und Entwicklung."""
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     with DB_LOCK, db_session() as con:
         con.executescript(
@@ -931,25 +984,14 @@ def init_db() -> None:
             initial = {
                 "version": 12,
                 "meta": {"revision": 1, "actor": "Server", "storage": "server", "createdAt": now_iso(), "serverReady": True},
-                "machines": [
-                    {"id": "m1", "name": "Maschine 1", "departmentId": "cnc", "setupMinutes": 0, "start": "2026-09-07T06:30", "committedUntil": "", "defaultShiftMode": "1", "staffRequired": 1},
-                    {"id": "m2", "name": "Maschine 2", "departmentId": "cnc", "setupMinutes": 0, "start": "2026-09-07T06:30", "committedUntil": "", "defaultShiftMode": "1", "staffRequired": 1},
-                    {"id": "m3", "name": "Maschine 3", "departmentId": "cnc", "setupMinutes": 0, "start": "2026-09-07T06:30", "committedUntil": "", "defaultShiftMode": "1", "staffRequired": 1},
-                ],
                 "shiftTemplates": {
                     "single": {"name": "1-Schicht Mo–Do", "start": "06:30", "end": "16:00", "breaks": [{"start": "09:00", "end": "09:15"}, {"start": "12:00", "end": "12:30"}]},
                     "fridaySingle": {"name": "1-Schicht Freitag", "start": "06:30", "end": "11:45", "breaks": [{"start": "09:00", "end": "09:15"}, {"start": "", "end": ""}]},
                     "early": {"name": "2-Schicht · Früh", "start": "06:00", "end": "14:30", "breaks": [{"start": "09:00", "end": "09:15"}, {"start": "12:00", "end": "12:15"}]},
                     "late": {"name": "2-Schicht · Spät", "start": "14:30", "end": "22:30", "breaks": [{"start": "17:00", "end": "17:15"}, {"start": "19:00", "end": "19:15"}]},
                 },
-                "departments": [
-                    {"id": "cnc", "name": "CNC", "planningType": "MACHINE", "active": True, "sharedOperators": True},
-                    {"id": "konf1", "name": "Konfektion 1", "planningType": "LABOR_HOURS", "active": True},
-                    {"id": "konf2", "name": "Konfektion 2", "planningType": "LABOR_HOURS", "active": True},
-                    {"id": "konf3", "name": "Konfektion 3", "planningType": "LABOR_HOURS", "active": True},
-                    {"id": "screenprint", "name": "Siebdruck", "planningType": "PROCESS", "active": True},
-                    {"id": "thermoforming", "name": "Tiefziehen", "planningType": "CYCLE", "active": True, "formats": True}
-                ],
+                "departments": [],
+                "machines": [],
                 "projects": [],
                 "workSteps": [],
                 "yearRules": [], "weekRules": [], "exceptions": [],
@@ -958,6 +1000,9 @@ def init_db() -> None:
                 "history": [], "audit": [], "planVersions": [],
                 "ui": {"accent": "#1f5eff", "cellH": 90},
             }
+            if seed == "werbetechnik":
+                initial["machines"] = LEGACY_MACHINES
+                initial["departments"] = LEGACY_DEPARTMENTS
             con.execute("INSERT INTO state(id,revision,json,updated_at,updated_by) VALUES(1,1,?,?,?)", (json.dumps(initial, ensure_ascii=False), now_iso(), "Server"))
         migrate_state_v1242(con)
         migrate_state_v1243(con)
@@ -4070,9 +4115,16 @@ def template_apply(user: dict, body: dict) -> tuple[int, dict]:
         tmods = tpl.get("modules") if isinstance(tpl.get("modules"), dict) else {}
         mod_changes = {k: bool(v) for k, v in tmods.items() if k in CONFIG_MODULES and (cfg_now.get("modules") or {}).get(k, True) != bool(v)} if want_modules else {}
         summary["modules"] = mod_changes
-        if dry or (not changed and not mod_changes):
+        # V12.17.0: Projektbereiche der Vorlage werden nur ergänzt (nie entfernt oder umbenannt).
+        have_pa = cfg_now.get("projectAreas") or CONFIG_PROJECT_AREAS
+        have_ids = {a["id"] for a in have_pa}
+        add_pa = [{"id": a["id"], "name": a["name"]} for a in _tpl_list(tpl, "projectAreas")
+                  if isinstance(a.get("id"), str) and re.fullmatch(r"[a-z0-9_-]{1,30}", a["id"]) and a["id"] not in have_ids
+                  and isinstance(a.get("name"), str) and 0 < len(a["name"]) <= 60 and a["id"] not in {d["id"] for d in new.get("departments", []) if isinstance(d, dict)}]
+        summary["projectAreas"] = [a["name"] for a in add_pa]
+        if dry or (not changed and not mod_changes and not add_pa):
             con.execute("ROLLBACK")
-            return 200, {"ok": True, "dryRun": dry, "unchanged": not changed and not mod_changes, "summary": summary, "revision": row["revision"]}
+            return 200, {"ok": True, "dryRun": dry, "unchanged": not changed and not mod_changes and not add_pa, "summary": summary, "revision": row["revision"]}
         revision = row["revision"]
         if changed:
             ok, code, reason = validate_state(old, new)
@@ -4090,8 +4142,13 @@ def template_apply(user: dict, body: dict) -> tuple[int, dict]:
             con.execute("INSERT INTO server_audit(ts,username,action,detail,revision) VALUES(?,?,?,?,?)",
                         (ts, user["username"], "Vorlage angewendet", tid, revision))
         con.execute("COMMIT")
-    if mod_changes:
-        status, payload, _detail = config_apply({"revision": config_revision(), "modules": mod_changes})
+    if mod_changes or add_pa:
+        body_cfg = {"revision": config_revision()}
+        if mod_changes:
+            body_cfg["modules"] = mod_changes
+        if add_pa:
+            body_cfg["projectAreas"] = [dict(a) for a in have_pa] + add_pa
+        status, payload, _detail = config_apply(body_cfg)
         if status != 200:
             return status, payload
     return 200, {"ok": True, "summary": summary, "revision": revision}
@@ -4284,7 +4341,13 @@ class Handler(BaseHTTPRequestHandler):
             user = self.require_user()
             if not user:
                 return
-            return self.json_response(200, public_config())
+            payload = public_config()
+            if user["role"] == "admin" and not payload["setupDone"]:
+                # V12.17.0: Passwortschritt des Assistenten nur, solange der Admin sein Startpasswort nie geändert hat.
+                with DB_LOCK, db_session() as con:
+                    ur = con.execute("SELECT created_at,updated_at FROM users WHERE id=?", (user["id"],)).fetchone()
+                payload["adminPwUnchanged"] = bool(ur) and ur["created_at"] == ur["updated_at"]
+            return self.json_response(200, payload)
         if path == "/api/config/logo":
             user = self.require_user()
             if not user:

@@ -52,7 +52,7 @@ server.DATA_DIR = Path(${JSON.stringify(dataDir)})
 server.DB_PATH = server.DATA_DIR / "maschinenplanung.sqlite3"
 server.ALLOWED_NETWORK = ipaddress.ip_network("127.0.0.0/8")
 server.PBKDF2_ITERS = 1000
-server.init_db()
+server.init_db(seed="werbetechnik")
 server.create_or_reset_admin("admin", ${JSON.stringify(PASS)})
 with server.DB_LOCK, server.db_session() as con:
     for name, role, dep in ${JSON.stringify([["pm", "project_management", ""], ["viewer", "viewer", ""]])}:

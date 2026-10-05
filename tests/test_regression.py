@@ -42,7 +42,7 @@ before = sqlite3.connect(server.DB_PATH)
 before_state = json.loads(before.execute("SELECT json FROM state").fetchone()[0])
 before_rev = before.execute("SELECT revision FROM state").fetchone()[0]
 before.close()
-server.init_db()
+server.init_db(seed="werbetechnik")
 con = sqlite3.connect(server.DB_PATH)
 after_state = json.loads(con.execute("SELECT json FROM state").fetchone()[0])
 check("orders" not in after_state, "Migration: Legacy-orders aus Live-State entfernt")
@@ -64,7 +64,7 @@ check(all(p.get("number") and p.get("phase") for p in after_state.get("projects"
 check(all(p["phase"] == ("accepted" if p.get("ab") else "inquiry") for p in after_state.get("projects", [])), "Migration: bestehende AB-Datensätze = angenommene Projekte")
 check(len([t for t in after_state.get("processTemplates", []) if t["kind"] == "pm"]) == 3, "Migration: 3 PM-Standardabläufe als Daten angelegt")
 con.close()
-server.init_db()  # idempotent
+server.init_db(seed="werbetechnik")  # idempotent
 check(True, "Migration: zweiter Start idempotent")
 
 

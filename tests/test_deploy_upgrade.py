@@ -313,6 +313,14 @@ def run_case(label: str, commit: str, scenario: str, keep: bool, ip: str):
         want = {"thermoforming": "formats", "cnc": "sharedOperators"}
         miss = [f"{i}.{p}" for i, p in want.items() if i in deps and deps[i].get(p) is not True]
         ok_all &= check(sc == 200 and not miss, f"[{tag}] Bereichs-Eigenschaften für den Bestand gesetzt (formats, sharedOperators)", ", ".join(miss))
+        # V12.17.0: Bestand bekommt nie einen Einrichtungsassistenten und behält die sieben Projektbereiche.
+        ok_all &= check(sc == 200 and isinstance(pc, dict) and pc.get("setupDone") is True and "adminPwUnchanged" not in pc,
+                        f"[{tag}] Bestand: setupDone=true, kein Einrichtungsassistent", str(pc.get("setupDone") if isinstance(pc, dict) else pc))
+        areas = [a.get("id") for a in (pc.get("projectAreas") if isinstance(pc, dict) else None) or []]
+        ok_all &= check(areas == ["sales", "pm", "engineering", "calculation", "purchasing", "quality", "av"],
+                        f"[{tag}] Bestand: die sieben Projektbereiche stehen in der Config", ",".join(areas))
+        ok_all &= check(len(deps) == len(stateA.get("departments", [])) and [d["id"] for d in stateA.get("departments", [])] == list(deps),
+                        f"[{tag}] Bestand: Bereiche und Reihenfolge unverändert ({len(deps)})")
         cfg_path = live / "config" / "firma.json"
         ok_all &= check(cfg_path.exists(), f"[{tag}] config\\firma.json vorhanden")
         if scenario == "ci" or template:
@@ -388,6 +396,77 @@ def run_case(label: str, commit: str, scenario: str, keep: bool, ip: str):
             shutil.rmtree(root, ignore_errors=True)
 
 
+def run_fresh(ip: str, keep: bool) -> bool:
+    """V12.17.0: Neuinstallation des AKTUELLEN Pakets in ein leeres Verzeichnis: neutral (keine Bereiche/Maschinen),
+    setupDone=false bis der Assistent abschließt; danach bleibt es true (auch nach Neustart und zweitem Update)."""
+    print(f"\n=== Neuinstallation V{CURRENT_VERSION} ===", flush=True)
+    tag = "neu"
+    root = Path(tempfile.mkdtemp(prefix="mp-fresh-"))
+    srv = None
+    ok_all = True
+    try:
+        app, obsolete = L.package_lists((SRC / "MP_Common.ps1").read_text(encoding="utf-8-sig"))
+        live = root / "live"
+        live.mkdir()
+        copy_files(SRC, live, app)
+        r = run_py(live, ["server.py", "--init-admin", ADMIN], {"MP_ADMIN_PASSWORD": ADMIN_PW})
+        ok_all &= check(r.returncode == 0, f"[{tag}] Admin eingerichtet", r.stderr[-300:])
+        port = L.free_port(ip)
+        (live / "LAN_CONFIG.json").write_text(json.dumps({"lan_ip": ip, "prefix_length": 24, "subnet": f"{ip}/32", "port": port}), encoding="utf-8")
+        srv = Server(live, ip, port, root / "server_test.log")
+        ok, code, log = srv.start(CURRENT_VERSION)
+        ok_all &= check(ok, f"[{tag}] Server startet auf leerem Verzeichnis (kein MP-CFG-006)", log[-400:])
+        if not ok:
+            return False
+        a = L.Api(srv.url)
+        ok_all &= check(a.login(ADMIN, ADMIN_PW) == 200, f"[{tag}] Admin-Login")
+        sc, pc = a.call("GET", "/api/config")
+        ok_all &= check(sc == 200 and pc.get("setupDone") is False and pc.get("adminPwUnchanged") is True, f"[{tag}] setupDone=false, Startpasswort unverändert")
+        sc, st = a.call("GET", "/api/state")
+        d = st.get("data", {}) if sc == 200 else {}
+        ok_all &= check(d.get("departments") == [] and d.get("machines") == [] and not d.get("workSteps") and not d.get("projects"),
+                        f"[{tag}] neutraler Start: keine Bereiche, Maschinen, Aufträge, Projekte")
+        ok_all &= check([x["id"] for x in pc.get("projectAreas", [])] == ["sales", "pm", "engineering", "calculation", "purchasing", "quality", "av"],
+                        f"[{tag}] Projektbereiche aus der Config")
+        sc, tp = a.call("GET", "/api/templates")
+        ok_all &= check(sc == 200 and any(t["id"] == "metall_cnc" for t in tp.get("templates", [])), f"[{tag}] Vorlagen verfügbar")
+        sc, ap = a.call("POST", "/api/templates/apply", {"id": "metall_cnc", "modules": True})
+        ok_all &= check(sc == 200, f"[{tag}] Vorlage füllt die leere Installation", str(ap)[:200])
+        srv.stop()
+        ok, code, log = srv.start(CURRENT_VERSION)
+        ok_all &= check(ok, f"[{tag}] Neustart")
+        a = L.Api(srv.url)
+        a.login(ADMIN, ADMIN_PW)
+        sc, pc = a.call("GET", "/api/config")
+        ok_all &= check(pc.get("setupDone") is False, f"[{tag}] Abbruch vor dem Ende: Assistent erscheint nach Neustart wieder (Stand bleibt)")
+        sc, st = a.call("GET", "/api/state")
+        nd = len(st["data"]["departments"])
+        ok_all &= check(nd == 6, f"[{tag}] angewendete Vorlage bleibt erhalten ({nd} Bereiche)")
+        sc, pr = a.call("PATCH", "/api/config", {"revision": pc["revision"], "setupDone": True})
+        ok_all &= check(sc == 200 and pr["config"]["setupDone"] is True, f"[{tag}] Assistent abgeschlossen")
+        srv.stop()
+        dbA = L.dump_db(live / "data" / "maschinenplanung.sqlite3")
+        cfgA = firma_files(live)
+        simulate_update(live, SRC, app, obsolete)
+        ok, code, log = srv.start(CURRENT_VERSION)
+        ok_all &= check(ok, f"[{tag}] Update auf sich selbst startet")
+        a = L.Api(srv.url)
+        a.login(ADMIN, ADMIN_PW)
+        sc, pc = a.call("GET", "/api/config")
+        ok_all &= check(pc.get("setupDone") is True, f"[{tag}] nach Update bleibt setupDone=true")
+        srv.stop()
+        dbB = L.dump_db(live / "data" / "maschinenplanung.sqlite3")
+        problems = L.compare_dumps(dbA, dbB, exact=True)
+        ok_all &= check(not problems, f"[{tag}] Update: Datenbank identisch", "; ".join(problems[:5]))
+        ok_all &= check(firma_files(live) == cfgA, f"[{tag}] Update: config\\ byte-gleich")
+        return ok_all
+    finally:
+        if srv:
+            srv.stop()
+        if not keep:
+            shutil.rmtree(root, ignore_errors=True)
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--baseline", action="append", help="zusätzlicher/alleiniger Commit (mehrfach möglich)")
@@ -411,6 +490,8 @@ def main() -> int:
             ran += 1
             run_case(label, commit, scenario, args.keep, ip)
     check(ran > 0 or not STRICT, f"mindestens eine Baseline getestet ({ran} Läufe)")
+    if not args.baseline:
+        run_fresh(ip, args.keep)
     print(f"\n{sum(RESULTS)}/{len(RESULTS)} bestanden")
     return 0 if all(RESULTS) else 1
 
