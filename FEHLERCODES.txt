@@ -1,4 +1,4 @@
-MASCHINENPLANUNG V12.12.0 - FEHLERCODES
+MASCHINENPLANUNG V12.13.0 - FEHLERCODES
 ======================================
 
 Jeder Fehler wird dem Mitarbeiter als Klartext + Code angezeigt.
@@ -30,6 +30,7 @@ CODEGRUPPEN
 - MP-MIG-xxx: Datenbank-Migration beim Serverstart
 - MP-FMT-xxx: Formatplanung Tiefziehen (Grundformate, Formate, Lager)
 - MP-CHAT-xxx: Nachrichten (Gruppen, Direktnachrichten, Verweise)
+- MP-NOTIF-xxx: Benachrichtigungen (Glocke)
 
 EINZELCODES (der genaue Klartext kann je nach Kontext zusaetzliche Details enthalten)
 
@@ -164,6 +165,8 @@ MP-SYNC-004  Kontextbezogener Fehler; Klartext wird direkt in der Anwendung ange
 
 [UI - Oberfläche / allgemeine UI-Fehler]
 MP-UI-001  Kontextbezogener Fehler; Klartext wird direkt in der Anwendung angezeigt.
+MP-NOTIF-001  Benachrichtigungen: Position, Eintraege oder Meldung ungueltig (max. 50 je Meldung).
+MP-NOTIF-002  Benachrichtigungs-Einstellungen ungueltig (Ereignisart oder Ruhezeit HH:MM).
 MP-UNDO-001  Rückgängig/Wiederholen abgelehnt: derselbe Datensatz wurde inzwischen von jemand anderem geändert.
 
 

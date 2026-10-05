@@ -1,3 +1,24 @@
+MASCHINENPLANUNG V12.13.0 - RELEASE NOTES
+=========================================
+Datum: 05.10.2026 · Basis: V12.12.0 · Update mit UPDATE_LIVE.ps1, Daten bleiben erhalten
+
+BENACHRICHTIGUNGEN
+- Glocke 🔔 mit Zaehler oben rechts. Klick: kompakte Liste, Klick auf einen Eintrag fuehrt zum Ziel
+  (Kanal, Auftrag, Maschine, Personal, GF) und markiert ihn als gelesen. ✓ alle gelesen, ⚙ Einstellungen.
+- Ereignisse: @Erwaehnung/Direktnachricht, Freigabe/Zurueckziehen, Termin gefaehrdet (Plan-Ende nach Termin
+  oder Puffer unter 1 Arbeitstag), Maschinensperre/Abwesenheit mit offenen Auftraegen, Leiharbeiter-Anfrage/-Entscheidung.
+- Je Benutzer ein/aus (Defaults nach Rolle) und Ruhezeit (nur fuer die Browser-Meldung). Ausgeschaltete Arten
+  erzeugen keinen Eintrag. Jeder sieht nur eigene Eintraege; Bereichsrollen nur ihren Bereich; kein Abwesenheitsgrund im Text.
+- Echte Browser-Meldung (Notification API) nur als Zusatz, wenn die Seite per https/localhost laeuft und in ⚙ eingeschaltet ist.
+  Im LAN ueber http bleibt es bei der Glocke (der Schalter erscheint dann nicht).
+- Technik: Tabellen notifications/notification_prefs (wie chat_*), Aufbewahrung 30 Tage, maximal 500 je Benutzer;
+  Endpunkte /api/notifications (GET), /read, /derived (POST), /prefs (GET/PUT); Abruf im bestehenden Long-Poll
+  /api/revision (nsig), kein weiteres Intervall. Ein offener Chat-Kanal erledigt seine Eintraege automatisch.
+- Neue Codes: MP-NOTIF-001, MP-NOTIF-002.
+
+TESTS
+- Neu: tests/test_notifications.py 54/54, tests/e2e_notifications.mjs 31/31.
+
 MASCHINENPLANUNG V12.12.0 - RELEASE NOTES
 =========================================
 Datum: 05.10.2026 · Basis: V12.11.0 · Update mit UPDATE_LIVE.ps1, Daten bleiben erhalten

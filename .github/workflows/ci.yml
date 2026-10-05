@@ -28,6 +28,7 @@ jobs:
         run: |
           python tests/test_v128.py
           python tests/test_v129.py
+          python tests/test_notifications.py
           python tests/test_v12102.py
       - name: Backup/Restore
         run: python tests/test_backup.py

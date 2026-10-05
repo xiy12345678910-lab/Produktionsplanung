@@ -6,7 +6,7 @@
 |---|---|---|---|
 | 1 | 5 | Hallenmodus (Hell/Dunkel/Halle) | erledigt V12.11.0 (Kiosk-Schalter optional, nicht umgesetzt) |
 | 2 | 3 | Undo/Redo | erledigt V12.12.0 |
-| 3 | 4 | Browser-Benachrichtigungen | offen |
+| 3 | 4 | Browser-Benachrichtigungen | erledigt V12.13.0 (Glocke; Browser-Meldung nur bei https, Erklärtext bewusst weggelassen) |
 | 4 | 17 | Qualifikationsmatrix | offen |
 | 5 | 16 | Personalbedarf je Parallelplatz | offen |
 | 6 | 14 | Automatische Nachkalkulation | offen |

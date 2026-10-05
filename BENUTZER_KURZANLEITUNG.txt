@@ -1,4 +1,4 @@
-MASCHINENPLANUNG V12.12.0 - KURZANLEITUNG FUER BENUTZER
+MASCHINENPLANUNG V12.13.0 - KURZANLEITUNG FUER BENUTZER
 ======================================================
 
 ANMELDEN
@@ -14,6 +14,10 @@ EIGENES PASSWORT AENDERN
 
 RUECKGAENGIG
 - ↶ / ↷ oben rechts oder Strg+Z / Strg+Y. Geht nicht, wenn jemand anderes denselben Auftrag inzwischen geaendert hat.
+
+BENACHRICHTIGUNGEN
+- Glocke 🔔 oben rechts: Zahl = neu. Klick oeffnet die Liste, Klick auf einen Eintrag fuehrt zum Ziel und markiert ihn als gelesen.
+- ✓ alle gelesen, ⚙ Einstellungen (Arten an/aus, Ruhezeit). Meldung im Browser nur mit https.
 
 DARSTELLUNG
 - Oben rechts ☀ / ☾ / ▣ klicken: Hell -> Dunkel -> Halle (gross, hoher Kontrast). Gilt nur fuer diesen PC.

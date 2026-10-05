@@ -26,7 +26,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-APP_VERSION = "12.12.0"
+APP_VERSION = "12.13.0"
 HOST = os.environ.get("MP_HOST", "0.0.0.0")
 PORT = int(os.environ.get("MP_PORT", "8765"))
 BASE = Path(__file__).resolve().parent
@@ -214,6 +214,23 @@ def init_db() -> None:
               last_id INTEGER NOT NULL DEFAULT 0,
               PRIMARY KEY(username, channel_id)
             );
+            CREATE TABLE IF NOT EXISTS notifications(
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              username TEXT NOT NULL COLLATE NOCASE,
+              kind TEXT NOT NULL,
+              ref_type TEXT NOT NULL DEFAULT '',
+              ref_id TEXT NOT NULL DEFAULT '',
+              text TEXT NOT NULL,
+              created_at TEXT NOT NULL,
+              read_at TEXT,
+              dedupe TEXT NOT NULL DEFAULT ''
+            );
+            CREATE INDEX IF NOT EXISTS notifications_user ON notifications(username, id);
+            CREATE UNIQUE INDEX IF NOT EXISTS notifications_dedupe ON notifications(username, dedupe) WHERE dedupe<>'';
+            CREATE TABLE IF NOT EXISTS notification_prefs(
+              username TEXT PRIMARY KEY COLLATE NOCASE,
+              json TEXT NOT NULL
+            );
             CREATE TABLE IF NOT EXISTS server_audit(
               id INTEGER PRIMARY KEY AUTOINCREMENT,
               ts TEXT NOT NULL,
@@ -270,6 +287,7 @@ def init_db() -> None:
             con.execute("INSERT INTO chat_channels(kind,name,members,created_by,created_at) VALUES('all','Alle','[]','Server',?)", (now_iso(),))
         migrate_chat_v1291(con)
         chat_purge(con, force=True)
+        notif_purge(con, force=True)
         archive_history_on_start(con)
 
 
@@ -838,6 +856,7 @@ def chat_post(con, user: dict, path: str, body: dict) -> tuple[int, dict]:
             return 400, mp_error("MP-CHAT-005", f"Nachricht ist zu lang (max. {CHAT_MAX_TEXT} Zeichen).")
         cur = con.execute("INSERT INTO chat_messages(channel_id,author,text,ts) VALUES(?,?,?,?)", (cid, username, text, ts))
         con.execute("INSERT INTO chat_reads(username,channel_id,last_id) VALUES(?,?,?) ON CONFLICT(username,channel_id) DO UPDATE SET last_id=excluded.last_id", (username, cid, cur.lastrowid))
+        notify_chat_message(con, row, username, text)
         return 201, {"message": {"id": cur.lastrowid, "author": username, "text": text, "ts": ts, "keep": False, "keptBy": ""}}
     if path == "/api/chat/keep":
         try:
@@ -856,6 +875,8 @@ def chat_post(con, user: dict, path: str, body: dict) -> tuple[int, dict]:
         except (TypeError, ValueError):
             return 400, mp_error("MP-CHAT-001", "Position ungültig.")
         con.execute("INSERT INTO chat_reads(username,channel_id,last_id) VALUES(?,?,?) ON CONFLICT(username,channel_id) DO UPDATE SET last_id=max(last_id,excluded.last_id)", (username, cid, last))
+        # Gelesener Kanal: die zugehörigen Glocken-Einträge sind damit ebenfalls erledigt.
+        con.execute("UPDATE notifications SET read_at=? WHERE username=? AND ref_type='chat' AND ref_id=? AND read_at IS NULL", (now_iso(), username, str(cid)))
         return 200, {"ok": True}
     if path == "/api/chat/members":
         if row["kind"] != "group":
@@ -873,6 +894,320 @@ def chat_post(con, user: dict, path: str, body: dict) -> tuple[int, dict]:
             return 400, mp_error("MP-CHAT-004", "Gruppenname fehlt oder ist zu lang (max. 60).")
         con.execute("UPDATE chat_channels SET members=?, name=? WHERE id=?", (json.dumps(members, ensure_ascii=False), name, cid))
         return 200, {"channel": _chat_channel_json(con, con.execute("SELECT * FROM chat_channels WHERE id=?", (cid,)).fetchone(), username)}
+    return 404, mp_error("MP-REQ-404", "Nicht gefunden.")
+
+
+# --------------------------------------------------------------------------- V12.13.0 Benachrichtigungen
+# Wie der Chat in eigenen Tabellen (keine Planungsrevision). Ereignisse entstehen beim PUT /api/state aus dem
+# Diff alt -> neu, aus dem Chat (Erwähnung/Direktnachricht) und aus Client-Meldungen (gefährdeter Liefertermin).
+# Jeder sieht nur die eigenen Einträge; Empfänger werden beim Erzeugen nach Rolle/Bereich gefiltert.
+NOTIF_KINDS = ("mention", "release", "risk", "block", "loan")
+NOTIF_RETENTION_DAYS = 30
+NOTIF_PURGE_EVERY = 3600
+NOTIF_MAX_PER_USER = 500
+NOTIF_MAX_DERIVED = 50
+NOTIF_LIST_LIMIT = 50
+_NOTIF_LAST_PURGE = 0.0
+NOTIF_QUIET_DEFAULT = {"on": False, "from": "20:00", "to": "06:00"}
+_ACTIVE_STEP = {"planned", "released", "running", "paused"}
+_MENTION_TOKEN = re.compile(r"⟦([opfu]):([^|⟧]{1,80})(?:\|([^⟧]{0,80}))?⟧")
+
+
+def notif_default_kinds(role: str) -> dict:
+    dept = role in DEPARTMENT_ROLES
+    return {
+        "mention": True,
+        "release": dept,
+        "risk": dept or role in {"project_management", "sales", "gf"},
+        "block": dept or role == "production_planning",
+        "loan": dept or role == "gf",
+    }
+
+
+def notif_prefs(con, username: str, role: str) -> dict:
+    kinds = notif_default_kinds(role)
+    quiet = dict(NOTIF_QUIET_DEFAULT)
+    row = con.execute("SELECT json FROM notification_prefs WHERE username=?", (username,)).fetchone()
+    if row:
+        try:
+            stored = json.loads(row["json"])
+        except ValueError:
+            stored = {}
+        for k, v in (stored.get("kinds") or {}).items():
+            if k in kinds:
+                kinds[k] = bool(v)
+        q = stored.get("quiet") or {}
+        if _clock_minutes(q.get("from")) is not None and _clock_minutes(q.get("to")) is not None:
+            quiet = {"on": bool(q.get("on")), "from": q["from"], "to": q["to"]}
+    return {"kinds": kinds, "quiet": quiet}
+
+
+def notif_prefs_validate(body) -> tuple[dict | None, str]:
+    if not isinstance(body, dict):
+        return None, "Einstellungen ungültig."
+    out: dict = {}
+    if "kinds" in body:
+        kinds = body["kinds"]
+        if not isinstance(kinds, dict) or set(kinds) - set(NOTIF_KINDS) or any(not isinstance(v, bool) for v in kinds.values()):
+            return None, "Ereignisarten ungültig."
+        out["kinds"] = kinds
+    if "quiet" in body:
+        q = body["quiet"]
+        if not isinstance(q, dict) or set(q) - {"on", "from", "to"} or not isinstance(q.get("on", False), bool) \
+                or _clock_minutes(q.get("from", "20:00")) is None or _clock_minutes(q.get("to", "06:00")) is None:
+            return None, "Ruhezeit ungültig (HH:MM)."
+        out["quiet"] = {"on": q.get("on", False), "from": q.get("from", "20:00"), "to": q.get("to", "06:00")}
+    return out, ""
+
+
+def notif_prefs_save(con, username: str, role: str, patch: dict) -> dict:
+    row = con.execute("SELECT json FROM notification_prefs WHERE username=?", (username,)).fetchone()
+    try:
+        stored = json.loads(row["json"]) if row else {}
+    except ValueError:
+        stored = {}
+    if "kinds" in patch:
+        stored["kinds"] = {**(stored.get("kinds") or {}), **patch["kinds"]}
+    if "quiet" in patch:
+        stored["quiet"] = patch["quiet"]
+    con.execute("INSERT INTO notification_prefs(username,json) VALUES(?,?) ON CONFLICT(username) DO UPDATE SET json=excluded.json",
+                (username, json.dumps(stored, ensure_ascii=False)))
+    return notif_prefs(con, username, role)
+
+
+def notif_purge(con: sqlite3.Connection, force: bool = False) -> int:
+    """Löscht Benachrichtigungen älter als NOTIF_RETENTION_DAYS (höchstens einmal pro Stunde)."""
+    global _NOTIF_LAST_PURGE
+    now = time.time()
+    if not force and now - _NOTIF_LAST_PURGE < NOTIF_PURGE_EVERY:
+        return 0
+    _NOTIF_LAST_PURGE = now
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=NOTIF_RETENTION_DAYS)).isoformat()
+    n = con.execute("DELETE FROM notifications WHERE created_at<?", (cutoff,)).rowcount
+    if n:
+        print(f"NOTIF: {n} Benachrichtigung(en) älter als {NOTIF_RETENTION_DAYS} Tage gelöscht", flush=True)
+    return n
+
+
+def notif_sig(con, username: str) -> dict:
+    row = con.execute("SELECT COALESCE(MAX(id),0) AS last, COALESCE(SUM(read_at IS NULL),0) AS unread FROM notifications WHERE username=?", (username,)).fetchone()
+    last, unread = int(row["last"]), int(row["unread"])
+    return {"last": last, "unread": unread, "sig": f"{last}:{unread}"}
+
+
+def _notif_row(r) -> dict:
+    return {"id": r["id"], "kind": r["kind"], "refType": r["ref_type"], "refId": r["ref_id"], "text": r["text"], "createdAt": r["created_at"], "read": r["read_at"] is not None}
+
+
+def notif_add(con, username: str, role: str, kind: str, ref_type: str, ref_id, text: str, dedupe: str = "") -> bool:
+    """Legt einen Eintrag an, wenn die Art für diesen Benutzer eingeschaltet ist (und nicht doppelt)."""
+    if kind not in NOTIF_KINDS or not notif_prefs(con, username, role)["kinds"].get(kind):
+        return False
+    cur = con.execute("INSERT OR IGNORE INTO notifications(username,kind,ref_type,ref_id,text,created_at,dedupe) VALUES(?,?,?,?,?,?,?)",
+                      (username, kind, ref_type, str(ref_id), text[:240], now_iso(), dedupe))
+    if cur.rowcount:
+        con.execute("DELETE FROM notifications WHERE username=? AND id NOT IN (SELECT id FROM notifications WHERE username=? ORDER BY id DESC LIMIT ?)",
+                    (username, username, NOTIF_MAX_PER_USER))
+    return bool(cur.rowcount)
+
+
+def _notif_users(con) -> list:
+    return [dict(r) for r in con.execute("SELECT username,role,department_id FROM users WHERE active=1").fetchall()]
+
+
+def notif_sees_dept(u: dict, dept_id: str) -> bool:
+    """Bereichsrollen sehen nur den eigenen Bereich; alle anderen Rollen sehen alle Bereiche."""
+    if u["role"] in DEPARTMENT_ROLES:
+        return bool(dept_id) and str(u.get("department_id") or "") == dept_id
+    return True
+
+
+def _short(d) -> str:
+    s = str(d or "")[:10]
+    return f"{s[8:10]}.{s[5:7]}." if _valid_date_key(s) else ""
+
+
+def _berlin_today() -> str:
+    try:
+        from release_gates import LOCAL_TZ
+        return datetime.now(LOCAL_TZ).strftime("%Y-%m-%d") if LOCAL_TZ else datetime.now().strftime("%Y-%m-%d")
+    except Exception:
+        return datetime.now().strftime("%Y-%m-%d")
+
+
+def _step_dept(step: dict, machine_dept: dict) -> str:
+    return str(step.get("departmentId") or machine_dept.get(str(step.get("machineId")), "cnc"))
+
+
+def notify_from_diff(con, old: dict, new: dict, actor: str) -> int:
+    """Erzeugt Einträge aus Freigabe/Rücknahme, Maschinensperre, Abwesenheit und Leiharbeiter-Anfrage."""
+    users = _notif_users(con)
+    machine_dept = {str(m.get("id")): str(m.get("departmentId") or "cnc") for m in (new.get("machines") or []) if isinstance(m, dict)}
+    machine_name = {str(m.get("id")): str(m.get("name") or m.get("id")) for m in (new.get("machines") or []) if isinstance(m, dict)}
+    dept_name = {str(d.get("id")): str(d.get("name") or d.get("id")) for d in (new.get("departments") or []) if isinstance(d, dict)}
+    made = 0
+
+    def send(recipients, kind, ref_type, ref_id, text, dedupe=""):
+        nonlocal made
+        for u in recipients:
+            if u["username"].casefold() != actor.casefold() and notif_add(con, u["username"], u["role"], kind, ref_type, ref_id, text, dedupe):
+                made += 1
+
+    old_steps = {str(s.get("id")): s for s in (old.get("workSteps") or []) if isinstance(s, dict)}
+    active_by_machine: dict = {}
+    for s in (new.get("workSteps") or []):
+        if isinstance(s, dict) and str(s.get("status") or "planned") in _ACTIVE_STEP and str(s.get("planningType") or "MACHINE") == "MACHINE":
+            active_by_machine[str(s.get("machineId"))] = active_by_machine.get(str(s.get("machineId")), 0) + 1
+    for s in (new.get("workSteps") or []):
+        if not isinstance(s, dict) or str(s.get("planningType") or "MACHINE") != "MACHINE":
+            continue
+        before = old_steps.get(str(s.get("id")))
+        if not before:
+            continue
+        a, b = str(before.get("status") or "planned"), str(s.get("status") or "planned")
+        if a == b or {a, b} != {"planned", "released"}:
+            continue
+        did = _step_dept(s, machine_dept)
+        label = str(s.get("fs") or s.get("order") or s.get("id"))
+        text = f"{label} freigegeben" if b == "released" else f"{label} zurückgezogen"
+        send([u for u in users if notif_sees_dept(u, did)], "release", "order", s.get("id"), f"{text} · {actor}")
+
+    old_blocks = {str(x.get("id")) for x in (old.get("machineBlocks") or []) if isinstance(x, dict)}
+    for blk in (new.get("machineBlocks") or []):
+        if not isinstance(blk, dict) or str(blk.get("id")) in old_blocks:
+            continue
+        mid = str(blk.get("machineId"))
+        n = active_by_machine.get(mid, 0)
+        if not n:
+            continue
+        did = machine_dept.get(mid, "cnc")
+        a, z = _short(blk.get("start")), _short(blk.get("end"))
+        span = a + ("–" + z if z and z != a else "")
+        send([u for u in users if notif_sees_dept(u, did)], "block", "machine", mid,
+             f"Sperre {machine_name.get(mid, mid)} {span}: {n} {'Auftrag' if n == 1 else 'Aufträge'} betroffen", f"blk|{blk.get('id')}")
+
+    old_abs = {(str(a.get("employeeId")), str(a.get("date"))) for a in (old.get("personnelAbsences") or []) if isinstance(a, dict)}
+    emp = {str(e.get("id")): e for e in (new.get("employees") or []) if isinstance(e, dict)}
+    fresh: dict = {}
+    for a in (new.get("personnelAbsences") or []):
+        if isinstance(a, dict) and (str(a.get("employeeId")), str(a.get("date"))) not in old_abs:
+            fresh.setdefault(str(a.get("employeeId")), []).append(str(a.get("date")))
+    for eid, days in fresh.items():
+        e = emp.get(eid)
+        if not e:
+            continue
+        did = str(e.get("departmentId") or "")
+        open_steps = sum(c for m, c in active_by_machine.items() if machine_dept.get(m) == did)
+        if not open_steps:
+            continue
+        days.sort()
+        span = _short(days[0]) + ("–" + _short(days[-1]) if len(days) > 1 else "")
+        # Kein Abwesenheitsgrund im Text (Datenschutz): nur Name, Zeitraum und Bereich.
+        send([u for u in users if notif_sees_dept(u, did) and u["role"] != "viewer"], "block", "employee", eid,
+             f"Abwesenheit {e.get('name') or eid} {span} · {dept_name.get(did, did)}: {open_steps} {'Auftrag' if open_steps == 1 else 'Aufträge'} offen", f"abs|{eid}|{days[0]}|{days[-1]}")
+
+    old_emp = {str(e.get("id")): e for e in (old.get("employees") or []) if isinstance(e, dict)}
+    for eid, e in emp.items():
+        if str(e.get("employmentType")) != "temporary":
+            continue
+        before = old_emp.get(eid) or {}
+        a = before.get("tempStatus") if before.get("employmentType") == "temporary" else None
+        b = e.get("tempStatus")
+        did = str(e.get("departmentId") or "")
+        key = f"loan|{eid}|{b}|{e.get('tempFrom')}|{e.get('tempTo')}"
+        span = f"{_short(e.get('tempFrom'))}–{_short(e.get('tempTo'))}"
+        if b == "requested" and (a != "requested" or (before.get("tempFrom"), before.get("tempTo")) != (e.get("tempFrom"), e.get("tempTo"))):
+            send([u for u in users if u["role"] == "gf"], "loan", "employee", eid, f"Leiharbeiter angefragt: {e.get('name') or eid} {span} · {dept_name.get(did, did)}", key)
+        elif b in {"approved", "rejected"} and a != b:
+            asker = str(e.get("tempBy") or "").casefold()
+            targets = [u for u in users if u["username"].casefold() == asker] or [u for u in users if u["role"] in DEPARTMENT_ROLES and str(u.get("department_id") or "") == did]
+            send(targets, "loan", "employee", eid, f"Leiharbeiter {'genehmigt' if b == 'approved' else 'abgelehnt'}: {e.get('name') or eid} {span}", key)
+    return made
+
+
+def notify_chat_message(con, channel, author: str, text: str) -> int:
+    """Erwähnung (@) in jedem Kanal, jede Nachricht in einer Direktunterhaltung."""
+    users = {u["username"].casefold(): u for u in _notif_users(con)}
+    if channel["kind"] == "all":
+        member_keys = set(users)
+    else:
+        member_keys = {str(x).casefold() for x in json.loads(channel["members"] or "[]")}
+    mentioned = {m.group(2).casefold() for m in _MENTION_TOKEN.finditer(text) if m.group(1) == "u"}
+    targets = set()
+    for key in member_keys:
+        if key == author.casefold() or key not in users:
+            continue
+        if key in mentioned or channel["kind"] == "direct":
+            targets.add(key)
+    preview = _MENTION_TOKEN.sub(lambda m: ("@" + m.group(2)) if m.group(1) == "u" else "/" + (m.group(3) or m.group(2)), text).replace("\n", " ")
+    preview = preview[:90] + ("…" if len(preview) > 90 else "")
+    made = 0
+    for key in targets:
+        u = users[key]
+        body = f"{author}: {preview}" if channel["kind"] == "direct" else f"{author} erwähnt dich: {preview}"
+        if notif_add(con, u["username"], u["role"], "mention", "chat", channel["id"], body):
+            made += 1
+    return made
+
+
+def notif_get(con, user: dict, path: str, qs: dict) -> tuple[int, dict]:
+    username, role = user["username"], user["role"]
+    if path == "/api/notifications/prefs":
+        return 200, {"prefs": notif_prefs(con, username, role)}
+    if path == "/api/notifications":
+        notif_purge(con)
+        try:
+            since = max(0, int(qs.get("since", ["0"])[0]))
+        except ValueError:
+            return 400, mp_error("MP-NOTIF-001", "Position ungültig.")
+        rows = con.execute("SELECT * FROM notifications WHERE username=? AND id>? ORDER BY id DESC LIMIT ?", (username, since, NOTIF_LIST_LIMIT)).fetchall()
+        return 200, {"items": [_notif_row(r) for r in rows], **notif_sig(con, username), "prefs": notif_prefs(con, username, role), "retentionDays": NOTIF_RETENTION_DAYS}
+    return 404, mp_error("MP-REQ-404", "Nicht gefunden.")
+
+
+def notif_post(con, user: dict, path: str, body: dict, state: dict | None = None) -> tuple[int, dict]:
+    username, role = user["username"], user["role"]
+    if path == "/api/notifications/read":
+        if body.get("all"):
+            con.execute("UPDATE notifications SET read_at=? WHERE username=? AND read_at IS NULL", (now_iso(), username))
+        else:
+            ids = body.get("ids")
+            if not isinstance(ids, list) or len(ids) > 200 or any(not isinstance(i, int) or isinstance(i, bool) for i in ids):
+                return 400, mp_error("MP-NOTIF-001", "Einträge ungültig.")
+            con.executemany("UPDATE notifications SET read_at=? WHERE username=? AND id=? AND read_at IS NULL", [(now_iso(), username, i) for i in ids])
+        return 200, {"ok": True, **notif_sig(con, username)}
+    if path == "/api/notifications/derived":
+        items = body.get("items")
+        if not isinstance(items, list) or len(items) > NOTIF_MAX_DERIVED:
+            return 400, mp_error("MP-NOTIF-001", f"Höchstens {NOTIF_MAX_DERIVED} Einträge je Meldung.")
+        state = state or {}
+        steps = {str(s.get("id")): s for s in (state.get("workSteps") or []) if isinstance(s, dict)}
+        machine_dept = {str(m.get("id")): str(m.get("departmentId") or "cnc") for m in (state.get("machines") or []) if isinstance(m, dict)}
+        today, made = _berlin_today(), 0
+        me = {"username": username, "role": role, "department_id": user.get("department_id") or ""}
+        for it in items:
+            if not isinstance(it, dict) or it.get("kind") not in {"late", "tight"} or not _valid_date_key(it.get("end")):
+                return 400, mp_error("MP-NOTIF-001", "Meldung ungültig.")
+            s = steps.get(str(it.get("orderId")))
+            # Nur echte, aktive Aufträge mit Termin und nur aus sichtbaren Bereichen; der Termin kommt vom Server.
+            if not s or str(s.get("status") or "planned") not in _ACTIVE_STEP or not _valid_date_key(s.get("dueDate")) \
+                    or not notif_sees_dept(me, _step_dept(s, machine_dept)):
+                continue
+            label = str(s.get("fs") or s.get("order") or s.get("id"))
+            text = f"{label}: Plan-Ende {_short(it['end'])} nach Termin {_short(s['dueDate'])}" if it["kind"] == "late" \
+                else f"{label}: Puffer unter 1 Arbeitstag (Termin {_short(s['dueDate'])})"
+            if notif_add(con, username, role, "risk", "order", s["id"], text, f"risk|{s['id']}|{today}"):
+                made += 1
+        return 200, {"created": made, **notif_sig(con, username)}
+    return 404, mp_error("MP-REQ-404", "Nicht gefunden.")
+
+
+def notif_put(con, user: dict, path: str, body: dict) -> tuple[int, dict]:
+    if path == "/api/notifications/prefs":
+        patch, err = notif_prefs_validate(body)
+        if patch is None:
+            return 400, mp_error("MP-NOTIF-002", err)
+        return 200, {"prefs": notif_prefs_save(con, user["username"], user["role"], patch)}
     return 404, mp_error("MP-REQ-404", "Nicht gefunden.")
 
 
@@ -3063,6 +3398,13 @@ class Handler(BaseHTTPRequestHandler):
             with DB_LOCK, db_session() as con:
                 status, payload = chat_get(con, user, path, parse_qs(parsed.query))
             return self.json_response(status, payload)
+        if path.startswith("/api/notifications"):
+            user = self.require_user()
+            if not user:
+                return
+            with DB_LOCK, db_session() as con:
+                status, payload = notif_get(con, user, path, parse_qs(parsed.query))
+            return self.json_response(status, payload)
         if path == "/api/history-archive":
             # Ältere Ist-Historie (nur lesen), neueste zuerst. Filter: from/to (YYYY-MM-DD, Fertigmeldung), limit/offset.
             user = self.require_user()
@@ -3101,18 +3443,22 @@ class Handler(BaseHTTPRequestHandler):
                 wait_ms = max(0, min(25000, int(qs.get("wait", ["0"])[0])))
             except Exception:
                 wait_ms = 0
+            # V12.13.0: Benachrichtigungen im selben Long-Poll. Der Client nennt den zuletzt gesehenen Stand
+            # (nsig); ändert er sich (neu/gelesen), endet die Wartezeit sofort.
+            nsig = qs.get("nsig", [""])[0]
             deadline = time.monotonic() + wait_ms / 1000.0
             with REVISION_CONDITION:
                 while True:
                     with DB_LOCK, db_session() as con:
                         row = con.execute("SELECT revision,updated_at,updated_by FROM state WHERE id=1").fetchone()
-                    if int(row["revision"]) != since or wait_ms <= 0:
+                        notif = notif_sig(con, user["username"])
+                    if int(row["revision"]) != since or wait_ms <= 0 or (nsig and nsig != notif["sig"]):
                         break
                     remaining = deadline - time.monotonic()
                     if remaining <= 0:
                         break
                     REVISION_CONDITION.wait(remaining)
-            return self.json_response(200, {"revision": row["revision"], "updatedAt": row["updated_at"], "updatedBy": row["updated_by"], "version": APP_VERSION})
+            return self.json_response(200, {"revision": row["revision"], "updatedAt": row["updated_at"], "updatedBy": row["updated_by"], "version": APP_VERSION, "notif": notif})
         if path == "/api/users":
             user = self.require_user(USER_MANAGER_ROLES)
             if not user:
@@ -3169,6 +3515,24 @@ class Handler(BaseHTTPRequestHandler):
                 return
             with DB_LOCK, db_session() as con:
                 status, payload = chat_post(con, user, path, body if isinstance(body, dict) else {})
+            if status in (200, 201):
+                with REVISION_CONDITION:
+                    REVISION_CONDITION.notify_all()   # V12.13.0: Glocke sofort aktualisieren
+            return self.json_response(status, payload)
+        if path.startswith("/api/notifications/"):
+            user = self.require_user()
+            if not user:
+                return
+            if not self.require_current_client():
+                return
+            state = None
+            with DB_LOCK, db_session() as con:
+                if path.endswith("/derived"):
+                    state = json.loads(con.execute("SELECT json FROM state WHERE id=1").fetchone()["json"])
+                status, payload = notif_post(con, user, path, body if isinstance(body, dict) else {}, state)
+            if status == 200:
+                with REVISION_CONDITION:
+                    REVISION_CONDITION.notify_all()
             return self.json_response(status, payload)
         if path == "/api/login":
             ip = self.client_address[0]
@@ -3323,6 +3687,19 @@ class Handler(BaseHTTPRequestHandler):
 
     def _do_PUT(self):
         path = urlparse(self.path).path
+        if path == "/api/notifications/prefs":
+            user = self.require_user()
+            if not user:
+                return
+            if not self.require_current_client():
+                return
+            try:
+                body = self.read_json(MAX_AUTH_BODY)
+            except Exception as e:
+                return self.json_response(400, mp_error("MP-DATA-013", str(e)))
+            with DB_LOCK, db_session() as con:
+                status, payload = notif_put(con, user, path, body)
+            return self.json_response(status, payload)
         if path != "/api/state":
             return self.json_response(404, mp_error("MP-REQ-404", "Nicht gefunden."))
         user = self.require_user(WRITE_ROLES)
@@ -3412,6 +3789,11 @@ class Handler(BaseHTTPRequestHandler):
             con.execute("UPDATE state SET revision=?,json=?,updated_at=?,updated_by=? WHERE id=1", (new_revision, raw, ts, user["username"]))
             con.execute("INSERT INTO server_audit(ts,username,action,detail,revision) VALUES(?,?,?,?,?)", (ts, user["username"], action, detail, new_revision))
             con.execute("COMMIT")
+        try:
+            with DB_LOCK, db_session() as con:
+                notify_from_diff(con, old, incoming, user["username"])
+        except Exception as e:   # Benachrichtigungen dürfen das Speichern nie verhindern
+            print(f"NOTIF: Ereignisse konnten nicht erzeugt werden: {e}", flush=True)
         with REVISION_CONDITION:
             REVISION_CONDITION.notify_all()
         return self.json_response(200, {"ok": True, "revision": new_revision, "data": redact_state(incoming, user), "archivedHistoryIds": archived_ids})
