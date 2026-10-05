@@ -61,7 +61,9 @@ check(con.execute("SELECT revision FROM state").fetchone()[0] == before_rev, "Mi
 check(server.validate_state(after_state, after_state)[0], "Migration: Live-Stand besteht validate_state")
 check(con.execute("PRAGMA integrity_check").fetchone()[0] == "ok", "Migration: integrity_check ok")
 check(all(p.get("number") and p.get("phase") for p in after_state.get("projects", [])), "Migration: Projekte haben Nummer und Phase")
-check(all(p["phase"] == ("accepted" if p.get("ab") else "inquiry") for p in after_state.get("projects", [])), "Migration: bestehende AB-Datensätze = angenommene Projekte")
+# Nur Projekte ohne Phase werden migriert; spätere Phasen (pm, closed, lost …) bleiben unverändert.
+_proj_pairs = list(zip(before_state.get("projects") or [], after_state.get("projects") or []))
+check(len(before_state.get("projects") or []) == len(after_state.get("projects") or []) and all(a.get("phase") == (b.get("phase") or ("accepted" if str(b.get("ab") or "").strip() else "inquiry")) for b, a in _proj_pairs if isinstance(a, dict) and isinstance(b, dict)), "Migration: bestehende AB-Datensätze = angenommene Projekte (Phase nur ergänzt, nie geändert)")
 check(len([t for t in after_state.get("processTemplates", []) if t["kind"] == "pm"]) == 3, "Migration: 3 PM-Standardabläufe als Daten angelegt")
 con.close()
 server.init_db()  # idempotent
@@ -521,8 +523,15 @@ check(p.returncode == 0 and list((tmp / "zweitziel").glob("*.sqlite3")), "Backup
 
 # --------------------------------------------------------------------------- tz fallback
 code = "import release_gates as g; g.LOCAL_TZ=None; print(g.local_dt('2026-07-01T04:30:00Z'))"
-p = subprocess.run([sys.executable, "-c", code], cwd=SRC, capture_output=True, text=True, env={**os.environ, "TZ": "Europe/Berlin"})
-check(p.stdout.strip() == "2026-07-01 06:30:00", f"Zeitzonen-Fallback ohne tzdata nutzt Systemzeit (Sommerzeit) ({p.stdout.strip()})")
+if os.name == "nt":
+    # Windows kennt TZ=Europe/Berlin nicht; der Fallback nutzt die in Windows eingestellte Zeitzone.
+    from datetime import datetime as _dt
+    _want = str(_dt.fromisoformat("2026-07-01T04:30:00+00:00").astimezone().replace(tzinfo=None))
+    p = subprocess.run([sys.executable, "-c", code], cwd=SRC, capture_output=True, text=True, env={k: v for k, v in os.environ.items() if k != "TZ"})
+else:
+    _want = "2026-07-01 06:30:00"
+    p = subprocess.run([sys.executable, "-c", code], cwd=SRC, capture_output=True, text=True, env={**os.environ, "TZ": "Europe/Berlin"})
+check(p.stdout.strip() == _want, f"Zeitzonen-Fallback ohne tzdata nutzt Systemzeit ({p.stdout.strip()} = {_want})")
 
 ok = sum(1 for r in RESULTS if r[0])
 print(f"\nERGEBNIS: {ok}/{len(RESULTS)} PASS")

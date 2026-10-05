@@ -1,4 +1,4 @@
-MASCHINENPLANUNG V12.7.5 - FEHLERCODES
+MASCHINENPLANUNG V12.7.6 - FEHLERCODES
 ======================================
 
 Jeder Fehler wird dem Mitarbeiter als Klartext + Code angezeigt.
