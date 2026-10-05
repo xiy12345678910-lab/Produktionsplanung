@@ -32,6 +32,12 @@ BEDIENUNG
 - Formate: Suchfeld gestaltet, leere Box rechts entfernt.
 - Chat: Hinweise erscheinen oben, verdecken nicht mehr das Eingabefeld.
 
+DEPLOY
+- Neu: Update_von_GitHub.ps1 - als normaler Windows-Benutzer (z. B. boensch) in einer normalen
+  PowerShell starten; laedt das Paket, entsperrt es und oeffnet UPDATE_LIVE.ps1 als Administrator.
+  Anleitung: README_Windows.txt Abschnitt 2b.
+- Aufgeraeumt: veraltete Entwurfsdateien (docs/mockups, docs/UI_AUDIT_PLAN.md) entfernt.
+
 TESTS
 - tests/e2e_roles.mjs: jede Rolle × jede Ansicht × Desktop/Handy (402 Pruefungen).
 - tests/e2e_customerplan.mjs: Kundenplan-Excel (nachgebaut nach P-2026-0007).
@@ -161,7 +167,7 @@ PRODUKTIONSSTART/-ENDE MIT ZEITERFASSUNG
 
 MASCHINENPLANUNG V12.7.5 - RELEASE NOTES
 ========================================
-Datum: 25.09.2026 · Basis: V12.7.4 · Oberflaeche (siehe docs/UI_AUDIT_PLAN.md)
+Datum: 25.09.2026 · Basis: V12.7.4 · Oberflaeche
 
 BEDIENUNG & DIALOGE
 - Alle Dialoge schliessen mit Escape; die Tab-Taste bleibt im offenen Dialog, danach springt der

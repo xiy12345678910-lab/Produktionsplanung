@@ -26,7 +26,8 @@ $MP_AppFiles = @(
     'MP_Common.ps1', 'Setup_Windows.ps1', 'INSTALLIEREN_ALS_ADMIN.ps1', 'UPDATE_LIVE.ps1',
     'Run_Server_LAN.ps1', 'Start_Server.ps1', 'Stop_Server.ps1', 'Neustart_Server.ps1',
     'Server_Status.ps1', 'CHECK_LAN_SICHERHEIT.ps1', 'Deinstallieren.ps1',
-    'README_Windows.txt', 'BENUTZER_KURZANLEITUNG.txt', 'FEHLERCODES.txt', 'RELEASE_NOTES.txt'
+    'README_Windows.txt', 'BENUTZER_KURZANLEITUNG.txt', 'FEHLERCODES.txt', 'RELEASE_NOTES.txt',
+    'Update_von_GitHub.ps1'
 )
 
 # Veraltete Dateien frueherer Versionen, die im Live-Ordner nicht liegen bleiben duerfen

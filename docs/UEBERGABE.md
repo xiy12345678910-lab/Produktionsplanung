@@ -1,6 +1,6 @@
 # Übergabe – Produktionsplanung (Stand 05.10.2026)
 
-Branch: `claude/new-session-mpx5ch` · Live-fähiger Stand: **V12.9.0** (getestet)
+Branch: `claude/new-session-mpx5ch` · Live-fähiger Stand: **V12.9.1** (getestet, Abnahme siehe unten)
 
 ## 1. Fertig und getestet (per `UPDATE_LIVE.ps1` einspielbar)
 
@@ -11,6 +11,9 @@ Branch: `claude/new-session-mpx5ch` · Live-fähiger Stand: **V12.9.0** (geteste
 | 12.8.2 | GF legt Bereiche an (Produktion/Vertrieb/Entwicklung), erste Maschine/Linie mit Schichtmodell/Umrüstzeit | `tests/e2e_departments.mjs` 18/18 |
 | 12.8.3 | PM-Vorplan beim ersten AV-Überschreiben gesichert, PM-Termine danach gesperrt, Vergleich PM · AV · Ist in AT | `tests/e2e_pmplan.mjs` 11/11 |
 | 12.9.0 | Messenger: Kanal „Alle“, Gruppen, Direkt, `/`-Verweise (Auftrag/Projekt/Format) mit Direktlink, `@`-Erwähnungen, klein ↔ groß, Mobil-Vollbild; eigene Tabellen `chat_*`, API `/api/chat/*` | `tests/e2e_chat.mjs` 24/24 |
+| 12.9.1 | Nachrichten nach 30 Tagen gelöscht, 📌 behält; Kundenplan ohne erfundenen Liefertermin, PM-Aufgaben im Kundenplan; Abnahme-Korrekturen und UI; `Update_von_GitHub.ps1` | `tests/test_v129.py` 12/12, `e2e_chat.mjs` 31/31, `e2e_customerplan.mjs` 9/9 |
+| alle | Rollen-Rundgang (8 Rollen × alle Ansichten × Desktop/Handy) | `tests/e2e_roles.mjs` 402/402 |
+| alle | Regression Rechte/Migration (künstliche DB über `tests/make_test_db.py`) | `tests/test_regression.py` 151/151 |
 | alle | Server-Regeln ohne Browser | `tests/test_v128.py` 35/35 |
 | alle | UI-Smoke (Ansichten, Dialoge, Mobil) | `tests/ui_smoke.mjs` 77/77 |
 
@@ -26,10 +29,12 @@ Testhinweis: E2E-Tests setzen die Browser-Zeitzone auf Europe/Berlin (wie `relea
 
 ## 3. Ideen für danach
 
-- Messenger: Dateianhänge/Fotos, Nachrichten bearbeiten/löschen, Browser-Benachrichtigung.
+- Messenger: Dateianhänge/Fotos, Nachrichten bearbeiten/löschen, Browser-Benachrichtigung, Gruppe verlassen.
 - Parallelplätze: Personalbedarf je Platz.
 
 ## 4. Betrieb
 
-- Update (Admin-PowerShell, Daten bleiben erhalten): Paket-ZIP des Branches laden, entpacken, `.\UPDATE_LIVE.ps1`.
+- Update als normaler Windows-Benutzer (z. B. boensch): `Update_von_GitHub.ps1` (siehe README_Windows.txt 2b) – lädt das Paket, startet `UPDATE_LIVE.ps1` per UAC als Administrator.
+- Alternativ (Admin-PowerShell): Paket-ZIP des Branches laden, entpacken, `.\UPDATE_LIVE.ps1`.
+- Gelöschte Chat-Nachrichten bleiben bis zu 30 Tage in den Backups (60 Sicherungen).
 - Danach alle Browser mit Strg+F5 neu laden.

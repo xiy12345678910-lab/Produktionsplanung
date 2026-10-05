@@ -32,6 +32,18 @@ MASCHINENPLANUNG V12.9.1 - WINDOWS-SERVER (LAN ONLY)
    7) Ab V12.4.5/V12.6 wird beim ersten Start die Benutzertabelle um neue Rollen (Arbeitsvorbereitung,
       Vertrieb) erweitert. Dabei werden alle Sitzungen beendet: jeder meldet sich einmal neu an.
 
+2b. UPDATE DIREKT VON GITHUB (Windows-Benutzer, z. B. boensch)
+   Normale PowerShell (kein Administrator) - die drei Zeilen kopieren und einfuegen:
+        $B = 'claude/new-session-mpx5ch'
+        irm "https://raw.githubusercontent.com/xiy12345678910-lab/Produktionsplanung/$B/Update_von_GitHub.ps1" -OutFile "$env:USERPROFILE\Downloads\Update_von_GitHub.ps1"
+        powershell -ExecutionPolicy Bypass -File "$env:USERPROFILE\Downloads\Update_von_GitHub.ps1" -Branch $B
+   Das Skript laedt das Paket nach C:\Users\<Benutzer>\Downloads\Maschinenplanung_Update\<Zeit>\,
+   entsperrt die Dateien und oeffnet UPDATE_LIVE.ps1 in einem Administrator-Fenster (UAC: Admin-
+   Konto bestaetigen). Ablauf und Rueckfall wie unter 2.
+   Ab dieser Version liegt Update_von_GitHub.ps1 auch im Live-Ordner:
+        powershell -ExecutionPolicy Bypass -File C:\ProgramData\Maschinenplanung\Update_von_GitHub.ps1 -Branch main
+   Nur herunterladen (Installation spaeter): Parameter -NurHerunterladen.
+
 3. ERSTINSTALLATION (neuer PC)
    PowerShell als Administrator:
         Set-ExecutionPolicy -Scope Process Bypass
