@@ -7,7 +7,7 @@
 | 1 | 5 | Hallenmodus (Hell/Dunkel/Halle) | erledigt V12.11.0 (Kiosk-Schalter optional, nicht umgesetzt) |
 | 2 | 3 | Undo/Redo | erledigt V12.12.0 |
 | 3 | 4 | Browser-Benachrichtigungen | erledigt V12.13.0 (Glocke; Browser-Meldung nur bei https, Erklärtext bewusst weggelassen) |
-| 4 | A | Firmen-Config `config\firma.json` außerhalb des Pakets (docs/PRODUKT_MULTI_FIRMA.md) | offen |
+| 4 | A | Firmen-Config `config\firma.json` außerhalb des Pakets (docs/PRODUKT_MULTI_FIRMA.md) | erledigt V12.14.0 (Datei, Migration, Validierung, Update/Rollback/Umzug/Vorabtest/Backup; API und Firmenprofil-UI offen) |
 | 5 | B | Branchenvorlagen, Module | offen |
 | 6 | C1 | Einrichtungsassistent | offen |
 | 7 | 17 | Qualifikationsmatrix | offen |

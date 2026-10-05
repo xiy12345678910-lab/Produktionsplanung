@@ -1,4 +1,4 @@
-MASCHINENPLANUNG V12.13.0 - WINDOWS-SERVER (LAN ONLY)
+MASCHINENPLANUNG V12.14.0 - WINDOWS-SERVER (LAN ONLY)
 =====================================================
 
 1. VORAUSSETZUNGEN
@@ -50,6 +50,13 @@ MASCHINENPLANUNG V12.13.0 - WINDOWS-SERVER (LAN ONLY)
    release" -> Tag vX.Y.Z auf main -> Veroeffentlichen.
    BRANCH-SCHUTZ (GitHub -> Settings -> Branches -> main): "Require a pull request before merging",
    "Do not allow bypassing", kein Force-Push; Tags v* unter Settings -> Rules schuetzen.
+
+2a. FIRMENDATEN (config\firma.json)
+   - Liegt in C:\ProgramData\Maschinenplanung\config\ (neben data\): firma.json, logo.png|jpg, lizenz.key.
+   - Updates, Rollback, Umzug und Vorabtest behalten sie; UPDATE_LIVE.ps1 kopiert nur Programmdateien.
+   - Backup_Datenbank.py legt zu jeder Sicherung firma_<zeit>.zip an.
+     Restore: .\Restore_Datenbank.ps1 -MitConfig
+   - Ungueltige Datei: Server startet nicht, Meldung MP-CFG-001/002 (siehe FEHLERCODES.txt).
 
 3. ERSTINSTALLATION (neuer PC)
    PowerShell als Administrator:

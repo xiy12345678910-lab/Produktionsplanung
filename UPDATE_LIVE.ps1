@@ -59,7 +59,7 @@ try {
     if (Test-Path $cfgPath) {
         $preCfg = Get-Content $cfgPath -Raw | ConvertFrom-Json
         $preDb = Get-ChildItem (Join-Path $OldBase 'backups') -File -Filter 'maschinenplanung_*.sqlite3' | Sort-Object LastWriteTime -Descending | Select-Object -First 1
-        $pre = Invoke-MPPreflight $NewSource $PythonExe $preDb.FullName $preCfg $NewVersion
+        $pre = Invoke-MPPreflight $NewSource $PythonExe $preDb.FullName $preCfg $NewVersion $OldBase
         if (-not $pre.Ok) {
             Write-Host '--- Ausgabe des Vorabtests ---' -ForegroundColor Yellow
             Write-Host $pre.Log
@@ -87,6 +87,9 @@ try {
     $RollbackCode = Join-Path $TargetBase "update_backups\pre_V$($NewVersion)_$Stamp"
     New-Item -ItemType Directory -Path $RollbackCode -Force | Out-Null
     Get-ChildItem -LiteralPath $OldBase -File | Copy-Item -Destination $RollbackCode -Force
+    if (Test-Path -LiteralPath (Join-Path $OldBase $MP_ConfigDir)) {
+        Copy-Item -LiteralPath (Join-Path $OldBase $MP_ConfigDir) -Destination (Join-Path $RollbackCode $MP_ConfigDir) -Recurse -Force
+    }
     Copy-Item -LiteralPath $FinalBackup.FullName -Destination (Join-Path $RollbackCode 'maschinenplanung_vor_update.sqlite3') -Force
     Write-Host "    Rollback-Stand: $RollbackCode" -ForegroundColor Green
 
@@ -94,6 +97,9 @@ try {
     if ($migrating) {
         foreach ($sub in @('data', 'backups')) { New-Item -ItemType Directory -Path (Join-Path $TargetBase $sub) -Force | Out-Null }
         Copy-Item -Path (Join-Path $OldBase 'backups\*') -Destination (Join-Path $TargetBase 'backups') -Force -ErrorAction SilentlyContinue
+        if (Test-Path -LiteralPath (Join-Path $OldBase $MP_ConfigDir)) {
+            Copy-Item -LiteralPath (Join-Path $OldBase $MP_ConfigDir) -Destination $TargetBase -Recurse -Force
+        }
         foreach ($f in @('LAN_CONFIG.json', 'LAN_ADRESSEN.txt', 'BACKUP_ZIEL.txt')) {
             if (Test-Path (Join-Path $OldBase $f)) { Copy-Item (Join-Path $OldBase $f) (Join-Path $TargetBase $f) -Force }
         }
@@ -157,6 +163,9 @@ catch {
     if (-not $migrating -and $RollbackCode -and (Test-Path $RollbackCode)) {
         Get-ChildItem -LiteralPath $RollbackCode -File | Where-Object { $_.Name -ne 'maschinenplanung_vor_update.sqlite3' } |
             Copy-Item -Destination $TargetBase -Force
+        if (Test-Path -LiteralPath (Join-Path $RollbackCode $MP_ConfigDir)) {
+            Copy-Item -LiteralPath (Join-Path $RollbackCode $MP_ConfigDir) -Destination $TargetBase -Recurse -Force
+        }
         foreach ($name in $MP_AppFiles) {
             if (-not (Test-Path (Join-Path $RollbackCode $name))) { Remove-Item -LiteralPath (Join-Path $TargetBase $name) -Force -ErrorAction SilentlyContinue }
         }

@@ -14,6 +14,7 @@ import ipaddress
 import os
 import re
 import secrets
+import shutil
 import socket
 import sqlite3
 import sys
@@ -26,7 +27,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-APP_VERSION = "12.13.0"
+APP_VERSION = "12.14.0"
 HOST = os.environ.get("MP_HOST", "0.0.0.0")
 PORT = int(os.environ.get("MP_PORT", "8765"))
 BASE = Path(__file__).resolve().parent
@@ -38,6 +39,287 @@ from release_gates import machine_lanes, validate_release_feasibility
 DATA_DIR = BASE / "data"
 DB_PATH = DATA_DIR / "maschinenplanung.sqlite3"
 INDEX_PATH = BASE / "index.html"
+
+
+# ---------------------------------------------------------------------------------------------
+# V12.14.0: Firmenkonfiguration config/firma.json (+ Logo) AUSSERHALB des Programmpakets.
+# Updates (UPDATE_LIVE.ps1) kopieren nur $MP_AppFiles und fassen config\ nie an.
+# Nur Standardbibliothek. Ungültige Datei = Start verweigert (MP-CFG-001/002), nichts wird überschrieben.
+# ---------------------------------------------------------------------------------------------
+CONFIG_DIR = Path(os.environ.get("MP_CONFIG_DIR") or (BASE / "config"))
+CONFIG_PATH = CONFIG_DIR / "firma.json"
+CONFIG_SCHEMA = 1
+CONFIG_KEEP_BAK = 20
+CONFIG_LOGO_MAX = 420 * 1024
+CONFIG_LOCK = threading.Lock()
+CONFIG_MODULES = ("projects", "formats", "personnel", "chat", "notifications", "postcalc", "kpi")
+CONFIG_TEMPLATES = {"werbetechnik", "neutral"}
+CONFIG_HEX = re.compile(r"^#[0-9a-fA-F]{6}$")
+CONFIG_TENANT = re.compile(r"^[a-z0-9-]{3,32}$")
+CONFIG_PROJECT_AREAS = [
+    {"id": "sales", "name": "Vertrieb"}, {"id": "pm", "name": "Projektmanagement"},
+    {"id": "engineering", "name": "Konstruktion / Entwicklung"}, {"id": "calculation", "name": "Kalkulation"},
+    {"id": "purchasing", "name": "Einkauf"}, {"id": "quality", "name": "Qualitätssicherung"},
+    {"id": "av", "name": "Arbeitsvorbereitung"},
+]
+
+
+class ConfigError(Exception):
+    def __init__(self, code: str, message: str):
+        super().__init__(message)
+        self.code = code
+        self.message = message
+
+
+def config_defaults() -> dict:
+    """Neutrale Grundwerte (neue Installation, fehlende Felder)."""
+    return {
+        "schemaVersion": CONFIG_SCHEMA,
+        "tenantId": "firma",
+        "company": {"name": "", "productName": "Produktionsplanung", "logoFile": "", "color": "#1f5eff",
+                    "uiAccent": "#1f5eff", "font": "Arial", "address": "", "footer": ""},
+        "locale": {"language": "de", "timezone": "Europe/Berlin", "holidayRegion": ""},
+        "terms": {"projectNumber": "Projekt", "orderNumber": "Auftrag", "roleLabels": {}},
+        "template": "neutral",
+        "modules": {k: True for k in CONFIG_MODULES},
+        "projectAreas": [dict(a) for a in CONFIG_PROJECT_AREAS],
+        "license": {"file": "lizenz.key"},
+        "update": {"channel": "stable", "source": ""},
+        "setupDone": True,
+    }
+
+
+# Bisher fest eingebaute Werte des Bestandskunden: stehen nur hier, ausschließlich für die Erstmigration.
+LEGACY_SEED = {
+    "tenantId": "werbetechnik", "template": "werbetechnik",
+    "company": {"name": "WERBETECHNIK *ART OF DISPLAY* GMBH", "color": "#E2382A", "font": "Arial"},
+    "terms": {"projectNumber": "WT"},
+}
+
+
+def _merge_missing(cur, default):
+    """Ergänzt nur fehlende Schlüssel; vorhandene Werte und unbekannte Felder bleiben."""
+    if not isinstance(cur, dict) or not isinstance(default, dict):
+        return cur
+    out = dict(cur)
+    for k, v in default.items():
+        out[k] = _merge_missing(out[k], v) if k in out else json.loads(json.dumps(v))
+    return out
+
+
+def validate_config(cfg) -> list[str]:
+    """Liefert Fehler als 'feld: grund'. Unbekannte Felder werden toleriert."""
+    errs: list[str] = []
+    if not isinstance(cfg, dict):
+        return ["(Datei): Objekt erwartet"]
+
+    def sec(name):
+        v = cfg.get(name)
+        if v is None:
+            return {}
+        if not isinstance(v, dict):
+            errs.append(f"{name}: Objekt erwartet")
+            return {}
+        return v
+
+    def text(sect, d, key, mx):
+        v = d.get(key)
+        if v is not None and (not isinstance(v, str) or len(v) > mx):
+            errs.append(f"{sect}.{key}: Text bis {mx} Zeichen erwartet")
+
+    sv = cfg.get("schemaVersion")
+    if sv is not None and (not isinstance(sv, int) or isinstance(sv, bool) or sv < 1):
+        errs.append("schemaVersion: ganze Zahl >= 1 erwartet")
+    t = cfg.get("tenantId")
+    if t is not None and not (isinstance(t, str) and CONFIG_TENANT.match(t)):
+        errs.append("tenantId: [a-z0-9-], 3-32 Zeichen")
+    tp = cfg.get("template")
+    if tp is not None and tp not in CONFIG_TEMPLATES:
+        errs.append("template: unbekannte Vorlage")
+    c = sec("company")
+    for k in ("name", "productName", "font", "address", "footer"):
+        text("company", c, k, 600 if k in ("address", "footer") else 120)
+    for k in ("color", "uiAccent"):
+        if c.get(k) is not None and not (isinstance(c[k], str) and CONFIG_HEX.match(c[k])):
+            errs.append(f"company.{k}: Hex-Farbe #RRGGBB erwartet")
+    lf = c.get("logoFile")
+    if lf not in (None, ""):
+        if not (isinstance(lf, str) and re.match(r"^[A-Za-z0-9_.-]+\.(png|jpe?g)$", lf)):
+            errs.append("company.logoFile: Dateiname .png/.jpg im config-Ordner erwartet")
+        else:
+            p = CONFIG_DIR / lf
+            if not p.is_file():
+                errs.append(f"company.logoFile: Datei {lf} fehlt")
+            elif p.stat().st_size > CONFIG_LOGO_MAX:
+                errs.append(f"company.logoFile: Datei größer als {CONFIG_LOGO_MAX // 1024} KB")
+    lo = sec("locale")
+    if lo.get("language") is not None and lo["language"] not in ("de", "en"):
+        errs.append("locale.language: de oder en")
+    text("locale", lo, "timezone", 64)
+    text("locale", lo, "holidayRegion", 16)
+    te = sec("terms")
+    text("terms", te, "projectNumber", 30)
+    text("terms", te, "orderNumber", 30)
+    if te.get("roleLabels") is not None and not isinstance(te["roleLabels"], dict):
+        errs.append("terms.roleLabels: Objekt erwartet")
+    m = sec("modules")
+    for k, v in m.items():
+        if k in CONFIG_MODULES and not isinstance(v, bool):
+            errs.append(f"modules.{k}: true/false erwartet")
+    pa = cfg.get("projectAreas")
+    if pa is not None:
+        ok = isinstance(pa, list) and pa and all(
+            isinstance(a, dict) and isinstance(a.get("id"), str) and re.match(r"^[a-z0-9_-]{1,30}$", a["id"])
+            and isinstance(a.get("name"), str) and 0 < len(a["name"]) <= 60 for a in pa)
+        if not ok or len({a["id"] for a in pa}) != len(pa):
+            errs.append("projectAreas: Liste aus {id, name} (eindeutige id) erwartet")
+    sec("license")
+    u = sec("update")
+    text("update", u, "channel", 20)
+    text("update", u, "source", 300)
+    return errs
+
+
+def config_last_bak() -> str:
+    baks = sorted(CONFIG_DIR.glob("firma.json.bak-*"), key=lambda p: p.name, reverse=True)
+    for p in baks:
+        try:
+            if not validate_config(json.loads(p.read_text(encoding="utf-8-sig"))):
+                return str(p)
+        except (OSError, ValueError):
+            continue
+    return ""
+
+
+def _config_fail(code: str, detail: str) -> ConfigError:
+    bak = config_last_bak()
+    msg = f"{code} {CONFIG_PATH}: {detail}" + (f" · letzte gültige Sicherung: {bak}" if bak else "")
+    return ConfigError(code, msg)
+
+
+def read_config_file() -> dict:
+    try:
+        cfg = json.loads(CONFIG_PATH.read_text(encoding="utf-8-sig"))
+    except (OSError, ValueError) as e:
+        raise _config_fail("MP-CFG-001", f"nicht lesbar oder kein JSON ({e.__class__.__name__})")
+    errs = validate_config(cfg)
+    if errs:
+        raise _config_fail("MP-CFG-002", "; ".join(errs[:5]))
+    return cfg
+
+
+def _atomic_write(path: Path, data: bytes) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_bytes(data)
+    os.replace(tmp, path)
+
+
+def save_config(cfg: dict) -> None:
+    """Validiert, sichert die bisherige Datei als .bak (nur bei geänderter Datei, letzte 20) und schreibt atomar."""
+    errs = validate_config(cfg)
+    if errs:
+        raise ConfigError("MP-CFG-002", f"{CONFIG_PATH}: " + "; ".join(errs[:5]))
+    if int(cfg.get("schemaVersion", CONFIG_SCHEMA)) > CONFIG_SCHEMA:
+        raise ConfigError("MP-CFG-003", "schemaVersion neuer als dieses Programm: nicht geschrieben")
+    data = (json.dumps(cfg, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
+    with CONFIG_LOCK:
+        if CONFIG_PATH.exists():
+            if CONFIG_PATH.read_bytes() == data:
+                return
+            stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+            bak = CONFIG_DIR / f"firma.json.bak-{stamp}"
+            n = 1
+            while bak.exists():
+                n += 1
+                bak = CONFIG_DIR / f"firma.json.bak-{stamp}-{n}"
+            shutil.copy2(CONFIG_PATH, bak)
+            for old in sorted(CONFIG_DIR.glob("firma.json.bak-*"), key=lambda p: p.name, reverse=True)[CONFIG_KEEP_BAK:]:
+                old.unlink(missing_ok=True)
+        _atomic_write(CONFIG_PATH, data)
+
+
+def _legacy_logo(ci: dict) -> tuple[str, bytes]:
+    """Logo des Bestands: data.ci.logo, sonst das bisher in index.html eingebaute. ('', b'') wenn keins/zu groß."""
+    cands = []
+    if isinstance(ci, dict) and isinstance(ci.get("logo"), str):
+        cands.append(ci["logo"])
+    try:
+        m = re.search(r"logo:'(data:image/(?:png|jpeg);base64,[A-Za-z0-9+/=]+)'", INDEX_PATH.read_text(encoding="utf-8"))
+        if m:
+            cands.append(m.group(1))
+    except OSError:
+        pass
+    for s in cands:
+        m = re.match(r"^data:image/(png|jpeg);base64,(.+)$", s, re.S)
+        if not m:
+            continue
+        try:
+            raw = base64.b64decode(m.group(2), validate=True)
+        except ValueError:
+            continue
+        if 0 < len(raw) <= CONFIG_LOGO_MAX:
+            return ("logo.png" if m.group(1) == "png" else "logo.jpg"), raw
+    return "", b""
+
+
+def _existing_state_ci() -> dict | None:
+    """Liest (read-only) revision/data.ci. None = keine Bestandsdatenbank (Revision <= 1 oder keine)."""
+    if not DB_PATH.exists():
+        return None
+    try:
+        con = sqlite3.connect(f"file:{DB_PATH.as_posix()}?mode=ro", uri=True)
+        try:
+            row = con.execute("SELECT revision,json FROM state WHERE id=1").fetchone()
+        finally:
+            con.close()
+        if not row or int(row[0]) <= 1:
+            return None
+        ci = json.loads(row[1]).get("ci")
+        return ci if isinstance(ci, dict) else {}
+    except (sqlite3.Error, ValueError, TypeError):
+        return None
+
+
+def migrate_firma_config() -> dict:
+    """Fehlt die Datei: aus den bisherigen Werten (Bestand) bzw. neutral anlegen. Idempotent."""
+    cfg = config_defaults()
+    ci = _existing_state_ci()
+    if ci is not None:
+        cfg = _merge_missing(json.loads(json.dumps(LEGACY_SEED)), cfg)
+        cfg["tenantId"] = LEGACY_SEED["tenantId"]
+        co = cfg["company"]
+        for k in ("address", "footer", "font"):
+            if isinstance(ci.get(k), str) and ci[k]:
+                co[k] = ci[k][:600 if k != "font" else 60]
+        if isinstance(ci.get("company"), str) and ci["company"].strip():
+            co["name"] = ci["company"].strip()[:120]
+        if isinstance(ci.get("color"), str) and CONFIG_HEX.match(ci["color"]):
+            co["color"] = ci["color"]
+        name, raw = _legacy_logo(ci)
+        if name:
+            _atomic_write(CONFIG_DIR / name, raw)
+            co["logoFile"] = name
+    save_config(cfg)
+    return cfg
+
+
+def load_config() -> tuple[dict, list[str]]:
+    """Start-Prüfung. Liefert (Konfiguration, Warnungen). Wirft ConfigError (MP-CFG-001/002) bei ungültiger Datei."""
+    warnings: list[str] = []
+    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    if not CONFIG_PATH.exists():
+        return migrate_firma_config(), warnings
+    cfg = read_config_file()
+    if int(cfg.get("schemaVersion", 1)) > CONFIG_SCHEMA:
+        warnings.append(f"MP-CFG-003 {CONFIG_PATH}: schemaVersion {cfg['schemaVersion']} ist neuer als bekannt "
+                        f"({CONFIG_SCHEMA}); Datei wird nur gelesen, nicht geändert.")
+        return cfg, warnings
+    merged = _merge_missing(cfg, config_defaults())
+    merged["schemaVersion"] = max(int(cfg.get("schemaVersion", 1)), CONFIG_SCHEMA)
+    if merged != cfg:
+        save_config(merged)
+    return merged, warnings
 SESSION_TTL = 12 * 60 * 60
 MAX_BODY = 8 * 1024 * 1024
 PBKDF2_ITERS = 310_000
@@ -3821,6 +4103,14 @@ def main() -> None:
             print("FEHLER: Server muss an eine konkrete LAN-IP innerhalb --allowed-subnet gebunden werden.", file=sys.stderr)
             raise SystemExit(2)
     init_db()
+    if not args.init_admin:
+        try:
+            _cfg, cfg_warn = load_config()
+        except ConfigError as e:
+            print(f"FEHLER: {e.message}", file=sys.stderr)
+            raise SystemExit(3)
+        for w in cfg_warn:
+            print(f"WARNUNG: {w}", flush=True)
     if args.init_admin:
         password = os.environ.get("MP_ADMIN_PASSWORD")
         if not password:

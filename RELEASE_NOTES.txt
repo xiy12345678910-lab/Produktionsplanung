@@ -1,7 +1,27 @@
-MASCHINENPLANUNG V12.13.0 - RELEASE NOTES
+MASCHINENPLANUNG V12.14.0 - RELEASE NOTES
 =========================================
-Datum: 05.10.2026 · Basis: V12.12.0 · Update mit UPDATE_LIVE.ps1, Daten bleiben erhalten
+Datum: 05.10.2026 · Basis: V12.13.0 · Update mit UPDATE_LIVE.ps1, Daten bleiben erhalten
 
+FIRMEN-CONFIG AUSSERHALB DES PAKETS
+- Firmenstand (Name, Logo, Farben, Schrift, Begriffe, Module, Feiertagsregion, Zeitzone u. a.) liegt in
+  config\firma.json (+ Logo, Lizenz) neben data\. Updates kopieren nur $MP_AppFiles und beruehren config\ nie.
+- UPDATE_LIVE.ps1: Rollback-Sicherung nimmt config\ rekursiv mit, Rollback stellt sie wieder her, Umzug in einen
+  anderen Ordner kopiert sie, der Vorabtest startet die neue Version mit einer Kopie der echten Config.
+- Backup: zu jeder DB-Sicherung firma_<zeit>.zip (config\ ohne .bak), gleiche Rotation und Zweitkopie.
+  Restore_Datenbank.ps1 -MitConfig spielt sie zurueck (aktuelle Datei vorher als .bak). Deinstallieren behaelt config\.
+- Erststart ohne Datei: wird aus den bisherigen Werten (Bestand: data.ci + bisherige Einbauwerte, Logo nach
+  config\logo.*) bzw. neutral angelegt. Bestehende Installationen laufen ohne Eingriff weiter.
+- server.py (nur Standardbibliothek) validiert die Datei vor dem Port-Bind. Fehlende Felder werden ergaenzt, nichts
+  geloescht, unbekannte Felder bleiben; vor jeder Aenderung firma.json.bak-<zeit> (letzte 20), Schreiben atomar.
+  Ungueltig: Start verweigert (Exit 3), nichts wird ueberschrieben. Neue Codes: MP-CFG-001, MP-CFG-002, MP-CFG-003.
+- Noch nicht Teil dieser Version: Oberflaeche/API fuer die Config (Client liest weiter data.ci).
+
+TESTS
+- Neu: tests/test_firma_config.py 45/45, tests/test_config_update.py 25/25 (Update-/Rollback-/Umzug-Simulation),
+  tests/ps_syntax.ps1 prueft zusaetzlich, dass config nicht in $MP_AppFiles/$MP_ObsoleteFiles steht.
+
+V12.13.0
+--------
 BENACHRICHTIGUNGEN
 - Glocke 🔔 mit Zaehler oben rechts. Klick: kompakte Liste, Klick auf einen Eintrag fuehrt zum Ziel
   (Kanal, Auftrag, Maschine, Personal, GF) und markiert ihn als gelesen. ✓ alle gelesen, ⚙ Einstellungen.

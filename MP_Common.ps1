@@ -19,6 +19,10 @@ $MP_LegacyFirewallRules = @(
     "Maschinenplanung V11 LAN Block Internet $MP_Port"
 )
 
+# V12.14.0: Firmenkonfiguration (config\firma.json, Logo, Lizenz) liegt NEBEN dem Programm, nicht in $MP_AppFiles.
+# Updates, Setup und $MP_ObsoleteFiles duerfen config\ nie ueberschreiben oder loeschen.
+$MP_ConfigDir = 'config'
+
 # Alle Programmdateien des Pakets. Nur diese werden kopiert/gesichert.
 $MP_AppFiles = @(
     'server.py', 'release_gates.py', 'index.html',
@@ -269,13 +273,17 @@ function Get-MPLogTail([string]$Base, [int]$Lines = 40) {
     return ((Get-Content -LiteralPath $last.FullName -Tail $Lines -Encoding UTF8) -join [Environment]::NewLine)
 }
 
-function Invoke-MPPreflight([string]$NewSource, [string]$PythonExe, [string]$DbCopySource, [object]$Config, [string]$ExpectedVersion) {
+function Invoke-MPPreflight([string]$NewSource, [string]$PythonExe, [string]$DbCopySource, [object]$Config, [string]$ExpectedVersion, [string]$LiveBase = '') {
     # Startet die NEUE Version mit einer KOPIE der Datenbank auf einem Ersatzport.
     # Das Live-System wird dabei nicht beruehrt.
     $dir = Join-Path $env:TEMP ('mp_preflight_' + [guid]::NewGuid().ToString('N').Substring(0, 8))
     New-Item -ItemType Directory -Path (Join-Path $dir 'data') -Force | Out-Null
     foreach ($name in $MP_AppFiles) { Copy-Item -LiteralPath (Join-Path $NewSource $name) -Destination $dir -Force }
     Copy-Item -LiteralPath $DbCopySource -Destination (Join-Path $dir 'data\maschinenplanung.sqlite3') -Force
+    # V12.14.0: neue Version mit der ECHTEN Firmenkonfiguration pruefen (Kopie, Live bleibt unberuehrt).
+    if ($LiveBase -and (Test-Path -LiteralPath (Join-Path $LiveBase $MP_ConfigDir))) {
+        Copy-Item -LiteralPath (Join-Path $LiveBase $MP_ConfigDir) -Destination (Join-Path $dir $MP_ConfigDir) -Recurse -Force
+    }
     $port = 8799
     while ($port -gt 8780 -and @(Get-NetTCPConnection -State Listen -LocalPort $port -ErrorAction SilentlyContinue).Count -gt 0) { $port-- }
     $out = Join-Path $dir 'preflight_out.log'; $err = Join-Path $dir 'preflight_err.log'

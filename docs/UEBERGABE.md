@@ -1,6 +1,6 @@
 # Übergabe – Produktionsplanung (Stand 05.10.2026)
 
-Branch: `claude/new-session-95ro2l` (Basis `claude/new-session-mpx5ch`) · Live-fähiger Stand: **V12.13.0** (getestet, Abnahme siehe unten)
+Branch: `claude/new-session-95ro2l` (Basis `claude/new-session-mpx5ch`) · Live-fähiger Stand: **V12.14.0** (getestet, Abnahme siehe unten)
 
 ## 1. Fertig und getestet (per `UPDATE_LIVE.ps1` einspielbar)
 
@@ -19,6 +19,7 @@ Branch: `claude/new-session-95ro2l` (Basis `claude/new-session-mpx5ch`) · Live-
 | 12.11.0 | Darstellung Hell/Dunkel/Halle (CSS-Variablen je Rolle, Kontrast ≥ 4,5 bzw. ≥ 7, Halle ≥ 14 px, Status-Symbole, `?theme=&view=&dept=`) | `tests/e2e_theme.mjs` 20/20 |
 | 12.12.0 | Undo/Redo (↶ ↷, Strg+Z/Y): Diff der geänderten Datensätze je save(), Konfliktprüfung gegen Fremdänderungen, max. 50, Rücknahme abgelehnter Änderungen | `tests/e2e_undo.mjs` 12/12 |
 | 12.13.0 | Benachrichtigungen: Glocke 🔔 mit Zähler, Liste mit Direktlink, ⚙ Arten/Ruhezeit, Browser-Meldung nur bei https; Tabellen `notifications`, Abruf im Long-Poll | `tests/test_notifications.py` 54/54, `tests/e2e_notifications.mjs` 31/31 |
+| 12.14.0 | Firmen-Config `config\firma.json` außerhalb des Pakets (Migration, Validierung MP-CFG-001..003, Update/Rollback/Umzug/Vorabtest/Backup behalten sie); API/UI folgen | `tests/test_firma_config.py` 45/45, `tests/test_config_update.py` 25/25 |
 | alle | Rollen-Rundgang (8 Rollen × alle Ansichten × Desktop/Handy) | `tests/e2e_roles.mjs` 374/374 |
 | alle | Regression Rechte/Migration (künstliche DB über `tests/make_test_db.py`) | `tests/test_regression.py` 151/151 |
 | alle | Server-Regeln ohne Browser | `tests/test_v128.py` 35/35 |

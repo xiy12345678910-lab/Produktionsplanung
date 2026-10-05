@@ -1,4 +1,4 @@
-MASCHINENPLANUNG V12.13.0 - FEHLERCODES
+MASCHINENPLANUNG V12.14.0 - FEHLERCODES
 ======================================
 
 Jeder Fehler wird dem Mitarbeiter als Klartext + Code angezeigt.
@@ -389,3 +389,10 @@ MP-CHAT-005  Nachricht leer oder zu lang (max. 2000 Zeichen).
 MP-CHAT-006  Mitglieder aendert nur, wer die Gruppe angelegt hat (oder Admin); nur bei Gruppen.
 MP-CHAT-007  Nachricht zum Behalten nicht gefunden (bereits nach 30 Tagen geloescht?).
 MP-CHAT-010  Verweis existiert nicht mehr (Auftrag/Projekt/Format geloescht oder archiviert).
+
+V12.14.0 NEU (Firmen-Config config\firma.json)
+MP-CFG-001   firma.json nicht lesbar oder kein JSON. Start verweigert, Datei unveraendert. Letzte gueltige
+             Sicherung steht in der Meldung (config\firma.json.bak-<zeit>), zurueckkopieren oder Restore -MitConfig.
+MP-CFG-002   Feld in firma.json ungueltig (Meldung nennt Feld, z. B. company.color). Start verweigert.
+MP-CFG-003   schemaVersion neuer als dieses Programm (nur Warnung): Datei wird gelesen, nicht geaendert.
+

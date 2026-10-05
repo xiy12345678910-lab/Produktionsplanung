@@ -10,4 +10,4 @@ foreach ($name in @($MP_TaskName, $MP_BackupTaskName) + $MP_LegacyTaskNames) {
 }
 ($MP_FirewallRules + $MP_LegacyFirewallRules) | ForEach-Object { Remove-NetFirewallRule -DisplayName $_ -ErrorAction SilentlyContinue }
 Write-Host 'Server gestoppt; Autostart, Backup-Task und Firewallregeln entfernt.' -ForegroundColor Green
-Write-Host "Daten bleiben erhalten: $Base\data und $Base\backups" -ForegroundColor DarkGray
+Write-Host "Daten bleiben erhalten: $Base\data, $Base\config und $Base\backups" -ForegroundColor DarkGray

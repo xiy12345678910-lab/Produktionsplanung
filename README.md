@@ -1,6 +1,6 @@
 # Produktionsplanung
 
-Maschinenplanung V12.13.0 – Wochen-/Ressourcenplanung je Bereich (Maschinen & Linien), Projekte,
+Maschinenplanung V12.14.0 – Wochen-/Ressourcenplanung je Bereich (Maschinen & Linien), Projekte,
 Formate (Tiefziehen), Personal und Nachrichten. Zentraler Windows-LAN-Server, Browser-Oberfläche.
 
 - `server.py` – Python-Server (nur Standardbibliothek, SQLite), `index.html` – Oberfläche, `release_gates.py` – Freigabeprüfung

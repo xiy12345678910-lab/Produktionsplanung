@@ -2,11 +2,12 @@
 #
 #   .\Restore_Datenbank.ps1                 Auswahl aus den letzten 10 Sicherungen (Enter = neueste)
 #   .\Restore_Datenbank.ps1 -Datei <pfad>   bestimmte Sicherung
+#   .\Restore_Datenbank.ps1 -MitConfig      zusaetzlich config\ aus dem passenden firma_*.zip (aktuelle Datei vorher als .bak)
 #
 # Ablauf: Sicherung pruefen -> Server stoppen (mit Nachfassen) -> aktuellen Stand sichern (*_vor_restore)
 #         -> zurueckspielen (-wal/-shm entfernt, integrity_check) -> Server starten -> Health-Check.
 # Startet der Server danach nicht, wird der Stand vor dem Restore automatisch zurueckgespielt.
-param([string]$Datei)
+param([string]$Datei, [switch]$MitConfig)
 $ErrorActionPreference = 'Stop'
 $Base = Split-Path -Parent $MyInvocation.MyCommand.Path
 . (Join-Path $Base 'MP_Common.ps1')
@@ -46,6 +47,16 @@ try {
     $ErrorActionPreference = 'Stop'
     $out | ForEach-Object { Write-Host "    $_" }
     if ($code -ne 0) { throw 'Wiederherstellung fehlgeschlagen - Live-Datenbank unveraendert.' }
+    if ($MitConfig) {
+        $zip = Join-Path (Split-Path -Parent $Datei) (([IO.Path]::GetFileName($Datei) -replace '^maschinenplanung_', 'firma_' -replace '\.sqlite3$', '.zip'))
+        if (-not (Test-Path -LiteralPath $zip)) { throw "Config-Sicherung fehlt: $zip (Datenbank ist bereits zurueckgespielt)." }
+        $ErrorActionPreference = 'Continue'
+        $outC = & $PythonExe -I (Join-Path $Base 'Backup_Datenbank.py') --restore-config $zip 2>&1
+        $codeC = $LASTEXITCODE
+        $ErrorActionPreference = 'Stop'
+        $outC | ForEach-Object { Write-Host "    $_" }
+        if ($codeC -ne 0) { throw 'Config-Wiederherstellung fehlgeschlagen.' }
+    }
     $pre = Get-ChildItem -LiteralPath $Backups -File -Filter 'maschinenplanung_*_vor_restore.sqlite3' |
         Where-Object { $_.LastWriteTime -ge $start.AddSeconds(-2) } | Sort-Object LastWriteTime -Descending | Select-Object -First 1
 
