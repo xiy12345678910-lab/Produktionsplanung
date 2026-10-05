@@ -58,7 +58,7 @@ check(not ok, "Formate: CNC-Leitung darf Tiefzieh-Format nicht anlegen")
 ok, _ = server.department_change_allowed(BASE, s, "thermoforming")
 check(ok, "Formate: Tiefzieh-Leitung darf eigenes Format anlegen")
 ok, _ = server.production_planning_change_allowed(BASE, {**s, "baseFormats": BASE["baseFormats"]})
-check(ok, "Formate: AV darf Formate anlegen")
+check(not ok, "Formate: AV darf keine Formate anlegen (ab V12.10.2, Formate nur Tiefziehen/Admin)")
 ok, _ = server.production_planning_change_allowed(BASE, s)
 check(not ok, "Formate: AV darf keine Grundformate anlegen")
 

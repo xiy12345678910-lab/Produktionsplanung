@@ -67,6 +67,7 @@ MP-DATA-010  Datenstand ist kein Objekt.
 MP-DATA-011  Mindestens eine Maschine ist erforderlich.
 MP-DATA-012  Auftragsliste fehlt.
 MP-DATA-013  Kontextbezogener Fehler; Klartext wird direkt in der Anwendung angezeigt.
+MP-DATA-014  Feld 'meta'/'ui' muss ein Objekt, 'planVersions' eine Liste von Objekten sein.
 
 [MACH - Maschinenstammdaten]
 MP-MACH-001  Maschine ohne gültige ID.
@@ -140,6 +141,9 @@ MP-PROD-030  Kontextbezogener Fehler; Klartext wird direkt in der Anwendung ange
 [REQ - HTTP-Anfrage]
 MP-REQ-002  Ungültige Anfrage.
 MP-REQ-404  Nicht gefunden.
+MP-REQ-403  Anfrage ohne Client-Kennung oder von fremder Seite (Origin) abgelehnt.
+MP-REQ-421  Unbekannter Server-Name im Host-Header (Schutz gegen DNS-Rebinding). Adresse des Admins verwenden
+             oder Namen in der Umgebungsvariable MP_ALLOWED_HOSTS eintragen.
 
 [SHIFT - Schicht-/Arbeitszeit]
 MP-SHIFT-003  Kontextbezogener Fehler; Klartext wird direkt in der Anwendung angezeigt.

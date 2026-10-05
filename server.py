@@ -14,6 +14,7 @@ import ipaddress
 import os
 import re
 import secrets
+import socket
 import sqlite3
 import sys
 import threading
@@ -43,7 +44,18 @@ PBKDF2_ITERS = 310_000
 DB_LOCK = threading.RLock()
 REVISION_CONDITION = threading.Condition()
 LOGIN_LOCK = threading.Lock()
+# V12.10.2: Fehlversuche je IP, je Benutzer und je (IP, Benutzer); Schlüssel "ip:…", "user:…", "ipuser:…".
 LOGIN_FAILS: dict[str, list[float]] = {}
+LOGIN_WINDOW = 600
+LOGIN_MAX_PER_IP_USER = 8
+LOGIN_MAX_PER_USER = 20
+LOGIN_MAX_PER_IP = 30
+# Login/Logout/Passwort brauchen nur wenige Byte; großer Body vor der Anmeldung = Angriffsfläche.
+MAX_AUTH_BODY = 16 * 1024
+# Begrenzt gleichzeitige Verbindungen (30 Browser mit Long-Poll + Reserve).
+MAX_CONNECTIONS = 256
+# Zusätzlich erlaubte Host-Namen (Komma-getrennt), z. B. DNS-Alias des Servers.
+EXTRA_ALLOWED_HOSTS = {h.strip().lower() for h in os.environ.get("MP_ALLOWED_HOSTS", "").split(",") if h.strip()}
 
 ROLES = {"admin", "gf", "department_lead", "department_deputy", "viewer", "project_management", "production_planning", "sales"}
 WRITE_ROLES = {"admin", "gf", "department_lead", "department_deputy", "project_management", "production_planning", "sales"}
@@ -57,6 +69,7 @@ MANAGEABLE_ROLES = {
     "department_deputy": {"viewer"},
 }
 ALLOWED_NETWORK = None
+AUTH_POST_PATHS = {"/api/login", "/api/logout", "/api/password"}
 
 
 def now_iso() -> str:
@@ -1260,7 +1273,7 @@ def _validate_machine_format_fields(m: dict) -> tuple[bool, str]:
     return True, ""
 
 
-def validate_formats(new: dict, dept_ids: set) -> tuple[bool, str, str]:
+def validate_formats(old: dict, new: dict, dept_ids: set) -> tuple[bool, str, str]:
     """Grundformate und Formate (Tiefziehen)."""
     base = new.get("baseFormats")
     if base in (None, ""):
@@ -1291,6 +1304,9 @@ def validate_formats(new: dict, dept_ids: set) -> tuple[bool, str, str]:
         return False, "MP-FMT-002", "Formatliste ist ungültig."
     machine_dept = {str(m.get("id")): str(m.get("departmentId") or "cnc") for m in (new.get("machines") or []) if isinstance(m, dict)}
     step_ids = {str(x.get("id")) for x in (new.get("workSteps") or []) if isinstance(x, dict)}
+    # Fertige Aufträge wandern in die Historie; das Format behält die Verknüpfung (originalOrderId).
+    step_ids |= {str(h.get("originalOrderId")) for h in (new.get("history") or []) if isinstance(h, dict) and h.get("originalOrderId")}
+    old_links = {str(f.get("id")): str(f.get("workStepId") or "") for f in (old.get("formats") or []) if isinstance(f, dict)}
     ids, numbers = set(), set()
     for f in formats:
         if not isinstance(f, dict) or not _SAFE_ID.fullmatch(str(f.get("id") or "")) or str(f.get("id")) in ids:
@@ -1346,7 +1362,9 @@ def validate_formats(new: dict, dept_ids: set) -> tuple[bool, str, str]:
         if not isinstance(log, list) or len(log) > 500 or any(not isinstance(x, dict) for x in log):
             return False, "MP-FMT-009", f"Format '{label}': Verlauf ist ungültig."
         wsid = str(f.get("workStepId") or "")
-        if wsid and wsid not in step_ids and len(wsid) > 80:
+        # V12.10.2 (N8): neue Verknüpfung muss auf einen vorhandenen Auftrag zeigen. Bestehende
+        # Verknüpfungen auf gelöschte Aufträge bleiben erlaubt, sonst blockiert ein Altbestand jedes Speichern.
+        if wsid and (len(wsid) > 80 or (wsid not in step_ids and wsid != old_links.get(str(f.get("id")), ""))):
             return False, "MP-FMT-010", f"Format '{label}': Verknüpfung zum Auftrag ist ungültig."
     return True, "", ""
 
@@ -1416,6 +1434,12 @@ def validate_state(old: dict, new: dict) -> tuple[bool, str, str]:
         return False, "MP-STEP-001", "Arbeitsgangliste fehlt."
     if not isinstance(departments, list) or not departments:
         return False, "MP-DEPT-001", "Produktionsbereiche fehlen."
+    # V12.10.2 (N1): Wurzelfelder ohne Fachprüfung zumindest typisieren (sonst TypeError beim Speichern).
+    for key, typ, what in (("meta", dict, "Objekt"), ("ui", dict, "Objekt"), ("planVersions", list, "Liste")):
+        if new.get(key) is not None and not isinstance(new.get(key), typ):
+            return False, "MP-DATA-014", f"Feld '{key}' muss ein {what} sein."
+    if any(not isinstance(v, dict) for v in new.get("planVersions") or []):
+        return False, "MP-DATA-014", "Planversionen sind ungültig."
 
     dept_ids = set()
     dept_types = {}
@@ -1462,7 +1486,7 @@ def validate_state(old: dict, new: dict) -> tuple[bool, str, str]:
     ok, code, reason = validate_process_templates(new.get("processTemplates"))
     if not ok:
         return False, code, reason
-    ok, code, reason = validate_formats(new, dept_ids)
+    ok, code, reason = validate_formats(old, new, dept_ids)
     if not ok:
         return False, code, reason
     seen_project_ids = {str(p.get("id")) for p in projects}
@@ -2401,7 +2425,8 @@ def production_planning_change_allowed(old: dict, new: dict) -> tuple[bool, str]
     löschen, AB-Verknüpfung). Freigabe, Produktion, Fertigmeldung, Personal,
     Maschinen und Einstellungen bleiben bei Bereichen/Admin.
     """
-    allowed_root = {"workSteps", "projects", "processTemplates", "audit", "meta", "ui", "planVersions", "formats"}
+    # V12.10.2: "formats" entfernt – Formate pflegen nur Tiefzieh-Leitung/-Stellvertretung und Admin (V12.10.0).
+    allowed_root = {"workSteps", "projects", "processTemplates", "audit", "meta", "ui", "planVersions"}
     for key in set(old) | set(new):
         if key not in allowed_root and canonical(old.get(key)) != canonical(new.get(key)):
             return False, f"Arbeitsvorbereitung darf '{key}' nicht ändern."
@@ -2723,22 +2748,51 @@ def prune_sessions(con: sqlite3.Connection) -> None:
     con.execute("DELETE FROM sessions WHERE expires_at < ?", (int(time.time()),))
 
 
-def failed_login_blocked(ip: str) -> bool:
+def _login_keys(ip: str, username: str) -> list[tuple[str, int]]:
+    u = str(username or "").strip().lower()[:80]
+    return [
+        ("ip:" + ip, LOGIN_MAX_PER_IP),
+        ("user:" + u, LOGIN_MAX_PER_USER),
+        ("ipuser:" + ip + "|" + u, LOGIN_MAX_PER_IP_USER),
+    ]
+
+
+def _prune_login_fails(now: float) -> None:
+    """Abgelaufene Versuche und leere Schlüssel entfernen (hält LOGIN_FAILS klein)."""
+    for key in list(LOGIN_FAILS):
+        xs = [t for t in LOGIN_FAILS[key] if now - t < LOGIN_WINDOW]
+        if xs:
+            LOGIN_FAILS[key] = xs
+        else:
+            del LOGIN_FAILS[key]
+
+
+def login_attempt_reserve(ip: str, username: str) -> float | None:
+    """Prüft die Sperre und zählt den Versuch atomar vorab als Fehlversuch.
+
+    Rückgabe: Zeitstempel der Reservierung, None = gesperrt. Parallele Anfragen
+    während der Passwortprüfung (~0,2 s) zählen dadurch alle mit.
+    """
     now = time.time()
+    keys = _login_keys(ip, username)
     with LOGIN_LOCK:
-        xs = [t for t in LOGIN_FAILS.get(ip, []) if now - t < 600]
-        LOGIN_FAILS[ip] = xs
-        return len(xs) >= 8
+        _prune_login_fails(now)
+        if any(len(LOGIN_FAILS.get(key, [])) >= limit for key, limit in keys):
+            return None
+        for key, _ in keys:
+            LOGIN_FAILS.setdefault(key, []).append(now)
+        return now
 
 
-def record_failed_login(ip: str) -> None:
+def login_attempt_succeeded(ip: str, username: str, stamp: float) -> None:
+    """Erfolg: nur die Zähler dieses Benutzers löschen; frühere Fehlversuche der IP bleiben."""
+    ip_key, user_key, ip_user_key = (k for k, _ in _login_keys(ip, username))
     with LOGIN_LOCK:
-        LOGIN_FAILS.setdefault(ip, []).append(time.time())
-
-
-def clear_failed_login(ip: str) -> None:
-    with LOGIN_LOCK:
-        LOGIN_FAILS.pop(ip, None)
+        LOGIN_FAILS.pop(user_key, None)
+        LOGIN_FAILS.pop(ip_user_key, None)
+        xs = LOGIN_FAILS.get(ip_key)
+        if xs and stamp in xs:
+            xs.remove(stamp)
 
 
 def client_ip_allowed(ip: str) -> bool:
@@ -2750,15 +2804,99 @@ def client_ip_allowed(ip: str) -> bool:
         return False
 
 
+def _local_host_names() -> set[str]:
+    names = set()
+    for fn in (socket.gethostname, socket.getfqdn):
+        try:
+            n = str(fn() or "").strip().lower().rstrip(".")
+        except OSError:
+            n = ""
+        if n:
+            names.add(n)
+            names.add(n.split(".", 1)[0])
+    return names
+
+
+LOCAL_HOST_NAMES = _local_host_names()
+
+
+def host_name_allowed(host: str, bind_ip: str) -> bool:
+    """Schutz gegen DNS-Rebinding: nur Server-IP, eigener PC-Name (auch mit DNS-Suffix) oder MP_ALLOWED_HOSTS."""
+    h = str(host or "").strip().lower().rstrip(".")
+    if not h:
+        return False
+    if h.startswith("["):
+        h = h[1:].split("]", 1)[0]
+    if h == str(bind_ip).lower() or h in EXTRA_ALLOWED_HOSTS or h in LOCAL_HOST_NAMES:
+        return True
+    try:
+        ip = ipaddress.ip_address(h)
+    except ValueError:
+        ip = None
+    if ip is not None:
+        try:
+            bind = ipaddress.ip_address(bind_ip)
+        except ValueError:
+            return False
+        # Server an 0.0.0.0 (nur Testbetrieb): jede IP-Adresse ist ein direkter Aufruf, kein Rebinding.
+        return ip == bind or bind.is_unspecified or (ip.is_loopback and bind.is_loopback)
+    if h == "localhost":
+        try:
+            return ipaddress.ip_address(bind_ip).is_loopback
+        except ValueError:
+            return False
+    # PC-Name mit beliebigem DNS-Suffix (pc01.firma.local), sofern der erste Teil der eigene Name ist.
+    return h.split(".", 1)[0] in LOCAL_HOST_NAMES and "." in h
+
+
+def split_host_port(value: str) -> tuple[str, int | None]:
+    v = str(value or "").strip()
+    if v.startswith("["):
+        host, _, rest = v[1:].partition("]")
+        port = rest[1:] if rest.startswith(":") else ""
+    elif v.count(":") == 1:
+        host, _, port = v.partition(":")
+    else:
+        host, port = v, ""
+    try:
+        return host, (int(port) if port else None)
+    except ValueError:
+        return host, -1
+
+
 class MPHTTPServer(ThreadingHTTPServer):
     # 30 gleichzeitige Browser + kurze Bursts bei Login/Reload/Long-Poll-Reconnect.
     request_queue_size = 128
     daemon_threads = True
     allow_reuse_address = True
 
+    def __init__(self, *args, **kwargs):
+        self._conn_slots = threading.BoundedSemaphore(MAX_CONNECTIONS)
+        super().__init__(*args, **kwargs)
+
+    def process_request(self, request, client_address):
+        # V12.10.2: begrenzte Threadzahl – Verbindungen über dem Limit werden sofort geschlossen.
+        if not self._conn_slots.acquire(blocking=False):
+            self.shutdown_request(request)
+            return
+        try:
+            super().process_request(request, client_address)
+        except Exception:
+            self._conn_slots.release()
+            raise
+
+    def process_request_thread(self, request, client_address):
+        try:
+            super().process_request_thread(request, client_address)
+        finally:
+            self._conn_slots.release()
+
 
 class Handler(BaseHTTPRequestHandler):
     server_version = f"ProduktionsplanungV{APP_VERSION}/1.0"
+    # V12.10.2: Socket-Timeout gegen langsame bzw. hängende Verbindungen (Slowloris).
+    # Long-Poll (/api/revision) wartet serverseitig max. 15 s und liest dabei nicht vom Socket.
+    timeout = 30
 
     def handle(self):
         # Defense in depth: clients outside the configured LAN subnet are
@@ -2804,12 +2942,15 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(raw)
 
-    def read_json(self) -> dict:
+    def read_json(self, limit: int = MAX_BODY) -> dict:
         try:
             n = int(self.headers.get("Content-Length", "0"))
         except ValueError:
+            self.close_connection = True
             raise ValueError("Ungültige Content-Length")
-        if n <= 0 or n > MAX_BODY:
+        if n <= 0 or n > limit:
+            # Body bleibt ungelesen -> Verbindung nach der Antwort schließen.
+            self.close_connection = True
             raise ValueError("Ungültige oder zu große Anfrage")
         raw = self.rfile.read(n)
         def reject_constant(value):
@@ -2818,6 +2959,52 @@ class Handler(BaseHTTPRequestHandler):
         if not isinstance(obj, dict):
             raise ValueError("JSON-Objekt erwartet")
         return obj
+
+    def request_origin_ok(self, write: bool) -> bool:
+        """Host-Header (DNS-Rebinding) und bei Schreibzugriffen Origin prüfen."""
+        bind_ip, bind_port = self.server.server_address[:2]
+        host, port = split_host_port(self.headers.get("Host", ""))
+        if not host_name_allowed(host, bind_ip) or port not in (None, bind_port):
+            self.close_connection = True
+            self.json_response(421, mp_error("MP-REQ-421", "Unbekannter Server-Name. Bitte die vom Admin genannte Adresse verwenden."))
+            return False
+        if write:
+            origin = str(self.headers.get("Origin", "") or "").strip()
+            if origin and origin != "null":
+                o = urlparse(origin)
+                if o.scheme != "http" or not host_name_allowed(o.hostname or "", bind_ip) or (o.port or 80) != bind_port:
+                    self.close_connection = True
+                    self.json_response(403, mp_error("MP-REQ-403", "Anfrage von fremder Seite abgelehnt."))
+                    return False
+        return True
+
+    def _guarded(self, fn, write: bool):
+        if not self.request_origin_ok(write):
+            return
+        try:
+            return fn()
+        except (BrokenPipeError, ConnectionResetError, socket.timeout):
+            raise
+        except Exception as e:
+            # V12.10.2: unerwartete Fehler -> 500 mit Fehlercode statt Verbindungsabbruch.
+            sys.stderr.write(f"MP-SRV-500 {self.command} {urlparse(self.path).path}: {type(e).__name__}: {e}\n")
+            self.close_connection = True
+            try:
+                self.json_response(500, mp_error("MP-SRV-500", "Interner Serverfehler. Bitte erneut versuchen oder Admin informieren."))
+            except Exception:
+                pass
+
+    def do_GET(self):
+        return self._guarded(self._do_GET, False)
+
+    def do_POST(self):
+        return self._guarded(self._do_POST, True)
+
+    def do_PUT(self):
+        return self._guarded(self._do_PUT, True)
+
+    def do_PATCH(self):
+        return self._guarded(self._do_PATCH, True)
 
     def session_user(self):
         c = SimpleCookie(self.headers.get("Cookie", ""))
@@ -2852,7 +3039,7 @@ class Handler(BaseHTTPRequestHandler):
             return False
         return True
 
-    def do_GET(self):
+    def _do_GET(self):
         parsed = urlparse(self.path)
         path = parsed.path
         if path == "/api/health":
@@ -2956,10 +3143,22 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(raw)
 
-    def do_POST(self):
+    def _do_POST(self):
         path = urlparse(self.path).path
+        if path in AUTH_POST_PATHS:
+            # Login-CSRF: fremde Seiten können den eigenen Header nicht ohne CORS-Freigabe setzen.
+            if not str(self.headers.get("X-MP-Client-Version", "")).strip():
+                self.close_connection = True
+                return self.json_response(403, mp_error("MP-REQ-403", "Anfrage ohne Client-Kennung abgelehnt."))
+            limit = MAX_AUTH_BODY
+        else:
+            # Body erst nach erfolgreicher Anmeldung lesen (kein 8-MB-Upload ohne Sitzung).
+            if not self.session_user():
+                self.close_connection = True
+                return self.json_response(401, mp_error("MP-AUTH-001", "Nicht angemeldet."))
+            limit = MAX_BODY
         try:
-            body = self.read_json()
+            body = self.read_json(limit)
         except Exception as e:
             return self.json_response(400, mp_error("MP-DATA-013", str(e)))
         if path.startswith("/api/chat/"):
@@ -2973,10 +3172,11 @@ class Handler(BaseHTTPRequestHandler):
             return self.json_response(status, payload)
         if path == "/api/login":
             ip = self.client_address[0]
-            if failed_login_blocked(ip):
-                return self.json_response(429, mp_error("MP-AUTH-003", "Zu viele Fehlversuche. Bitte später erneut versuchen."))
             username = str(body.get("username", "")).strip()
             password = str(body.get("password", ""))
+            stamp = login_attempt_reserve(ip, username)
+            if stamp is None:
+                return self.json_response(429, mp_error("MP-AUTH-003", "Zu viele Fehlversuche. Bitte später erneut versuchen."))
             with DB_LOCK, db_session() as con:
                 row = con.execute("SELECT * FROM users WHERE username=?", (username,)).fetchone()
             # Passwortprüfung (~0,2 s) bewusst außerhalb der globalen DB-Sperre.
@@ -2987,9 +3187,8 @@ class Handler(BaseHTTPRequestHandler):
                 verify_password(password, DUMMY_SALT, DUMMY_HASH)
                 ok = False
             if not ok:
-                record_failed_login(ip)
                 return self.json_response(401, mp_error("MP-AUTH-004", "Benutzer oder Passwort falsch."))
-            clear_failed_login(ip)
+            login_attempt_succeeded(ip, username, stamp)
             token = secrets.token_urlsafe(32)
             token_hash = hashlib.sha256(token.encode()).hexdigest()
             expires = int(time.time()) + SESSION_TTL
@@ -3048,11 +3247,15 @@ class Handler(BaseHTTPRequestHandler):
         new_pw = str(body.get("newPassword", ""))
         if len(new_pw) < 8:
             return self.json_response(400, mp_error("MP-AUTH-017", "Passwort muss mindestens 8 Zeichen haben."))
+        ip = self.client_address[0]
+        stamp = login_attempt_reserve(ip, user["username"])
+        if stamp is None:
+            return self.json_response(429, mp_error("MP-AUTH-003", "Zu viele Fehlversuche. Bitte später erneut versuchen."))
         with DB_LOCK, db_session() as con:
             row = con.execute("SELECT salt,password_hash FROM users WHERE id=?", (user["id"],)).fetchone()
         if not row or not verify_password(current, row["salt"], row["password_hash"]):
-            record_failed_login(self.client_address[0])
             return self.json_response(403, mp_error("MP-AUTH-023", "Aktuelles Passwort ist falsch."))
+        login_attempt_succeeded(ip, user["username"], stamp)
         salt, digest = hash_password(new_pw)
         c = SimpleCookie(self.headers.get("Cookie", ""))
         keep = hashlib.sha256(c["mp_session"].value.encode()).hexdigest()
@@ -3069,7 +3272,7 @@ class Handler(BaseHTTPRequestHandler):
     do_DELETE = _method_not_allowed
     do_OPTIONS = _method_not_allowed
 
-    def do_PATCH(self):
+    def _do_PATCH(self):
         path = urlparse(self.path).path
         if not path.startswith("/api/users/"):
             return self.json_response(404, mp_error("MP-REQ-404", "Nicht gefunden."))
@@ -3089,7 +3292,10 @@ class Handler(BaseHTTPRequestHandler):
                 return self.json_response(404, mp_error("MP-AUTH-014", "Benutzer nicht gefunden."))
             role = str(body.get("role", target["role"]))
             department_id = str(body.get("departmentId", target["department_id"]) or "").strip()
-            active = 1 if body.get("active", bool(target["active"])) else 0
+            raw_active = body.get("active", bool(target["active"]))
+            if not isinstance(raw_active, bool):
+                return self.json_response(400, mp_error("MP-AUTH-015", "Feld 'active' muss true oder false sein."))
+            active = 1 if raw_active else 0
             if uid == user["id"]:
                 return self.json_response(400, mp_error("MP-AUTH-016", "Das eigene Konto wird hier nicht geändert. Eigenes Passwort über „Passwort ändern“ setzen."))
             if user["role"] != "admin":
@@ -3115,7 +3321,7 @@ class Handler(BaseHTTPRequestHandler):
             con.execute("INSERT INTO server_audit(ts,username,action,detail,revision) VALUES(?,?,?,?,NULL)", (now_iso(), user["username"], "Benutzer geändert", target["username"]))
         return self.json_response(200, {"ok": True})
 
-    def do_PUT(self):
+    def _do_PUT(self):
         path = urlparse(self.path).path
         if path != "/api/state":
             return self.json_response(404, mp_error("MP-REQ-404", "Nicht gefunden."))
