@@ -1,4 +1,4 @@
-MASCHINENPLANUNG V12.9.1 - KURZANLEITUNG FUER BENUTZER
+MASCHINENPLANUNG V12.10.0 - KURZANLEITUNG FUER BENUTZER
 ======================================================
 
 ANMELDEN
@@ -87,6 +87,10 @@ FREIGABE / PRODUKTION
 - Freigabe friert den Planstand ein. Fuer Aenderungen zuerst die Freigabe zuruecknehmen.
 - Produktion starten, pausieren, fortsetzen, Restzeit korrigieren, fertigmelden oder mit Grund abbrechen.
 
+BEREICHE
+- Zwei Arten: Produktion (Maschinen/Linien, Wochenplan) und Entwicklung & Vertrieb (nur Projektaufgaben).
+- Die Leitung eines Bereichs meldet im Projekt den Status der eigenen Aufgaben (Aufgabe anklicken).
+
 NACHRICHTEN (ab V12.9.0)
 - Rechts unten der Knopf 💬 (rote Zahl = ungelesen). Kleines Fenster; ⤢ macht es gross, – schliesst.
 - "+ Gruppe": Name und Personen waehlen. "+ Direkt": Nachricht an eine Person. "Alle" erreicht jeden.
@@ -97,8 +101,13 @@ NACHRICHTEN (ab V12.9.0)
   Nachricht "behalten" (gilt fuer alle in der Unterhaltung). 📌 oben zeigt nur die behaltenen.
   Ab 7 Tagen vor der Loeschung steht "noch n T" an der Nachricht.
 
-FORMATE TIEFZIEHEN (ab V12.8.0)
-- Ansicht "Formate": Auftraege "Auf Format" setzen, Werkzeuge anordnen, "In Wochenplan einplanen".
+FORMATE TIEFZIEHEN (ab V12.10.0 nur Tiefziehen + Admin)
+- Wochenplan → "▣ Formate" oeffnet das Formate-Fenster. Dort Auftraege "Auf F-…" oder "+ Neues Format"
+  setzen, Werkzeuge anordnen, "In Wochenplan einplanen". Escape/"Schliessen" schliesst das Fenster.
+- Neuer Auftrag im Bereich Tiefziehen: "▣ Anlegen & auf Format" legt die FS an und setzt sie direkt
+  auf ein neues Format. In der Auftragsliste oeffnet ▣ das Format bzw. setzt den Auftrag auf ein Format.
+- Grundformate (Platten) sowie Maschinenmasse und Takte: System → Maschinen & Linien.
+  Ein Grundformat gilt fuer alle Maschinen des Bereichs; per Haken auf einzelne Maschinen einschraenken.
 - Nach der Fertigung "Einlagern" mit Lagerort; wiederfinden ueber die Suche nach WKZ- oder FS-Nummer.
 
 FEHLERCODES

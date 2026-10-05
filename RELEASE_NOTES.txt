@@ -1,3 +1,28 @@
+MASCHINENPLANUNG V12.10.0 - RELEASE NOTES
+=========================================
+Datum: 05.10.2026 · Basis: V12.9.1 · Update mit UPDATE_LIVE.ps1, Daten bleiben erhalten
+
+FORMATE (TIEFZIEHEN)
+- Kein eigener Menuepunkt "Formate" mehr. Das Formate-Fenster oeffnet sich aus dem Wochenplan
+  ("▣ Formate"), aus der Auftragsliste (▣ am Tiefzieh-Auftrag) und beim neuen Auftrag
+  ("▣ Anlegen & auf Format": FS anlegen und direkt auf ein neues Format setzen).
+- Sichtbar nur fuer Tiefziehen (Leitung, Stellvertretung, Lesende des Bereichs) und Admin.
+  Arbeitsvorbereitung und GF sehen keine Formate mehr.
+- Offene Tiefzieh-Auftraege: "Auf F-…" (geoeffnetes Format) oder "+ Neues Format" mit dem Auftrag.
+- Maschinenmasse (max. L/B, Ziehtiefe) und Takte stehen jetzt unter System → Maschinen & Linien
+  direkt an der Maschine ("Format & Takte").
+- Grundformate (Platten) unter System: gelten fuer mehrere Maschinen - standardmaessig alle des
+  Bereichs, per Haken einschraenkbar. Die Grundformat-Auswahl im Format folgt der Maschine.
+  Neuer Fehlercode MP-FMT-011.
+
+BEREICHE
+- Nur noch zwei Bereichsarten: Produktion und Entwicklung & Vertrieb (bisherige "Vertrieb"/
+  "Entwicklung" zaehlen als Entwicklung & Vertrieb).
+- Projektfenster nutzt wieder die volle Breite (die Regel griff nie): Status und Aufklapp-Pfeil
+  sind fuer alle Rollen sichtbar - die Leitung eines neuen Bereichs sieht und meldet ihre Aufgaben.
+- Entwicklungs-/Vertriebsbereiche bieten kein "Als Auftrag einplanen" mehr (keine Maschinen).
+- Bereichsauswahl im Projekt gegliedert: "Entwicklung & Vertrieb" | "Produktion".
+
 MASCHINENPLANUNG V12.9.1 - RELEASE NOTES
 ========================================
 Datum: 05.10.2026 · Basis: V12.9.0 · Update mit UPDATE_LIVE.ps1, Daten bleiben erhalten

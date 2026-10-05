@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// E2E (ab V12.10.0: Formate als Fenster aus Wochenplan/Auftrag; Grundformate+Takte unter System)
 // E2E Formatplanung Tiefziehen (ab V12.8.0): startet server.py mit Testdaten in einem Temp-Ordner
 // und spielt den Ablauf im Browser durch (Abteilungsleiter, AV, Viewer, fremder Bereich).
 //
@@ -97,29 +98,43 @@ async function answer(page, value) {
   await page.click('#askOk');
   await page.waitForTimeout(300);
 }
-const openDetails = page => page.evaluate(() => document.querySelectorAll('#formats details.fmMaster').forEach(d => d.open = true));
+const openDetails = page => page.evaluate(() => document.querySelectorAll('#settings details.resFmt').forEach(d => d.open = true));
+async function toSettings(page) { await page.click('#navSystem'); await page.waitForTimeout(300); const t = page.locator('[data-systab="machines"]'); if (await t.count()) { await t.click(); await page.waitForTimeout(300); } }
+async function openFormatsWin(page) { await page.click('#navPlan'); await page.waitForTimeout(300); await page.click('#weeklyFormats'); await page.waitForTimeout(400); }
 
 try {
   // ------------------------------------------------------------------ Abteilungsleitung Tiefziehen
   const lead = await open('tzlead');
-  check(await lead.locator('#navFormats').isVisible(), 'Abteilungsleitung: Navigation "Formate" sichtbar');
-  await lead.click('#navFormats');
-  await lead.waitForTimeout(300);
-  check(await lead.evaluate(() => document.querySelector('.view.active')?.id) === 'formats', 'Ansicht "Formate" öffnet');
-  check(await lead.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), 'Formate: kein seitlicher Seiten-Scroll');
-
+  check(!(await lead.locator('#navFormats').count()), 'Navigation ohne eigenen Punkt "Formate"');
+  // System: Grundformate und Takte
+  await toSettings(lead);
+  check(await lead.locator('#baseFormatPanel').isVisible(), 'System: Panel "Grundformate (Platten)" sichtbar');
+  await lead.click('[data-fmg-defaults="thermoforming"]');
+  let st = await until(lead, s => (s.baseFormats || []).filter(g => g.departmentId === 'thermoforming').length === 4, 'Grundformate (4 Vorschläge) auf dem Server');
+  const small = st.baseFormats.find(g => g.L === 500);
+  await toSettings(lead);
+  await lead.locator(`[data-fmg-m="${small.id}"][value="res_thermoforming"]`).uncheck();
+  st = await until(lead, s => JSON.stringify(s.baseFormats.find(g => g.id === small.id).machineIds) === '["tz1"]', 'Grundformat "Klein" nur für TZ 1 (mehrere Maschinen wählbar)');
+  const deny = await lead.evaluate(async id => { const r = await (await fetch('/api/state', { cache: 'no-store' })).json(); r.data.baseFormats.find(g => g.id === id).machineIds = ['m1']; const res = await fetch('/api/state', { method: 'PUT', headers: { 'Content-Type': 'application/json', 'X-MP-Client-Version': (await (await fetch('/api/health')).json()).version }, body: JSON.stringify({ revision: r.revision, data: r.data, action: 'Test' }) }); return (await res.json()).errorCode; }, small.id);
+  check(deny === 'MP-FMT-011', `Server: Grundformat auf fremder Maschine abgelehnt (${deny})`);
+  await toSettings(lead);
   await openDetails(lead);
-  await lead.click('#fmgDefaults');
-  await until(lead, s => (s.baseFormats || []).filter(g => g.departmentId === 'thermoforming').length === 4, 'Grundformate (4 Vorschläge) auf dem Server');
-
-  await openDetails(lead);
+  check(await lead.locator('[data-fmt-mach="tz1"]').count() === 1, 'System: TZ 1 hat Zeile "Format & Takte"');
+  if (process.env.FMT_SHOTS) await lead.screenshot({ path: process.env.FMT_SHOTS + '/system.png', fullPage: true });
   await lead.click('[data-fmt-add="tz1"]');
   await answer(lead, 12);
   await answer(lead, 'Standard');
   await until(lead, s => s.machines.find(m => m.id === 'tz1')?.takte?.[0]?.sec === 12, 'Takt 12 s an Maschine TZ 1 gespeichert');
 
+  // Wochenplan → Fenster "Formate"
+  await openFormatsWin(lead);
+  check(await lead.locator('#formatsModal.show').count() === 1, 'Wochenplan: "▣ Formate" öffnet das Formate-Fenster');
+  check(await lead.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), 'Formate: kein seitlicher Seiten-Scroll');
+
   await lead.click('#fmNew');
-  let st = await until(lead, s => (s.formats || []).length === 1, 'Neues Format angelegt');
+  st = await until(lead, s => (s.formats || []).length === 1, 'Neues Format angelegt');
+  check(await lead.evaluate(id => ![...document.querySelectorAll('#fmBaseSel option')].some(o => o.value === id), small.id) === (st.formats[0].machineId !== 'tz1'), 'Grundformat-Auswahl folgt der Maschine');
+  if (st.formats[0].machineId !== 'tz1') { await lead.selectOption('#fmMachine', 'tz1'); await until(lead, s => s.formats[0].machineId === 'tz1', 'Maschine TZ 1 gewählt'); }
   const fmtNumber = st.formats[0].number;
   check(st.formats[0].baseId && st.formats[0].L === 1000 || st.formats[0].L > 0, `Format hat Grundformat/Maße (${st.formats[0].L}×${st.formats[0].B})`);
 
@@ -148,6 +163,7 @@ try {
   check(kpi[0] === '60', `Takte = 60 (${kpi[0]})`);
   check(kpi[2] === '0,2 h', `Laufzeit = 0,2 h (${kpi.join(' | ')} · Takt-ID ${st.formats[0].taktId} · Maschine ${st.formats[0].machineId} · Takte ${JSON.stringify(st.machines.find(m => m.id === 'tz1').takte)})`);
   check(await lead.locator('#fmSvg .fmTool').count() === 3, 'Draufsicht zeigt 3 Werkzeuge (2 Nutzen + 1)');
+  if (process.env.FMT_SHOTS) await lead.screenshot({ path: process.env.FMT_SHOTS + '/formate.png' });
 
   await lead.click('#fmPlan');
   await answer(lead);
@@ -188,17 +204,44 @@ try {
   const t2 = st.formats[1].tools[0].id;
   await setTool(t2, 'wkz', 'WKZ-100');
   await until(lead, s => { const t = s.formats[1].tools[0]; return t.l === 300 && t.b === 200 && t.h === 80; }, 'WKZ-Maße aus früherem Format übernommen');
+  await lead.click('#fmClose');
+  await lead.waitForTimeout(200);
+
+  // Neuer Auftrag → "Anlegen & auf Format"
+  await lead.click('#navList');
+  await lead.waitForTimeout(300);
+  await lead.click('#addOrder2');
+  await lead.waitForTimeout(300);
+  check(await lead.locator('#qToFormat').isVisible(), 'Neuer Auftrag (Tiefziehen): Knopf "Anlegen & auf Format" sichtbar');
+  await lead.fill('#qFS', 'FS 7100');
+  await lead.fill('#qQty', '40');
+  await lead.click('#qToFormat');
+  st = await until(lead, s => s.formats.length === 3 && s.formats[2].tools[0]?.fs === 'FS 7100' && s.workSteps.some(o => o.fs === 'FS 7100'), 'Auftrag FS 7100 angelegt und auf neues Format gesetzt');
+  check(await lead.locator('#formatsModal.show').count() === 1 && (await lead.textContent('#fmEdit')).includes(st.formats[2].number), 'Formate-Fenster zeigt das neue Format');
+  await lead.click('#fmClose');
+  await lead.waitForTimeout(200);
+  // Auftragsliste: ▣ öffnet das Fenster mit markiertem Auftrag
+  await lead.click('#navList');
+  await lead.waitForTimeout(300);
+  await lead.locator('#ordersBody tr:has(strong:text-is("FS 7100")) [data-act="format"]').click();
+  await lead.waitForTimeout(400);
+  check(await lead.locator('#formatsModal.show').count() === 1, 'Auftragsliste: ▣ öffnet das Formate-Fenster');
+  await lead.keyboard.press('Escape');
+  await lead.waitForTimeout(200);
+  check(!(await lead.locator('#formatsModal.show').count()), 'Escape schließt das Formate-Fenster');
   await lead.close();
 
-  // ------------------------------------------------------------------ AV: Formate ja, Stammdaten nein
+  // ------------------------------------------------------------------ AV: keine Formate (nur Tiefzieher + Admin)
   const av = await open('av');
-  await av.click('#navFormats');
+  check(!(await av.locator('#weeklyFormats').isVisible()), 'AV: kein Knopf "Formate" im Wochenplan');
+  await av.click('#navList');
   await av.waitForTimeout(300);
-  await openDetails(av);
-  check(await av.locator('#fmNew').count() === 1, 'AV: darf Formate anlegen');
-  check(await av.locator('#fmgAdd').count() === 0 && await av.locator('[data-fmt-add]').count() === 0, 'AV: keine Pflege von Grundformaten/Takten');
-  await av.click('#fmNew');
-  await until(av, s => s.formats.length === 3, 'AV: Format auf dem Server gespeichert');
+  await av.click('#addOrder2');
+  await av.waitForTimeout(300);
+  await av.selectOption('#qDept', 'thermoforming');
+  await av.waitForTimeout(200);
+  check(!(await av.locator('#qToFormat').isVisible()), 'AV: kein Knopf "Anlegen & auf Format"');
+  await av.keyboard.press('Escape');
   const avDenied = await av.evaluate(async () => {
     const r = await (await fetch('/api/state', { cache: 'no-store' })).json();
     r.data.baseFormats.push({ id: 'fg_av', departmentId: 'thermoforming', name: 'AV', L: 600, B: 400 });
@@ -210,13 +253,7 @@ try {
 
   // ------------------------------------------------------------------ Viewer: nur lesen
   const viewer = await open('leser');
-  const vis = await viewer.locator('#navFormats').isVisible();
-  if (vis) {
-    await viewer.click('#navFormats');
-    await viewer.waitForTimeout(300);
-    check(await viewer.locator('#fmNew').count() === 0, 'Viewer: kein „+ Neues Format“');
-    check(await viewer.evaluate(() => [...document.querySelectorAll('#fmEdit input,#fmEdit select')].every(x => x.disabled)), 'Viewer: Formatfelder gesperrt');
-  } else check(true, 'Viewer: Formate ausgeblendet');
+  check(!(await viewer.locator('#weeklyFormats').isVisible()), 'Lesend ohne Bereich: Formate ausgeblendet');
   await viewer.close();
 
   // ------------------------------------------------------------------ fremde Abteilungsleitung: Server sperrt

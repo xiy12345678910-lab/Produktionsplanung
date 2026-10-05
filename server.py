@@ -25,7 +25,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-APP_VERSION = "12.9.1"
+APP_VERSION = "12.10.0"
 HOST = os.environ.get("MP_HOST", "0.0.0.0")
 PORT = int(os.environ.get("MP_PORT", "8765"))
 BASE = Path(__file__).resolve().parent
@@ -1278,6 +1278,12 @@ def validate_formats(new: dict, dept_ids: set) -> tuple[bool, str, str]:
             return False, "MP-FMT-001", "Grundformat: Name fehlt oder ist zu lang."
         if not _num_in(g.get("L"), 100, 5000, True) or not _num_in(g.get("B"), 100, 5000, True):
             return False, "MP-FMT-001", f"Grundformat '{g.get('name')}': Länge/Breite 100–5000 mm."
+        # V12.10.0: Grundformat für mehrere Maschinen; leer/fehlend = alle Maschinen des Bereichs
+        mids = g.get("machineIds")
+        if mids is not None:
+            dep_machines = {str(m.get("id")) for m in (new.get("machines") or []) if isinstance(m, dict) and str(m.get("departmentId") or "cnc") == str(g.get("departmentId"))}
+            if not isinstance(mids, list) or not mids or len(mids) > 50 or len(set(map(str, mids))) != len(mids) or any(str(x) not in dep_machines for x in mids):
+                return False, "MP-FMT-011", f"Grundformat '{g.get('name')}': Maschinenauswahl ungültig (nur Maschinen des Bereichs)."
     formats = new.get("formats")
     if formats in (None, ""):
         formats = []

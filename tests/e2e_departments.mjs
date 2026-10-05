@@ -93,6 +93,7 @@ try {
   check(lm && lm.name === 'Lackierlinie' && lm.kind === 'line' && lm.defaultShiftMode === '2' && lm.setupMinutes === 15, 'Erste Linie mit Schichtmodell 2-schichtig und 15 min Umrüsten');
 
   await gf.evaluate(() => { document.getElementById('gfDeptPanel').open = true; });
+  check(await gf.evaluate(() => [...document.querySelectorAll('#depNewKind option')].map(o => o.textContent).join('|')) === 'Produktion|Entwicklung & Vertrieb', 'Nur zwei Bereichsarten: Produktion | Entwicklung & Vertrieb');
   await gf.fill('#depNewName', 'Musterbau');
   await gf.selectOption('#depNewKind', 'development');
   check(!(await gf.locator('#depNewRes').isVisible()), 'Entwicklung: keine Maschinen-Felder');
@@ -121,9 +122,9 @@ try {
 
   // Art ändern bei Bereich mit Maschinen gesperrt
   await gf.evaluate(() => { document.getElementById('gfDeptPanel').open = true; });
-  await gf.selectOption(`[data-dep="cnc"][data-k="kind"]`, 'sales');
+  await gf.selectOption(`[data-dep="cnc"][data-k="kind"]`, 'development');
   await gf.waitForTimeout(400);
-  check((await errText(gf)).includes('MP-DEPT-004'), 'CNC (mit Maschinen) kann nicht Vertrieb werden (MP-DEPT-004)');
+  check((await errText(gf)).includes('MP-DEPT-004'), 'CNC (mit Maschinen) kann nicht Entwicklung & Vertrieb werden (MP-DEPT-004)');
   await gf.keyboard.press('Escape');
 
   // Server-Rechte der GF
@@ -138,11 +139,25 @@ try {
   const created = await admin.evaluate(async id => (await fetch('/api/users', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-MP-Client-Version': (await (await fetch('/api/health')).json()).version }, body: JSON.stringify({ username: 'devlead', password: 'E2E-Test-1234', role: 'department_lead', departmentId: id }) })).status, dev.id);
   check(created === 201, 'Admin legt Leitung für Entwicklungsbereich an');
   check((await putState(admin, d => { d.machines.push({ ...d.machines[0], id: 'mx1', departmentId: dev.id }); }))[1] === 'MP-DEPT-004', 'Server: Maschine im Entwicklungsbereich abgelehnt (auch Admin)');
+  const seeded = await putState(admin, d => { d.projects = [{ id: 'p1', number: 'P-2026-0001', phase: 'inquiry', name: 'Test', customer: 'K', ab: '', dueDate: '', log: [], processes: [{ id: 'pr1', areaId: dev.id, title: 'Muster bauen', status: 'open', startDate: '2026-10-06', dueDate: '2026-10-09' }] }]; });
+  check(seeded[0] === 200, `Projekt mit Aufgabe im Entwicklungsbereich (${seeded.join(' ')})`);
+  await admin.reload(); await admin.waitForTimeout(600);
+  await admin.click('#navOrders'); await admin.waitForTimeout(300);
+  await admin.locator('[data-project-open="p1"]').first().click(); await admin.waitForTimeout(500);
+  check(await admin.evaluate(() => document.querySelector('#projectModal .modalBox').offsetWidth) > 1000, 'Projektfenster nutzt die Breite (Status sichtbar)');
+  check(await admin.evaluate(() => { const g = [...document.querySelectorAll('#projectModal optgroup')].map(x => x.label); return g.join('|'); }) === 'Entwicklung & Vertrieb|Produktion', 'Bereichsauswahl im Projekt gegliedert: Entwicklung & Vertrieb | Produktion');
   await admin.close();
 
   const devlead = await open('devlead');
   check(await devlead.evaluate(() => document.querySelector('.view.active')?.id) === 'projects', 'Entwicklungs-Leitung startet in Projekten');
   check(!(await devlead.locator('#navPlan').isVisible()) && !(await devlead.locator('#navPersonnel').isVisible()) && !(await devlead.locator('#navSystem').isVisible()), 'Entwicklungs-Leitung: kein Wochenplan/Personal/System');
+  await devlead.locator('[data-project-open="p1"]').first().click(); await devlead.waitForTimeout(500);
+  check(await devlead.locator('[data-fexp="pr1"] .fPill').isVisible(), 'Entwicklungs-Leitung sieht den Status ihrer Aufgabe');
+  await devlead.click('[data-fexp="pr1"]'); await devlead.waitForTimeout(300);
+  check(!(await devlead.locator('[data-proc-status="pr1"]').isDisabled()), 'Entwicklungs-Leitung kann den Status melden');
+  check(!(await devlead.locator('#projectModal [data-proc-take]').count()), 'Entwicklungsbereich: kein "Als Auftrag einplanen"');
+  await devlead.selectOption('[data-proc-status="pr1"]', 'in_progress'); await devlead.waitForTimeout(800);
+  check((await serverState(devlead)).projects[0].processes[0].status === 'in_progress', 'Status "In Arbeit" gespeichert');
   await devlead.close();
 } catch (e) {
   check(false, 'Ablauf: ' + (e?.message || e));

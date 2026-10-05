@@ -1,6 +1,6 @@
 # Übergabe – Produktionsplanung (Stand 05.10.2026)
 
-Branch: `claude/new-session-mpx5ch` · Live-fähiger Stand: **V12.9.1** (getestet, Abnahme siehe unten)
+Branch: `claude/new-session-mpx5ch` · Live-fähiger Stand: **V12.10.0** (getestet, Abnahme siehe unten)
 
 ## 1. Fertig und getestet (per `UPDATE_LIVE.ps1` einspielbar)
 
@@ -12,7 +12,8 @@ Branch: `claude/new-session-mpx5ch` · Live-fähiger Stand: **V12.9.1** (geteste
 | 12.8.3 | PM-Vorplan beim ersten AV-Überschreiben gesichert, PM-Termine danach gesperrt, Vergleich PM · AV · Ist in AT | `tests/e2e_pmplan.mjs` 11/11 |
 | 12.9.0 | Messenger: Kanal „Alle“, Gruppen, Direkt, `/`-Verweise (Auftrag/Projekt/Format) mit Direktlink, `@`-Erwähnungen, klein ↔ groß, Mobil-Vollbild; eigene Tabellen `chat_*`, API `/api/chat/*` | `tests/e2e_chat.mjs` 24/24 |
 | 12.9.1 | Nachrichten nach 30 Tagen gelöscht, 📌 behält; Kundenplan ohne erfundenen Liefertermin, PM-Aufgaben im Kundenplan; Abnahme-Korrekturen und UI; `Update_von_GitHub.ps1` | `tests/test_v129.py` 12/12, `e2e_chat.mjs` 31/31, `e2e_customerplan.mjs` 9/9 |
-| alle | Rollen-Rundgang (8 Rollen × alle Ansichten × Desktop/Handy) | `tests/e2e_roles.mjs` 402/402 |
+| 12.10.0 | Formate als Fenster (Wochenplan/Auftragsliste/Neuer Auftrag), nur Tiefziehen + Admin; Takte/Maße und Grundformate (mehrere Maschinen) unter System; zwei Bereichsarten; Projektfenster breit | `e2e_formats.mjs` 43/43, `e2e_departments.mjs` 26/26 |
+| alle | Rollen-Rundgang (8 Rollen × alle Ansichten × Desktop/Handy) | `tests/e2e_roles.mjs` 354/354 |
 | alle | Regression Rechte/Migration (künstliche DB über `tests/make_test_db.py`) | `tests/test_regression.py` 151/151 |
 | alle | Server-Regeln ohne Browser | `tests/test_v128.py` 35/35 |
 | alle | UI-Smoke (Ansichten, Dialoge, Mobil) | `tests/ui_smoke.mjs` 77/77 |

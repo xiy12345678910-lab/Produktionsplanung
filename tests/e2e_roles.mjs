@@ -27,16 +27,16 @@ const check = (ok, label) => { results.push([!!ok, label]); if (!ok) console.log
 
 // Rolle → Benutzer, Bereich, erwartete Navigation (Reihenfolge egal). Mit „System“ liegen Historie/Report dort als Reiter.
 const ROLES = [
-  ['admin', 'admin', '', ['navPlan', 'navList', 'navOrders', 'navFormats', 'navPersonnel', 'navGF', 'navSystem']],
-  ['gf', 'gf', '', ['navOrders', 'navFormats', 'navGF', 'navSystem']],
-  ['lead', 'department_lead', 'cnc', ['navPlan', 'navList', 'navOrders', 'navFormats', 'navPersonnel', 'navSystem']],
-  ['deputy', 'department_deputy', 'thermoforming', ['navPlan', 'navList', 'navOrders', 'navFormats', 'navPersonnel', 'navSystem']],
-  ['viewer', 'viewer', '', ['navPlan', 'navList', 'navOrders', 'navFormats', 'navPersonnel', 'navHistory', 'navReport']],
+  ['admin', 'admin', '', ['navPlan', 'navList', 'navOrders', 'navPersonnel', 'navGF', 'navSystem']],
+  ['gf', 'gf', '', ['navOrders', 'navGF', 'navSystem']],
+  ['lead', 'department_lead', 'cnc', ['navPlan', 'navList', 'navOrders', 'navPersonnel', 'navSystem']],
+  ['deputy', 'department_deputy', 'thermoforming', ['navPlan', 'navList', 'navOrders', 'navPersonnel', 'navSystem']],
+  ['viewer', 'viewer', '', ['navPlan', 'navList', 'navOrders', 'navPersonnel', 'navHistory', 'navReport']],
   ['pm', 'project_management', '', ['navOrders', 'navHistory', 'navReport']],
-  ['av', 'production_planning', '', ['navPlan', 'navList', 'navOrders', 'navFormats', 'navHistory', 'navReport']],
+  ['av', 'production_planning', '', ['navPlan', 'navList', 'navOrders', 'navHistory', 'navReport']],
   ['sales', 'sales', '', ['navOrders', 'navReport']],
 ];
-const NAV_ALL = ['navPlan', 'navList', 'navOrders', 'navFormats', 'navPersonnel', 'navGF', 'navSystem', 'navHistory', 'navReport'];
+const NAV_ALL = ['navPlan', 'navList', 'navOrders', 'navPersonnel', 'navGF', 'navSystem', 'navHistory', 'navReport'];
 
 const dataDir = mkdtempSync(path.join(tmpdir(), 'mp-roles-'));
 const py = `

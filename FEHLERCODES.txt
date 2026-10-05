@@ -1,4 +1,4 @@
-MASCHINENPLANUNG V12.9.1 - FEHLERCODES
+MASCHINENPLANUNG V12.10.0 - FEHLERCODES
 ======================================
 
 Jeder Fehler wird dem Mitarbeiter als Klartext + Code angezeigt.
@@ -341,6 +341,7 @@ MP-FMT-006  Werkzeugliste ungueltig: Masse 1–5000 mm, Nutzen 1–500, Menge ga
 MP-FMT-007  Formatbelegung (Layout) ist ungueltig.
 MP-FMT-008  Einlagern nur mit Lagerort; Lagerort nur bei eingelagerten Formaten.
 MP-FMT-009  Format-Verlauf ist ungueltig.
+MP-FMT-011  Grundformat: Maschinenauswahl ungueltig (nur Maschinen des eigenen Bereichs, mind. eine).
 MP-FMT-010  Verknuepfung Format → Auftrag ist ungueltig.
 MP-FMT-020  Einplanen: Format ist leer.
 MP-FMT-021  Einplanen: an der Maschine ist kein Takt hinterlegt.
