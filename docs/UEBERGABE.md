@@ -1,6 +1,6 @@
 # Übergabe – Produktionsplanung (Stand 05.10.2026)
 
-Branch: `claude/new-session-mpx5ch` · Live-fähiger Stand: **V12.8.3** (getestet)
+Branch: `claude/new-session-mpx5ch` · Live-fähiger Stand: **V12.9.0** (getestet)
 
 ## 1. Fertig und getestet (per `UPDATE_LIVE.ps1` einspielbar)
 
@@ -10,6 +10,7 @@ Branch: `claude/new-session-mpx5ch` · Live-fähiger Stand: **V12.8.3** (geteste
 | 12.8.1 | Parallelbelegung: Spalte „Parallel“ je Maschine/Linie, Scheduler + Server (MP-PROD-010, MP-PLAN-058) spurfähig | `tests/e2e_parallel.mjs` 15/15 |
 | 12.8.2 | GF legt Bereiche an (Produktion/Vertrieb/Entwicklung), erste Maschine/Linie mit Schichtmodell/Umrüstzeit | `tests/e2e_departments.mjs` 18/18 |
 | 12.8.3 | PM-Vorplan beim ersten AV-Überschreiben gesichert, PM-Termine danach gesperrt, Vergleich PM · AV · Ist in AT | `tests/e2e_pmplan.mjs` 11/11 |
+| 12.9.0 | Messenger: Kanal „Alle“, Gruppen, Direkt, `/`-Verweise (Auftrag/Projekt/Format) mit Direktlink, `@`-Erwähnungen, klein ↔ groß, Mobil-Vollbild; eigene Tabellen `chat_*`, API `/api/chat/*` | `tests/e2e_chat.mjs` 24/24 |
 | alle | Server-Regeln ohne Browser | `tests/test_v128.py` 35/35 |
 | alle | UI-Smoke (Ansichten, Dialoge, Mobil) | `tests/ui_smoke.mjs` 77/77 |
 
@@ -23,9 +24,10 @@ Testhinweis: E2E-Tests setzen die Browser-Zeitzone auf Europe/Berlin (wie `relea
 - Parallelplätze: Personalbedarf/Linienbesetzung gelten je Ressource, nicht je Platz.
 - Projektfenster zeichnet sich erst nach Verlassen eines Eingabefelds neu (bewusst, Fokus bleibt).
 
-## 3. Als Nächstes
+## 3. Ideen für danach
 
-- **V12.9.0 Messenger**: Teams-ähnlich, Gruppen und Direktnachrichten, `/`-Erwähnungen von Aufträgen/Projekten/Formaten mit Direktlink, kleines Fenster ↔ groß.
+- Messenger: Dateianhänge/Fotos, Nachrichten bearbeiten/löschen, Browser-Benachrichtigung.
+- Parallelplätze: Personalbedarf je Platz.
 
 ## 4. Betrieb
 

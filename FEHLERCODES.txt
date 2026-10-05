@@ -1,4 +1,4 @@
-MASCHINENPLANUNG V12.8.3 - FEHLERCODES
+MASCHINENPLANUNG V12.9.0 - FEHLERCODES
 ======================================
 
 Jeder Fehler wird dem Mitarbeiter als Klartext + Code angezeigt.
@@ -28,6 +28,7 @@ CODEGRUPPEN
 - MP-LOG-xxx: Änderungsprotokoll
 - MP-MIG-xxx: Datenbank-Migration beim Serverstart
 - MP-FMT-xxx: Formatplanung Tiefziehen (Grundformate, Formate, Lager)
+- MP-CHAT-xxx: Nachrichten (Gruppen, Direktnachrichten, Verweise)
 
 EINZELCODES (der genaue Klartext kann je nach Kontext zusaetzliche Details enthalten)
 
@@ -367,3 +368,13 @@ V12.8.3 NEU (PM-Vorplan vs. AV vs. Ist)
 MP-PM-017    PM-Vorplan (pmPlan) eines Prozesses ist ungueltig (nur Start/Faellig/Zeitpunkt/Benutzer).
 MP-PM-031    (erweitert) PM-Vorplan sichert nur die AV, einmalig und unveraendert; danach sind die
              PM-Termine dieses Prozesses gesperrt und der Prozess kann vom PM nicht entfernt werden.
+
+V12.9.0 NEU (Nachrichten)
+MP-CHAT-000  Nachrichten sind gerade nicht erreichbar (Server/Netzwerk pruefen).
+MP-CHAT-001  Kanal oder Position ungueltig.
+MP-CHAT-002  Unterhaltung nicht gefunden oder kein Mitglied.
+MP-CHAT-003  Mitglieder ungueltig (unbekannt/inaktiv; Direkt = genau eine Person, Gruppe = mind. eine weitere).
+MP-CHAT-004  Gruppenname fehlt oder ist zu lang (max. 60).
+MP-CHAT-005  Nachricht leer oder zu lang (max. 2000 Zeichen).
+MP-CHAT-006  Mitglieder aendert nur, wer die Gruppe angelegt hat (oder Admin); nur bei Gruppen.
+MP-CHAT-010  Verweis existiert nicht mehr (Auftrag/Projekt/Format geloescht oder archiviert).

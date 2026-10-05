@@ -1,3 +1,22 @@
+MASCHINENPLANUNG V12.9.0 - RELEASE NOTES
+========================================
+Datum: 05.10.2026 · Basis: V12.8.3 · Update mit UPDATE_LIVE.ps1, Daten bleiben erhalten
+
+NACHRICHTEN (wie Teams, im Programm)
+- Knopf 💬 rechts unten mit Zaehler ungelesener Nachrichten (rot bei Erwaehnung).
+- Kleines Fenster (unten rechts) oder gross (⤢): Liste links, Verlauf rechts. Auf dem Handy Vollbild.
+- Kanal "Alle" fuer jeden, eigene Gruppen (+ Gruppe, Mitglieder verwaltet der Ersteller) und
+  Direktnachrichten (+ Direkt, je Paar nur ein Chat).
+- "/" im Text: Vorschlaege fuer Auftraege (FS, AB, WT, Beschreibung), Projekte und Formate (auch WKZ-
+  Nummer). Gewaehlt wird ein Link; Klick oeffnet die Auftragsliste gefiltert auf die FS, das Projekt
+  bzw. das Format. Geloeschte Ziele werden durchgestrichen angezeigt.
+- "@Name" erwaehnt eine Person; die Nachricht ist bei ihr markiert und zaehlt als Erwaehnung.
+- Neue Nachrichten erscheinen ohne Neuladen (offener Chat alle 2,5 s, Zaehler alle 5 s).
+- Nachrichten liegen in eigenen Tabellen der Datenbank (Backup inklusive) und veraendern den
+  Planungsstand nicht. Nur Mitglieder lesen eine Gruppe/Direktnachricht (serverseitig geprueft).
+- Neue Fehlercodes MP-CHAT-000 bis MP-CHAT-010.
+- Test: tests/e2e_chat.mjs (Bildschirmfotos mit --shots <ordner>).
+
 MASCHINENPLANUNG V12.8.3 - RELEASE NOTES
 ========================================
 Datum: 05.10.2026 · Basis: V12.8.2 · Update mit UPDATE_LIVE.ps1, Daten bleiben erhalten

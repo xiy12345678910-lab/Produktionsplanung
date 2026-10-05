@@ -1,4 +1,4 @@
-MASCHINENPLANUNG V12.8.3 - KURZANLEITUNG FUER BENUTZER
+MASCHINENPLANUNG V12.9.0 - KURZANLEITUNG FUER BENUTZER
 ======================================================
 
 ANMELDEN
@@ -86,6 +86,17 @@ PLANARTEN / TERMINE
 FREIGABE / PRODUKTION
 - Freigabe friert den Planstand ein. Fuer Aenderungen zuerst die Freigabe zuruecknehmen.
 - Produktion starten, pausieren, fortsetzen, Restzeit korrigieren, fertigmelden oder mit Grund abbrechen.
+
+NACHRICHTEN (ab V12.9.0)
+- Rechts unten der Knopf 💬 (rote Zahl = ungelesen). Kleines Fenster; ⤢ macht es gross, – schliesst.
+- "+ Gruppe": Name und Personen waehlen. "+ Direkt": Nachricht an eine Person. "Alle" erreicht jeden.
+- Im Text "/" tippen und z. B. die FS-Nummer: Auftrag, Projekt oder Format auswaehlen → wird ein
+  Link; ein Klick darauf oeffnet ihn direkt. "@" + Name erwaehnt eine Person (rot markiert).
+- Enter sendet, Umschalt+Enter macht eine neue Zeile.
+
+FORMATE TIEFZIEHEN (ab V12.8.0)
+- Ansicht "Formate": Auftraege "Auf Format" setzen, Werkzeuge anordnen, "In Wochenplan einplanen".
+- Nach der Fertigung "Einlagern" mit Lagerort; wiederfinden ueber die Suche nach WKZ- oder FS-Nummer.
 
 FEHLERCODES
 - Fehler erscheinen als Klartext plus Code, z. B. MP-PLAN-031.

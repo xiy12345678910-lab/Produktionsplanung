@@ -25,7 +25,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-APP_VERSION = "12.8.3"
+APP_VERSION = "12.9.0"
 HOST = os.environ.get("MP_HOST", "0.0.0.0")
 PORT = int(os.environ.get("MP_PORT", "8765"))
 BASE = Path(__file__).resolve().parent
@@ -179,6 +179,28 @@ def init_db() -> None:
               json TEXT NOT NULL
             );
             CREATE INDEX IF NOT EXISTS history_archive_finished ON history_archive(finished_at);
+            CREATE TABLE IF NOT EXISTS chat_channels(
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              kind TEXT NOT NULL CHECK(kind IN ('all','group','direct')),
+              name TEXT NOT NULL DEFAULT '',
+              members TEXT NOT NULL DEFAULT '[]',
+              created_by TEXT NOT NULL,
+              created_at TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS chat_messages(
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              channel_id INTEGER NOT NULL REFERENCES chat_channels(id) ON DELETE CASCADE,
+              author TEXT NOT NULL,
+              text TEXT NOT NULL,
+              ts TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS chat_messages_channel ON chat_messages(channel_id, id);
+            CREATE TABLE IF NOT EXISTS chat_reads(
+              username TEXT NOT NULL COLLATE NOCASE,
+              channel_id INTEGER NOT NULL,
+              last_id INTEGER NOT NULL DEFAULT 0,
+              PRIMARY KEY(username, channel_id)
+            );
             CREATE TABLE IF NOT EXISTS server_audit(
               id INTEGER PRIMARY KEY AUTOINCREMENT,
               ts TEXT NOT NULL,
@@ -231,6 +253,8 @@ def init_db() -> None:
         migrate_state_v1270(con)
         normalize_state_v1270(con)
         migrate_state_v1280(con)
+        if not con.execute("SELECT 1 FROM chat_channels WHERE kind='all'").fetchone():
+            con.execute("INSERT INTO chat_channels(kind,name,members,created_by,created_at) VALUES('all','Alle','[]','Server',?)", (now_iso(),))
         archive_history_on_start(con)
 
 
@@ -644,6 +668,147 @@ def create_or_reset_admin(username: str, password: str) -> None:
 
 def canonical(obj) -> str:
     return json.dumps(obj, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+
+
+# --------------------------------------------------------------------------- V12.9.0 Messenger
+# Eigene Tabellen statt Live-State: Nachrichten erhöhen keine Planungsrevision und kollidieren nicht
+# mit Planänderungen. Erwähnungen (/FS, /Projekt, /Format, @Benutzer) speichert der Client als Token
+# im Text; der Server speichert nur Text und prüft Mitgliedschaft.
+CHAT_MAX_TEXT = 2000
+CHAT_MAX_MEMBERS = 100
+
+
+def _chat_channel_for(con, channel_id, username: str):
+    row = con.execute("SELECT * FROM chat_channels WHERE id=?", (channel_id,)).fetchone()
+    if not row:
+        return None
+    if row["kind"] == "all":
+        return row
+    members = {str(x).casefold() for x in json.loads(row["members"] or "[]")}
+    return row if username.casefold() in members else None
+
+
+def _chat_channel_json(con, row, username: str) -> dict:
+    last = con.execute("SELECT id,author,text,ts FROM chat_messages WHERE channel_id=? ORDER BY id DESC LIMIT 1", (row["id"],)).fetchone()
+    read = con.execute("SELECT last_id FROM chat_reads WHERE username=? AND channel_id=?", (username, row["id"])).fetchone()
+    read_id = read["last_id"] if read else 0
+    unread = con.execute("SELECT COUNT(*) FROM chat_messages WHERE channel_id=? AND id>? AND author<>? COLLATE NOCASE", (row["id"], read_id, username)).fetchone()[0]
+    mention = con.execute("SELECT COUNT(*) FROM chat_messages WHERE channel_id=? AND id>? AND author<>? COLLATE NOCASE AND instr(lower(text), ?)>0",
+                          (row["id"], read_id, username, f"⟦u:{username.casefold()}⟧")).fetchone()[0]
+    return {"id": row["id"], "kind": row["kind"], "name": row["name"], "members": json.loads(row["members"] or "[]"), "createdBy": row["created_by"],
+            "last": dict(last) if last else None, "unread": unread, "mentions": mention, "readId": read_id}
+
+
+def chat_get(con, user: dict, path: str, qs: dict) -> tuple[int, dict]:
+    username = user["username"]
+    if path == "/api/chat/users":
+        rows = con.execute("SELECT username,role,department_id FROM users WHERE active=1 ORDER BY username COLLATE NOCASE").fetchall()
+        return 200, {"users": [{"username": r["username"], "role": r["role"], "departmentId": r["department_id"]} for r in rows]}
+    if path == "/api/chat/channels":
+        out = []
+        for row in con.execute("SELECT * FROM chat_channels ORDER BY id").fetchall():
+            if _chat_channel_for(con, row["id"], username):
+                out.append(_chat_channel_json(con, row, username))
+        return 200, {"channels": out, "me": username}
+    if path == "/api/chat/messages":
+        try:
+            cid = int(qs.get("channel", ["0"])[0])
+            after = max(0, int(qs.get("after", ["0"])[0]))
+            before = max(0, int(qs.get("before", ["0"])[0]))
+        except ValueError:
+            return 400, mp_error("MP-CHAT-001", "Kanal/Position ungültig.")
+        if not _chat_channel_for(con, cid, username):
+            return 404, mp_error("MP-CHAT-002", "Unterhaltung nicht gefunden oder kein Mitglied.")
+        if before:
+            rows = con.execute("SELECT id,author,text,ts FROM chat_messages WHERE channel_id=? AND id<? ORDER BY id DESC LIMIT 100", (cid, before)).fetchall()[::-1]
+        elif after:
+            rows = con.execute("SELECT id,author,text,ts FROM chat_messages WHERE channel_id=? AND id>? ORDER BY id LIMIT 500", (cid, after)).fetchall()
+        else:
+            rows = con.execute("SELECT id,author,text,ts FROM chat_messages WHERE channel_id=? ORDER BY id DESC LIMIT 100", (cid,)).fetchall()[::-1]
+        return 200, {"messages": [dict(r) for r in rows]}
+    return 404, mp_error("MP-REQ-404", "Nicht gefunden.")
+
+
+def _chat_members(con, raw, me: str) -> tuple[list | None, str]:
+    if not isinstance(raw, list) or len(raw) > CHAT_MAX_MEMBERS:
+        return None, "Mitgliederliste ist ungültig."
+    known = {r["username"].casefold(): r["username"] for r in con.execute("SELECT username FROM users WHERE active=1").fetchall()}
+    out = []
+    for name in [me, *raw]:
+        key = str(name or "").strip().casefold()
+        if key not in known:
+            return None, f"Benutzer '{name}' ist unbekannt oder inaktiv."
+        if known[key] not in out:
+            out.append(known[key])
+    return out, ""
+
+
+def chat_post(con, user: dict, path: str, body: dict) -> tuple[int, dict]:
+    username = user["username"]
+    ts = now_iso()
+    if path == "/api/chat/channels":
+        kind = str(body.get("kind") or "group")
+        members, err = _chat_members(con, body.get("members") or [], username)
+        if members is None:
+            return 400, mp_error("MP-CHAT-003", err)
+        if kind == "direct":
+            if len(members) != 2:
+                return 400, mp_error("MP-CHAT-003", "Direktnachricht: genau eine andere Person wählen.")
+            for row in con.execute("SELECT * FROM chat_channels WHERE kind='direct'").fetchall():
+                if {x.casefold() for x in json.loads(row["members"])} == {x.casefold() for x in members}:
+                    return 200, {"channel": _chat_channel_json(con, row, username)}
+            name = ""
+        elif kind == "group":
+            name = str(body.get("name") or "").strip()
+            if not name or len(name) > 60:
+                return 400, mp_error("MP-CHAT-004", "Gruppenname fehlt oder ist zu lang (max. 60).")
+            if len(members) < 2:
+                return 400, mp_error("MP-CHAT-003", "Gruppe: mindestens eine weitere Person wählen.")
+        else:
+            return 400, mp_error("MP-CHAT-003", "Unbekannte Art der Unterhaltung.")
+        cur = con.execute("INSERT INTO chat_channels(kind,name,members,created_by,created_at) VALUES(?,?,?,?,?)", (kind, name, json.dumps(members, ensure_ascii=False), username, ts))
+        row = con.execute("SELECT * FROM chat_channels WHERE id=?", (cur.lastrowid,)).fetchone()
+        return 201, {"channel": _chat_channel_json(con, row, username)}
+    try:
+        cid = int(body.get("channel") or 0)
+    except (TypeError, ValueError):
+        return 400, mp_error("MP-CHAT-001", "Kanal ungültig.")
+    row = _chat_channel_for(con, cid, username)
+    if not row:
+        return 404, mp_error("MP-CHAT-002", "Unterhaltung nicht gefunden oder kein Mitglied.")
+    if path == "/api/chat/messages":
+        text = str(body.get("text") or "").strip()
+        if not text:
+            return 400, mp_error("MP-CHAT-005", "Nachricht ist leer.")
+        if len(text) > CHAT_MAX_TEXT:
+            return 400, mp_error("MP-CHAT-005", f"Nachricht ist zu lang (max. {CHAT_MAX_TEXT} Zeichen).")
+        cur = con.execute("INSERT INTO chat_messages(channel_id,author,text,ts) VALUES(?,?,?,?)", (cid, username, text, ts))
+        con.execute("INSERT INTO chat_reads(username,channel_id,last_id) VALUES(?,?,?) ON CONFLICT(username,channel_id) DO UPDATE SET last_id=excluded.last_id", (username, cid, cur.lastrowid))
+        return 201, {"message": {"id": cur.lastrowid, "author": username, "text": text, "ts": ts}}
+    if path == "/api/chat/read":
+        try:
+            last = max(0, int(body.get("lastId") or 0))
+        except (TypeError, ValueError):
+            return 400, mp_error("MP-CHAT-001", "Position ungültig.")
+        con.execute("INSERT INTO chat_reads(username,channel_id,last_id) VALUES(?,?,?) ON CONFLICT(username,channel_id) DO UPDATE SET last_id=max(last_id,excluded.last_id)", (username, cid, last))
+        return 200, {"ok": True}
+    if path == "/api/chat/members":
+        if row["kind"] != "group":
+            return 400, mp_error("MP-CHAT-006", "Mitglieder ändern nur bei Gruppen.")
+        if row["created_by"].casefold() != username.casefold() and user["role"] != "admin":
+            return 403, mp_error("MP-CHAT-006", "Mitglieder ändert, wer die Gruppe angelegt hat (oder Admin).")
+        current = json.loads(row["members"])
+        members, err = _chat_members(con, [*current, *(body.get("add") or [])], row["created_by"])
+        if members is None:
+            return 400, mp_error("MP-CHAT-003", err)
+        remove = {str(x).casefold() for x in (body.get("remove") or [])} - {row["created_by"].casefold()}
+        members = [m for m in members if m.casefold() not in remove]
+        name = str(body.get("name") or row["name"]).strip()
+        if not name or len(name) > 60:
+            return 400, mp_error("MP-CHAT-004", "Gruppenname fehlt oder ist zu lang (max. 60).")
+        con.execute("UPDATE chat_channels SET members=?, name=? WHERE id=?", (json.dumps(members, ensure_ascii=False), name, cid))
+        return 200, {"channel": _chat_channel_json(con, con.execute("SELECT * FROM chat_channels WHERE id=?", (cid,)).fetchone(), username)}
+    return 404, mp_error("MP-REQ-404", "Nicht gefunden.")
 
 
 def mp_error(code: str, message: str, **extra) -> dict:
@@ -1129,7 +1294,7 @@ def validate_formats(new: dict, dept_ids: set) -> tuple[bool, str, str]:
 
 
 TEMPLATE_KINDS = {"pm", "av"}
-# V12.8.3: Bereichsarten. Produktion plant über Maschinen/Linien, Vertrieb/Entwicklung nur Projektaufgaben.
+# V12.8.2: Bereichsarten. Produktion plant über Maschinen/Linien, Vertrieb/Entwicklung nur Projektaufgaben.
 DEPARTMENT_KINDS = {"production", "sales", "development"}
 PROJECT_FIXED_AREA_IDS = {"sales", "pm", "engineering", "calculation", "purchasing", "quality", "av"}
 
@@ -1219,7 +1384,7 @@ def validate_state(old: dict, new: dict) -> tuple[bool, str, str]:
         dept_types[did] = ptype
         dept_kinds[did] = kind
 
-    # V12.8.3: Vertrieb/Entwicklung bearbeiten nur Projektaufgaben – keine Maschinen, Aufträge, Formate.
+    # V12.8.2: Vertrieb/Entwicklung bearbeiten nur Projektaufgaben – keine Maschinen, Aufträge, Formate.
     for name, what in (("machines", "Maschine/Linie"), ("workSteps", "Auftrag"), ("formats", "Format"), ("baseFormats", "Grundformat")):
         for rec in new.get(name) or []:
             if isinstance(rec, dict) and dept_kinds.get(str(rec.get("departmentId") or "cnc"), "production") != "production":
@@ -1726,7 +1891,7 @@ def validate_state(old: dict, new: dict) -> tuple[bool, str, str]:
                 return False, "MP-PROD-019", f"Auftrag '{o.get('order') or oid}': Laufzeitpunkt fehlt."
 
         if status in {"running", "paused"}:
-            # V12.8.3: bis zu 'lanes' laufende/pausierte Aufträge je Maschine/Linie (Parallelbelegung)
+            # V12.8.1: bis zu 'lanes' laufende/pausierte Aufträge je Maschine/Linie (Parallelbelegung)
             running_here = locked_by_machine.setdefault(mid, set())
             running_here.add(oid)
             if len(running_here) > machine_lanes(new, mid):
@@ -1890,7 +2055,7 @@ def _need_map(state: dict) -> dict:
 
 
 def _gf_departments_change(old: dict, new: dict) -> tuple[bool, str]:
-    """V12.8.3: GF legt Bereiche an (Name, Art, aktiv) und richtet einem neuen Produktionsbereich
+    """V12.8.2: GF legt Bereiche an (Name, Art, aktiv) und richtet einem neuen Produktionsbereich
     die erste Maschine/Linie ein. Bereiche werden nicht gelöscht, nur deaktiviert."""
     da, db = _record_map(old.get("departments")), _record_map(new.get("departments"))
     if set(da) - set(db):
@@ -2646,6 +2811,13 @@ class Handler(BaseHTTPRequestHandler):
             with DB_LOCK, db_session() as con:
                 row = con.execute("SELECT revision,json,updated_at,updated_by FROM state WHERE id=1").fetchone()
             return self.json_response(200, {"revision": row["revision"], "data": redact_state(json.loads(row["json"]), user), "updatedAt": row["updated_at"], "updatedBy": row["updated_by"]})
+        if path.startswith("/api/chat/"):
+            user = self.require_user()
+            if not user:
+                return
+            with DB_LOCK, db_session() as con:
+                status, payload = chat_get(con, user, path, parse_qs(parsed.query))
+            return self.json_response(status, payload)
         if path == "/api/history-archive":
             # Ältere Ist-Historie (nur lesen), neueste zuerst. Filter: from/to (YYYY-MM-DD, Fertigmeldung), limit/offset.
             user = self.require_user()
@@ -2732,6 +2904,15 @@ class Handler(BaseHTTPRequestHandler):
             body = self.read_json()
         except Exception as e:
             return self.json_response(400, mp_error("MP-DATA-013", str(e)))
+        if path.startswith("/api/chat/"):
+            user = self.require_user()
+            if not user:
+                return
+            if not self.require_current_client():
+                return
+            with DB_LOCK, db_session() as con:
+                status, payload = chat_post(con, user, path, body if isinstance(body, dict) else {})
+            return self.json_response(status, payload)
         if path == "/api/login":
             ip = self.client_address[0]
             if failed_login_blocked(ip):
