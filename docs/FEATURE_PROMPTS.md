@@ -8,7 +8,7 @@
 | 2 | 3 | Undo/Redo | erledigt V12.12.0 |
 | 3 | 4 | Browser-Benachrichtigungen | erledigt V12.13.0 (Glocke; Browser-Meldung nur bei https, Erklärtext bewusst weggelassen) |
 | 4 | A | Firmen-Config `config\firma.json` außerhalb des Pakets (docs/PRODUKT_MULTI_FIRMA.md) | erledigt V12.14.0 (Datei, Migration, Validierung, Update/Rollback/Umzug/Vorabtest/Backup), Korrektur Long-Poll V12.14.1, Rest V12.15.0 (API, Firmenprofil-UI, Arbeitgeberdaten aus dem Paket; Export/Import-ZIP bewusst offen), Datenerhalt-Test + Windows-Deploy in CI V12.15.1 |
-| 5 | B | Branchenvorlagen, Module | offen |
+| 5 | B | Branchenvorlagen, Module | erledigt V12.16.0 (Vorlagen als Paketdateien vorlage_*.json, Anwenden nur ergaenzend, Module ein/aus mit Server-Sperre MP-MOD-001, Bereichs-Eigenschaften, Begriffe/Rollenbezeichnungen; offen: Projektbereiche aus Config, Modul export) |
 | 6 | C1 | Einrichtungsassistent | offen |
 | 7 | 17 | Qualifikationsmatrix | offen |
 | 8 | 16 | Personalbedarf je Parallelplatz | offen |

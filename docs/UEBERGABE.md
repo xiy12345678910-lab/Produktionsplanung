@@ -1,6 +1,6 @@
 # Übergabe – Produktionsplanung (Stand 05.10.2026)
 
-Branch: `claude/new-session-95ro2l` (Basis `claude/new-session-mpx5ch`) · Live-fähiger Stand: **V12.15.1** (getestet, Abnahme siehe unten)
+Branch: `claude/new-session-95ro2l` (Basis `claude/new-session-mpx5ch`) · Live-fähiger Stand: **V12.16.0** (getestet, Abnahme siehe unten)
 
 ## 1. Fertig und getestet (per `UPDATE_LIVE.ps1` einspielbar)
 
@@ -23,6 +23,7 @@ Branch: `claude/new-session-95ro2l` (Basis `claude/new-session-mpx5ch`) · Live-
 | 12.14.1 | Benachrichtigungen: Long-Poll wird nur bei echter Änderung geweckt (kein Thundering Herd); Client übernimmt Server-Signatur, Backoff bei fehlgeschlagenem Abruf | `tests/test_notifications.py` 59/59, `tests/e2e_notifications.mjs` 32/32 |
 | 12.15.0 | Firmenprofil-API `/api/config` (GET alle Rollen, PUT/PATCH + Logo nur Admin, Revision, .bak, SVG-Entschärfung), Client liest Name/Farbe/Logo/Begriffe daraus, Firmenprofil-Panel; Arbeitgeberdaten aus Code/Paket entfernt (`tools/legacy_employer_seed.json` nur im Repo); Zeitzone aus Config | `tests/test_config_api.py` 103/103, `tests/test_no_employer_data.py` 31/31, `tests/e2e_company.mjs` 37/37 |
 | 12.15.1 | Datenerhalt bei Updates: Dauertest alte Stände → aktuell (additiver Feldvergleich, Logins, Firmenprofil, 2. Update, Rollback), Windows-Deploy in CI; Bestand ohne Firmenprofil stoppt mit MP-CFG-006 (`Firma_Einrichten.ps1`); Firmen-CI aus data.ci für V12.14.x-Bestände | `tests/test_deploy_upgrade.py` 241/241, `tests/ci_windows_deploy.ps1` (CI) |
+| 12.16.0 | Paket B: Branchenvorlagen (`vorlage_*.json`, Anwenden nur ergänzend, Vorschau), Module ein/aus (Client ausgeblendet, Server sperrt mit MP-MOD-001, Daten bleiben), Bereichs-Eigenschaften `formats`/`sharedOperators` statt Bereichs-IDs, Begriffe/Rollenbezeichnungen aus der Config | `tests/test_templates.py` 67/67, `tests/e2e_templates.mjs` 42/42, `test_deploy_upgrade.py` 257/257 |
 | alle | Rollen-Rundgang (8 Rollen × alle Ansichten × Desktop/Handy) | `tests/e2e_roles.mjs` 374/374 |
 | alle | Regression Rechte/Migration (künstliche DB über `tests/make_test_db.py`) | `tests/test_regression.py` 151/151 |
 | alle | Server-Regeln ohne Browser | `tests/test_v128.py` 35/35 |

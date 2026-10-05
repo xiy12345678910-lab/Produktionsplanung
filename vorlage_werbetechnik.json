@@ -1,0 +1,252 @@
+{
+ "id": "werbetechnik",
+ "name": "Werbetechnik / Displays",
+ "description": "CNC, Konfektion, Siebdruck, Tiefziehen",
+ "departments": [
+  {
+   "id": "cnc",
+   "name": "CNC",
+   "planningType": "MACHINE",
+   "sharedOperators": true
+  },
+  {
+   "id": "konf1",
+   "name": "Konfektion 1",
+   "planningType": "LABOR_HOURS"
+  },
+  {
+   "id": "konf2",
+   "name": "Konfektion 2",
+   "planningType": "LABOR_HOURS"
+  },
+  {
+   "id": "konf3",
+   "name": "Konfektion 3",
+   "planningType": "LABOR_HOURS"
+  },
+  {
+   "id": "screenprint",
+   "name": "Siebdruck",
+   "planningType": "PROCESS"
+  },
+  {
+   "id": "thermoforming",
+   "name": "Tiefziehen",
+   "planningType": "CYCLE",
+   "formats": true
+  }
+ ],
+ "machines": [
+  {
+   "id": "m1",
+   "name": "Maschine 1",
+   "departmentId": "cnc"
+  },
+  {
+   "id": "m2",
+   "name": "Maschine 2",
+   "departmentId": "cnc"
+  },
+  {
+   "id": "m3",
+   "name": "Maschine 3",
+   "departmentId": "cnc"
+  }
+ ],
+ "shiftTemplates": {
+  "single": {
+   "name": "1-Schicht Mo–Do",
+   "start": "06:30",
+   "end": "16:00",
+   "breaks": [
+    {
+     "start": "09:00",
+     "end": "09:15"
+    },
+    {
+     "start": "12:00",
+     "end": "12:30"
+    }
+   ]
+  },
+  "fridaySingle": {
+   "name": "1-Schicht Freitag",
+   "start": "06:30",
+   "end": "11:45",
+   "breaks": [
+    {
+     "start": "09:00",
+     "end": "09:15"
+    },
+    {
+     "start": "",
+     "end": ""
+    }
+   ]
+  },
+  "early": {
+   "name": "2-Schicht · Früh",
+   "start": "06:00",
+   "end": "14:30",
+   "breaks": [
+    {
+     "start": "09:00",
+     "end": "09:15"
+    },
+    {
+     "start": "12:00",
+     "end": "12:15"
+    }
+   ]
+  },
+  "late": {
+   "name": "2-Schicht · Spät",
+   "start": "14:30",
+   "end": "22:30",
+   "breaks": [
+    {
+     "start": "17:00",
+     "end": "17:15"
+    },
+    {
+     "start": "19:00",
+     "end": "19:15"
+    }
+   ]
+  }
+ },
+ "processTemplates": [
+  {
+   "id": "tpl_pm_repeat",
+   "kind": "pm",
+   "name": "Wiederholteil",
+   "steps": [
+    {
+     "areaId": "calculation",
+     "title": "Preis / Kalkulation prüfen",
+     "offsetDays": 0,
+     "durationDays": 2
+    },
+    {
+     "areaId": "pm",
+     "title": "Angebot erstellen",
+     "offsetDays": 2,
+     "durationDays": 1
+    }
+   ]
+  },
+  {
+   "id": "tpl_pm_new",
+   "kind": "pm",
+   "name": "Neuteil",
+   "steps": [
+    {
+     "areaId": "engineering",
+     "title": "Machbarkeit prüfen",
+     "offsetDays": 0,
+     "durationDays": 3
+    },
+    {
+     "areaId": "purchasing",
+     "title": "Material / Zukauf anfragen",
+     "offsetDays": 0,
+     "durationDays": 5
+    },
+    {
+     "areaId": "calculation",
+     "title": "Kalkulation",
+     "offsetDays": 3,
+     "durationDays": 3
+    },
+    {
+     "areaId": "pm",
+     "title": "Angebot erstellen",
+     "offsetDays": 6,
+     "durationDays": 1
+    }
+   ]
+  },
+  {
+   "id": "tpl_pm_dev",
+   "kind": "pm",
+   "name": "Entwicklung / Muster",
+   "steps": [
+    {
+     "areaId": "engineering",
+     "title": "Konstruktion / Entwicklung",
+     "offsetDays": 0,
+     "durationDays": 10
+    },
+    {
+     "areaId": "cnc",
+     "title": "Muster CNC",
+     "offsetDays": 10,
+     "durationDays": 5
+    },
+    {
+     "areaId": "konf1",
+     "title": "Muster Konfektion",
+     "offsetDays": 10,
+     "durationDays": 5
+    },
+    {
+     "areaId": "calculation",
+     "title": "Kalkulation",
+     "offsetDays": 10,
+     "durationDays": 5
+    },
+    {
+     "areaId": "sales",
+     "title": "Kundenfreigabe Muster einholen",
+     "offsetDays": 15,
+     "durationDays": 7
+    },
+    {
+     "areaId": "pm",
+     "title": "Angebot erstellen",
+     "offsetDays": 22,
+     "durationDays": 2
+    }
+   ]
+  }
+ ],
+ "projectAreas": [
+  {
+   "id": "sales",
+   "name": "Vertrieb"
+  },
+  {
+   "id": "pm",
+   "name": "Projektmanagement"
+  },
+  {
+   "id": "engineering",
+   "name": "Konstruktion / Entwicklung"
+  },
+  {
+   "id": "calculation",
+   "name": "Kalkulation"
+  },
+  {
+   "id": "purchasing",
+   "name": "Einkauf"
+  },
+  {
+   "id": "quality",
+   "name": "Qualitätssicherung"
+  },
+  {
+   "id": "av",
+   "name": "Arbeitsvorbereitung"
+  }
+ ],
+ "modules": {
+  "projects": true,
+  "formats": true,
+  "personnel": true,
+  "chat": true,
+  "notifications": true,
+  "postcalc": true,
+  "kpi": true
+ }
+}

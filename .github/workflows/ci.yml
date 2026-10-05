@@ -36,6 +36,7 @@ jobs:
           python tests/test_config_update.py
           python tests/test_config_api.py
           python tests/test_no_employer_data.py
+          python tests/test_templates.py
       - name: Backup/Restore
         run: python tests/test_backup.py
       - name: Datenerhalt bei Updates (alte Staende -> aktuell)

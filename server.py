@@ -27,7 +27,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-APP_VERSION = "12.15.1"
+APP_VERSION = "12.16.0"
 HOST = os.environ.get("MP_HOST", "0.0.0.0")
 PORT = int(os.environ.get("MP_PORT", "8765"))
 BASE = Path(__file__).resolve().parent
@@ -53,7 +53,7 @@ CONFIG_KEEP_BAK = 20
 CONFIG_LOGO_MAX = 420 * 1024
 CONFIG_LOCK = threading.RLock()
 CONFIG_MODULES = ("projects", "formats", "personnel", "chat", "notifications", "postcalc", "kpi")
-CONFIG_TEMPLATES = {"werbetechnik", "neutral"}
+CONFIG_TEMPLATES = {"werbetechnik", "neutral", "metall_cnc", "leer", "demo"}
 CONFIG_HEX = re.compile(r"^#[0-9a-fA-F]{6}$")
 CONFIG_TENANT = re.compile(r"^[a-z0-9-]{3,32}$")
 CONFIG_PROJECT_AREAS = [
@@ -176,6 +176,9 @@ def validate_config(cfg) -> list[str]:
     text("terms", te, "orderNumber", 30)
     if te.get("roleLabels") is not None and not isinstance(te["roleLabels"], dict):
         errs.append("terms.roleLabels: Objekt erwartet")
+    elif isinstance(te.get("roleLabels"), dict) and any(
+            k not in ROLES or not isinstance(v, str) or len(v) > 40 for k, v in te["roleLabels"].items()):
+        errs.append("terms.roleLabels: Rollen-ID und Text bis 40 Zeichen erwartet")
     m = sec("modules")
     for k, v in m.items():
         if k in CONFIG_MODULES and not isinstance(v, bool):
@@ -585,10 +588,59 @@ def public_config(cfg: dict | None = None) -> dict:
         },
         "locale": {**d["locale"], **(cfg.get("locale") or {})},
         "terms": {**d["terms"], **(cfg.get("terms") or {})},
-        "modules": {**d["modules"], **(cfg.get("modules") or {})},
+        "modules": modules_effective(cfg),
         "projectAreas": cfg.get("projectAreas") or d["projectAreas"],
         "readOnly": int(cfg.get("schemaVersion", 1)) > CONFIG_SCHEMA,
     }
+
+
+# ---------------------------------------------------------------------------------------------
+# V12.16.0: Module ein/aus. Aus = Ansicht/Menü/Aktionen weg, Endpunkte und Schreibzugriffe gesperrt (MP-MOD-001),
+# die Daten bleiben vollständig erhalten. kpi hängt an postcalc (aus -> auch kpi aus).
+# ---------------------------------------------------------------------------------------------
+MODULE_LABELS = {"projects": "Projekte", "formats": "Formate", "personnel": "Personal", "chat": "Nachrichten",
+                 "notifications": "Benachrichtigungen", "postcalc": "Auswertung", "kpi": "Kennzahlen"}
+MODULE_DEPS = {"kpi": ("postcalc",)}
+# Datensammlungen im Datenstand, die ein Modul besitzt (Schreiben nur bei eingeschaltetem Modul).
+MODULE_STATE_KEYS = {
+    "projects": ("projects", "processTemplates"),
+    "formats": ("formats", "baseFormats"),
+    "personnel": ("employees", "personnelAssignments", "personnelAbsences", "weeklyEmployeeDeployments",
+                  "departmentStaffNeeds", "personnelGate"),
+}
+
+
+def modules_effective(cfg: dict | None = None) -> dict:
+    cfg = cfg or current_config()
+    m = {**{k: True for k in CONFIG_MODULES}, **{k: v for k, v in (cfg.get("modules") or {}).items() if k in CONFIG_MODULES}}
+    for k, deps in MODULE_DEPS.items():
+        if not all(m.get(d, True) for d in deps):
+            m[k] = False
+    return m
+
+
+def module_on(name: str) -> bool:
+    return bool(modules_effective().get(name, True))
+
+
+def module_error(name: str) -> dict:
+    return mp_error("MP-MOD-001", f"Modul „{MODULE_LABELS.get(name, name)}“ ist abgeschaltet.", module=name)
+
+
+def _norm_coll(v):
+    return canonical(v if v not in (None, "", False, [], {}) else None)
+
+
+def module_state_guard(old: dict, new: dict) -> tuple[str, str]:
+    """('', '') wenn erlaubt, sonst (Modul, Meldung): ein abgeschaltetes Modul darf seine Datensammlungen nicht ändern."""
+    mods = modules_effective()
+    for mod, keys in MODULE_STATE_KEYS.items():
+        if mods.get(mod, True):
+            continue
+        for k in keys:
+            if _norm_coll(old.get(k)) != _norm_coll(new.get(k)):
+                return mod, f"Modul „{MODULE_LABELS[mod]}“ ist abgeschaltet: '{k}' kann nicht geändert werden."
+    return "", ""
 
 
 def _backup_logo(name: str) -> None:
@@ -891,12 +943,12 @@ def init_db() -> None:
                     "late": {"name": "2-Schicht · Spät", "start": "14:30", "end": "22:30", "breaks": [{"start": "17:00", "end": "17:15"}, {"start": "19:00", "end": "19:15"}]},
                 },
                 "departments": [
-                    {"id": "cnc", "name": "CNC", "planningType": "MACHINE", "active": True},
+                    {"id": "cnc", "name": "CNC", "planningType": "MACHINE", "active": True, "sharedOperators": True},
                     {"id": "konf1", "name": "Konfektion 1", "planningType": "LABOR_HOURS", "active": True},
                     {"id": "konf2", "name": "Konfektion 2", "planningType": "LABOR_HOURS", "active": True},
                     {"id": "konf3", "name": "Konfektion 3", "planningType": "LABOR_HOURS", "active": True},
                     {"id": "screenprint", "name": "Siebdruck", "planningType": "PROCESS", "active": True},
-                    {"id": "thermoforming", "name": "Tiefziehen", "planningType": "CYCLE", "active": True}
+                    {"id": "thermoforming", "name": "Tiefziehen", "planningType": "CYCLE", "active": True, "formats": True}
                 ],
                 "projects": [],
                 "workSteps": [],
@@ -915,6 +967,7 @@ def init_db() -> None:
         migrate_state_v1270(con)
         normalize_state_v1270(con)
         migrate_state_v1280(con)
+        migrate_state_v1216(con)
         if not con.execute("SELECT 1 FROM chat_channels WHERE kind='all'").fetchone():
             con.execute("INSERT INTO chat_channels(kind,name,members,created_by,created_at) VALUES('all','Alle','[]','Server',?)", (now_iso(),))
         migrate_chat_v1291(con)
@@ -939,6 +992,27 @@ def migrate_state_v1280(con: sqlite3.Connection) -> None:
         con.execute("UPDATE state SET json=?,updated_at=?,updated_by=? WHERE id=1",
                     (json.dumps(state, ensure_ascii=False, separators=(",", ":")), now_iso(), "V12.8.0 migration"))
         print("DB-MIGRATION state: V12.8.0 Formatlisten angelegt")
+
+
+def migrate_state_v1216(con: sqlite3.Connection) -> None:
+    """V12.16.0: Bereichs-Eigenschaften statt fester Bereichs-IDs. Nur additiv und idempotent: thermoforming.formats=true und
+    cnc.sharedOperators=true, wenn die Eigenschaft dort noch FEHLT (ein vorhandener Wert, auch false, bleibt)."""
+    row = con.execute("SELECT json FROM state WHERE id=1").fetchone()
+    if not row:
+        return
+    state = json.loads(row["json"])
+    changed = False
+    for d in state.get("departments") or []:
+        if not isinstance(d, dict):
+            continue
+        for did, prop in (("thermoforming", "formats"), ("cnc", "sharedOperators")):
+            if d.get("id") == did and prop not in d:
+                d[prop] = True
+                changed = True
+    if changed:
+        con.execute("UPDATE state SET json=?,updated_at=?,updated_by=? WHERE id=1",
+                    (json.dumps(state, ensure_ascii=False, separators=(",", ":")), now_iso(), "V12.16.0 migration"))
+        print("DB-MIGRATION state: V12.16.0 Bereichs-Eigenschaften (formats, sharedOperators)")
 
 
 def migrate_state_v1242(con: sqlite3.Connection) -> None:
@@ -1667,14 +1741,24 @@ def _berlin_today() -> str:
         return datetime.now().strftime("%Y-%m-%d")
 
 
-def _step_dept(step: dict, machine_dept: dict) -> str:
-    return str(step.get("departmentId") or machine_dept.get(str(step.get("machineId")), "cnc"))
+def default_dept_id(state: dict) -> str:
+    """V12.16.0: Ersatz für den festen Rückgriff auf 'cnc': erster aktiver Produktionsbereich (Fallback 'cnc' nur ohne Bereiche).
+    Bei der Bestandsdatenbank bleibt das 'cnc', weil der Bereich dort an erster Stelle steht."""
+    for d in (state or {}).get("departments") or []:
+        if isinstance(d, dict) and d.get("id") and d.get("active") is not False and str(d.get("kind") or "production") == "production":
+            return str(d["id"])
+    return "cnc"
+
+
+def _step_dept(step: dict, machine_dept: dict, dd: str = "cnc") -> str:
+    return str(step.get("departmentId") or machine_dept.get(str(step.get("machineId")), dd))
 
 
 def notify_from_diff(con, old: dict, new: dict, actor: str) -> int:
     """Erzeugt Einträge aus Freigabe/Rücknahme, Maschinensperre, Abwesenheit und Leiharbeiter-Anfrage."""
+    dd = default_dept_id(new)
     users = _notif_users(con)
-    machine_dept = {str(m.get("id")): str(m.get("departmentId") or "cnc") for m in (new.get("machines") or []) if isinstance(m, dict)}
+    machine_dept = {str(m.get("id")): str(m.get("departmentId") or dd) for m in (new.get("machines") or []) if isinstance(m, dict)}
     machine_name = {str(m.get("id")): str(m.get("name") or m.get("id")) for m in (new.get("machines") or []) if isinstance(m, dict)}
     dept_name = {str(d.get("id")): str(d.get("name") or d.get("id")) for d in (new.get("departments") or []) if isinstance(d, dict)}
     made = 0
@@ -1699,7 +1783,7 @@ def notify_from_diff(con, old: dict, new: dict, actor: str) -> int:
         a, b = str(before.get("status") or "planned"), str(s.get("status") or "planned")
         if a == b or {a, b} != {"planned", "released"}:
             continue
-        did = _step_dept(s, machine_dept)
+        did = _step_dept(s, machine_dept, dd)
         label = str(s.get("fs") or s.get("order") or s.get("id"))
         text = f"{label} freigegeben" if b == "released" else f"{label} zurückgezogen"
         send([u for u in users if notif_sees_dept(u, did)], "release", "order", s.get("id"), f"{text} · {actor}")
@@ -1712,7 +1796,7 @@ def notify_from_diff(con, old: dict, new: dict, actor: str) -> int:
         n = active_by_machine.get(mid, 0)
         if not n:
             continue
-        did = machine_dept.get(mid, "cnc")
+        did = machine_dept.get(mid, dd)
         a, z = _short(blk.get("start")), _short(blk.get("end"))
         span = a + ("–" + z if z and z != a else "")
         send([u for u in users if notif_sees_dept(u, did)], "block", "machine", mid,
@@ -1814,7 +1898,8 @@ def notif_post(con, user: dict, path: str, body: dict, state: dict | None = None
             return 400, mp_error("MP-NOTIF-001", f"Höchstens {NOTIF_MAX_DERIVED} Einträge je Meldung.")
         state = state or {}
         steps = {str(s.get("id")): s for s in (state.get("workSteps") or []) if isinstance(s, dict)}
-        machine_dept = {str(m.get("id")): str(m.get("departmentId") or "cnc") for m in (state.get("machines") or []) if isinstance(m, dict)}
+        dd = default_dept_id(state)
+        machine_dept = {str(m.get("id")): str(m.get("departmentId") or dd) for m in (state.get("machines") or []) if isinstance(m, dict)}
         today, made = _berlin_today(), 0
         me = {"username": username, "role": role, "department_id": user.get("department_id") or ""}
         for it in items:
@@ -1823,7 +1908,7 @@ def notif_post(con, user: dict, path: str, body: dict, state: dict | None = None
             s = steps.get(str(it.get("orderId")))
             # Nur echte, aktive Aufträge mit Termin und nur aus sichtbaren Bereichen; der Termin kommt vom Server.
             if not s or str(s.get("status") or "planned") not in _ACTIVE_STEP or not _valid_date_key(s.get("dueDate")) \
-                    or not notif_sees_dept(me, _step_dept(s, machine_dept)):
+                    or not notif_sees_dept(me, _step_dept(s, machine_dept, dd)):
                 continue
             label = str(s.get("fs") or s.get("order") or s.get("id"))
             text = f"{label}: Plan-Ende {_short(it['end'])} nach Termin {_short(s['dueDate'])}" if it["kind"] == "late" \
@@ -2242,6 +2327,7 @@ def _validate_machine_format_fields(m: dict) -> tuple[bool, str]:
 
 def validate_formats(old: dict, new: dict, dept_ids: set) -> tuple[bool, str, str]:
     """Grundformate und Formate (Tiefziehen)."""
+    dd = default_dept_id(new)
     base = new.get("baseFormats")
     if base in (None, ""):
         base = []
@@ -2261,7 +2347,7 @@ def validate_formats(old: dict, new: dict, dept_ids: set) -> tuple[bool, str, st
         # V12.10.0: Grundformat für mehrere Maschinen; leer/fehlend = alle Maschinen des Bereichs
         mids = g.get("machineIds")
         if mids is not None:
-            dep_machines = {str(m.get("id")) for m in (new.get("machines") or []) if isinstance(m, dict) and str(m.get("departmentId") or "cnc") == str(g.get("departmentId"))}
+            dep_machines = {str(m.get("id")) for m in (new.get("machines") or []) if isinstance(m, dict) and str(m.get("departmentId") or dd) == str(g.get("departmentId"))}
             if not isinstance(mids, list) or not mids or len(mids) > 50 or len(set(map(str, mids))) != len(mids) or any(str(x) not in dep_machines for x in mids):
                 return False, "MP-FMT-011", f"Grundformat '{g.get('name')}': Maschinenauswahl ungültig (nur Maschinen des Bereichs)."
     formats = new.get("formats")
@@ -2269,7 +2355,7 @@ def validate_formats(old: dict, new: dict, dept_ids: set) -> tuple[bool, str, st
         formats = []
     if not isinstance(formats, list) or len(formats) > 5000:
         return False, "MP-FMT-002", "Formatliste ist ungültig."
-    machine_dept = {str(m.get("id")): str(m.get("departmentId") or "cnc") for m in (new.get("machines") or []) if isinstance(m, dict)}
+    machine_dept = {str(m.get("id")): str(m.get("departmentId") or dd) for m in (new.get("machines") or []) if isinstance(m, dict)}
     step_ids = {str(x.get("id")) for x in (new.get("workSteps") or []) if isinstance(x, dict)}
     # Fertige Aufträge wandern in die Historie; das Format behält die Verknüpfung (originalOrderId).
     step_ids |= {str(h.get("originalOrderId")) for h in (new.get("history") or []) if isinstance(h, dict) and h.get("originalOrderId")}
@@ -2394,6 +2480,7 @@ def validate_state(old: dict, new: dict) -> tuple[bool, str, str]:
     machines = new.get("machines")
     work_steps = new.get("workSteps")
     departments = new.get("departments") or []
+    dd = default_dept_id(new)
     projects = new.get("projects") or []
     if not isinstance(machines, list) or not machines:
         return False, "MP-DATA-011", "Mindestens eine Maschine ist erforderlich."
@@ -2417,6 +2504,8 @@ def validate_state(old: dict, new: dict) -> tuple[bool, str, str]:
             return False, "MP-DEPT-002", "Produktionsbereich hat eine ungültige ID."
         did = str(dep["id"])
         ptype = str(dep.get("planningType") or "")
+        if any(k in dep and not isinstance(dep[k], bool) for k in ("formats", "sharedOperators")):
+            return False, "MP-DEPT-007", f"Bereich '{did}': Eigenschaften formats/sharedOperators sind true/false."
         if did in dept_ids:
             return False, "MP-DEPT-002", f"Doppelte Bereichs-ID '{did}'."
         if ptype not in valid_types:
@@ -2436,7 +2525,7 @@ def validate_state(old: dict, new: dict) -> tuple[bool, str, str]:
     # V12.8.2: Vertrieb/Entwicklung bearbeiten nur Projektaufgaben – keine Maschinen, Aufträge, Formate.
     for name, what in (("machines", "Maschine/Linie"), ("workSteps", "Auftrag"), ("formats", "Format"), ("baseFormats", "Grundformat")):
         for rec in new.get(name) or []:
-            if isinstance(rec, dict) and dept_kinds.get(str(rec.get("departmentId") or "cnc"), "production") != "production":
+            if isinstance(rec, dict) and dept_kinds.get(str(rec.get("departmentId") or dd), "production") != "production":
                 return False, "MP-DEPT-004", f"Bereich '{rec.get('departmentId')}' ist kein Produktionsbereich – {what} nicht zulässig."
     old_inactive = {str(d.get("id")) for d in (old.get("departments") or []) if isinstance(d, dict) and d.get("active") is False}
     for dep in departments:
@@ -2580,7 +2669,7 @@ def validate_state(old: dict, new: dict) -> tuple[bool, str, str]:
         sr = _finite_float(m.get("staffRequired", 1))
         if sr is None or sr < 0 or not sr.is_integer() or sr > 99:
             return False, "MP-MACH-007", f"Maschine '{m.get('name') or mid}' hat einen ungültigen Personalbedarf."
-        if str(m.get("departmentId") or "cnc") not in dept_ids:
+        if str(m.get("departmentId") or dd) not in dept_ids:
             return False, "MP-MACH-008", f"Maschine '{m.get('name') or mid}' verweist auf einen unbekannten Bereich."
         setup = _finite_float(m.get("setupMinutes", 0))
         if setup is None or setup < 0 or setup > 1440:
@@ -2695,7 +2784,7 @@ def validate_state(old: dict, new: dict) -> tuple[bool, str, str]:
     eidset = set(eids)
 
     assignment_keys = set()
-    machine_dept_new = {str(m.get("id")): str(m.get("departmentId") or "cnc") for m in (new.get("machines") or []) if isinstance(m, dict)}
+    machine_dept_new = {str(m.get("id")): str(m.get("departmentId") or dd) for m in (new.get("machines") or []) if isinstance(m, dict)}
     deployment_new = _deployment_map(new)
     # Unveraenderte Zuordnungen nicht erneut gegen Freigabe/KW-Einsatz pruefen: Nimmt die GF
     # einen KW-Einsatz zurueck, darf das nicht jeden weiteren Speichervorgang blockieren.
@@ -2809,11 +2898,11 @@ def validate_state(old: dict, new: dict) -> tuple[bool, str, str]:
         alt = str(o.get("altMachineId", "") or "")
         if mid not in midset:
             return False, "MP-PLAN-003", f"Auftrag '{o.get('order') or oid}' verweist auf eine unbekannte Hauptmaschine."
-        order_department = str(o.get("departmentId") or next((m.get("departmentId") or "cnc" for m in machines if str(m.get("id")) == mid), "cnc"))
+        order_department = str(o.get("departmentId") or next((m.get("departmentId") or dd for m in machines if str(m.get("id")) == mid), dd))
         if order_department not in dept_ids:
             return False, "MP-DEPT-004", f"Auftrag '{o.get('order') or oid}' verweist auf einen unbekannten Bereich."
         for used_mid in (mid, alt):
-            if used_mid and str((machine_map.get(used_mid) or {}).get("departmentId") or "cnc") != order_department:
+            if used_mid and str((machine_map.get(used_mid) or {}).get("departmentId") or dd) != order_department:
                 return False, "MP-DEPT-005", f"Auftrag '{o.get('order') or oid}' ist einer Maschine aus einem anderen Bereich zugeordnet."
         project_id = str(o.get("projectId") or "")
         if project_id and project_id not in project_ids:
@@ -3106,6 +3195,7 @@ def _need_map(state: dict) -> dict:
 def _gf_departments_change(old: dict, new: dict) -> tuple[bool, str]:
     """V12.8.2: GF legt Bereiche an (Name, Art, aktiv) und richtet einem neuen Produktionsbereich
     die erste Maschine/Linie ein. Bereiche werden nicht gelöscht, nur deaktiviert."""
+    dd = default_dept_id(old)
     da, db = _record_map(old.get("departments")), _record_map(new.get("departments"))
     if set(da) - set(db):
         return False, "GF löscht keine Bereiche – stattdessen deaktivieren."
@@ -3119,14 +3209,14 @@ def _gf_departments_change(old: dict, new: dict) -> tuple[bool, str]:
         if diff - {"name", "kind", "active"}:
             return False, f"GF ändert an Bereichen nur Name, Art und aktiv ({sorted(diff)[0]})."
     ma, mb = _record_map(old.get("machines")), _record_map(new.get("machines"))
-    old_with_machines = {str(m.get("departmentId") or "cnc") for m in ma.values()}
+    old_with_machines = {str(m.get("departmentId") or dd) for m in ma.values()}
     for mid in set(ma) | set(mb):
         a, b = ma.get(mid), mb.get(mid)
         if canonical(a) == canonical(b):
             continue
         if a is not None:
             return False, "Bestehende Maschinen/Linien pflegt der Bereich bzw. Admin."
-        if str(b.get("departmentId") or "cnc") in old_with_machines:
+        if str(b.get("departmentId") or dd) in old_with_machines:
             return False, "GF legt nur die erste Maschine/Linie eines Bereichs an."
     return True, ""
 
@@ -3420,6 +3510,7 @@ def _record_map(items):
 
 
 def department_change_allowed(old: dict, new: dict, department_id: str) -> tuple[bool, str]:
+    dd = default_dept_id(new)
     if not department_id:
         return False, "Kein Bereich am Benutzer hinterlegt."
     globally_allowed = {"audit", "meta", "ui", "planVersions", "departmentStaffNeeds"}
@@ -3456,8 +3547,8 @@ def department_change_allowed(old: dict, new: dict, department_id: str) -> tuple
 
     # Zuordnung aus dem ALTEN Stand (Fallback: neu angelegte Datensätze), damit ein
     # Umhängen im selben Speichervorgang keine fremden Sperren/Regeln freischaltet.
-    machine_dept = {str(m.get("id")): str(m.get("departmentId") or "cnc") for m in (new.get("machines") or []) if isinstance(m, dict)}
-    machine_dept.update({str(m.get("id")): str(m.get("departmentId") or "cnc") for m in (old.get("machines") or []) if isinstance(m, dict)})
+    machine_dept = {str(m.get("id")): str(m.get("departmentId") or dd) for m in (new.get("machines") or []) if isinstance(m, dict)}
+    machine_dept.update({str(m.get("id")): str(m.get("departmentId") or dd) for m in (old.get("machines") or []) if isinstance(m, dict)})
     old_orders = {k:v for k,v in _record_map(old.get("workSteps")).items() if v.get("planningType") == "MACHINE"}
     new_orders = {k:v for k,v in _record_map(new.get("workSteps")).items() if v.get("planningType") == "MACHINE"}
     employee_dept = {str(e.get("id")): str(e.get("departmentId") or "") for e in (new.get("employees") or []) if isinstance(e, dict)}
@@ -3483,14 +3574,14 @@ def department_change_allowed(old: dict, new: dict, department_id: str) -> tuple
                         yield side
 
     for rec in changed_records("machines"):
-        if str(rec.get("departmentId") or "cnc") != department_id:
+        if str(rec.get("departmentId") or dd) != department_id:
             return False, "Maschine gehört nicht zum eigenen Bereich."
     for name, what in (("formats", "Format"), ("baseFormats", "Grundformat")):
         for rec in changed_records(name):
             if str(rec.get("departmentId") or "") != department_id:
                 return False, f"{what} gehört nicht zum eigenen Bereich."
     for rec in changed_records("workSteps"):
-        did = str(rec.get("departmentId") or machine_dept.get(str(rec.get("machineId")), "cnc"))
+        did = str(rec.get("departmentId") or machine_dept.get(str(rec.get("machineId")), dd))
         if did != department_id:
             return False, "Arbeitsgang gehört nicht zum eigenen Bereich."
     old_steps = _record_map(old.get("workSteps"))
@@ -3537,7 +3628,7 @@ def department_change_allowed(old: dict, new: dict, department_id: str) -> tuple
     for rec in changed_records("history"):
         oid = str(rec.get("originalOrderId") or "")
         source = old_orders.get(oid) or new_orders.get(oid) or {}
-        did = str(source.get("departmentId") or machine_dept.get(str(source.get("machineId")), "cnc"))
+        did = str(source.get("departmentId") or machine_dept.get(str(source.get("machineId")), dd))
         if did != department_id:
             return False, "Historieneintrag gehört nicht zum eigenen Bereich."
     return True, ""
@@ -3859,6 +3950,153 @@ class MPHTTPServer(ThreadingHTTPServer):
             self._conn_slots.release()
 
 
+# ---------------------------------------------------------------------------------------------
+# V12.16.0: Branchenvorlagen (vorlage_<id>.json im Paket). Eine Vorlage wird nur auf Wunsch (Admin) angewendet und
+# ERGÄNZT nur: vorhandene Bereiche, Maschinen, Schichten und Abläufe bleiben unverändert, nichts wird gelöscht.
+# Die Vorlage enthält keine Firmen-/Personendaten.
+# ---------------------------------------------------------------------------------------------
+TEMPLATE_FILE = re.compile(r"^vorlage_([a-z0-9_]{1,30})\.json$")
+TEMPLATE_MACHINE_KEYS = ("kind", "crew", "lanes", "setupMinutes", "defaultShiftMode", "staffRequired")
+
+
+def load_templates() -> dict:
+    out = {}
+    for p in sorted(BASE.glob("vorlage_*.json")):
+        m = TEMPLATE_FILE.match(p.name)
+        if not m:
+            continue
+        try:
+            t = json.loads(p.read_text(encoding="utf-8-sig"))
+        except (OSError, ValueError):
+            continue
+        if isinstance(t, dict) and t.get("id") == m.group(1) and isinstance(t.get("name"), str):
+            out[t["id"]] = t
+    return out
+
+
+def _tpl_list(t: dict, key: str) -> list:
+    v = t.get(key)
+    return [x for x in v if isinstance(x, dict)] if isinstance(v, list) else []
+
+
+def template_overview() -> list[dict]:
+    out = []
+    for t in load_templates().values():
+        out.append({
+            "id": t["id"], "name": t["name"], "description": str(t.get("description") or ""),
+            "departments": [{"id": d.get("id"), "name": d.get("name"), "planningType": d.get("planningType")} for d in _tpl_list(t, "departments")],
+            "machines": len(_tpl_list(t, "machines")),
+            "processTemplates": [x.get("name") for x in _tpl_list(t, "processTemplates")],
+            "modules": {k: bool(v) for k, v in (t.get("modules") or {}).items() if k in CONFIG_MODULES} if isinstance(t.get("modules"), dict) else {},
+        })
+    return out
+
+
+def template_merge(state: dict, tpl: dict) -> tuple[dict, dict]:
+    """Liefert (neuer Datenstand, Zusammenfassung). Der übergebene Stand wird nicht verändert."""
+    new = json.loads(json.dumps(state))
+    summary = {"departments": [], "machines": [], "shiftTemplates": [], "processTemplates": [], "skipped": 0}
+    deps = new.setdefault("departments", [])
+    dep_ids = {str(d.get("id")) for d in deps if isinstance(d, dict)}
+    dep_names = {str(d.get("name") or "").strip().casefold() for d in deps if isinstance(d, dict)}
+    added_deps = set()
+    for d in _tpl_list(tpl, "departments"):
+        did, name = str(d.get("id") or ""), str(d.get("name") or "").strip()
+        if (not re.fullmatch(r"[A-Za-z0-9_-]{1,40}", did) or did in dep_ids or did in PROJECT_FIXED_AREA_IDS
+                or name.casefold() in dep_names or d.get("planningType") not in {"MACHINE", "LABOR_HOURS", "PROCESS", "CYCLE"}):
+            summary["skipped"] += 1
+            continue
+        rec = {"id": did, "name": name[:60], "planningType": d["planningType"], "active": True}
+        for flag in ("formats", "sharedOperators"):
+            if d.get(flag) is True:
+                rec[flag] = True
+        deps.append(rec)
+        dep_ids.add(did)
+        dep_names.add(name.casefold())
+        added_deps.add(did)
+        summary["departments"].append(name)
+    machines = new.setdefault("machines", [])
+    mids = {str(m.get("id")) for m in machines if isinstance(m, dict)}
+    monday = datetime.now().date() - timedelta(days=datetime.now().weekday())
+    for m in _tpl_list(tpl, "machines"):
+        mid = str(m.get("id") or "")
+        if str(m.get("departmentId") or "") not in added_deps:
+            continue     # Maschinen nur für Bereiche, die diese Anwendung neu anlegt
+        if not re.fullmatch(r"[A-Za-z0-9_-]{1,40}", mid) or mid in mids:
+            summary["skipped"] += 1
+            continue
+        rec = {"id": mid, "name": str(m.get("name") or mid)[:60], "departmentId": str(m["departmentId"]), "setupMinutes": 0,
+               "start": f"{monday.isoformat()}T06:30", "committedUntil": "", "defaultShiftMode": "1", "staffRequired": 1}
+        rec.update({k: m[k] for k in TEMPLATE_MACHINE_KEYS if k in m})
+        machines.append(rec)
+        mids.add(mid)
+        summary["machines"].append(rec["name"])
+    if isinstance(tpl.get("shiftTemplates"), dict):
+        st = new.setdefault("shiftTemplates", {})
+        for k, v in tpl["shiftTemplates"].items():
+            if k not in st and isinstance(v, dict):
+                st[k] = json.loads(json.dumps(v))
+                summary["shiftTemplates"].append(k)
+    areas = {a["id"] for a in (current_config().get("projectAreas") or CONFIG_PROJECT_AREAS)} | dep_ids
+    pts = new.setdefault("processTemplates", [])
+    pids = {str(x.get("id")) for x in pts if isinstance(x, dict)}
+    pnames = {(str(x.get("kind")), str(x.get("name") or "").strip().casefold()) for x in pts if isinstance(x, dict)}
+    for t in _tpl_list(tpl, "processTemplates"):
+        key = (str(t.get("kind")), str(t.get("name") or "").strip().casefold())
+        if str(t.get("id")) in pids or key in pnames or any(str(st.get("areaId")) not in areas for st in t.get("steps") or [] if isinstance(st, dict)):
+            summary["skipped"] += 1
+            continue
+        pts.append(json.loads(json.dumps(t)))
+        pids.add(str(t.get("id")))
+        pnames.add(key)
+        summary["processTemplates"].append(str(t.get("name")))
+    return new, summary
+
+
+def template_apply(user: dict, body: dict) -> tuple[int, dict]:
+    tid = str(body.get("id") or "")
+    tpl = load_templates().get(tid)
+    if not tpl:
+        return 404, mp_error("MP-TPL-040", "Vorlage nicht gefunden.")
+    dry = body.get("dryRun") is True
+    want_modules = body.get("modules") is True
+    with DB_LOCK, db_session() as con:
+        con.execute("BEGIN IMMEDIATE")
+        row = con.execute("SELECT revision,json FROM state WHERE id=1").fetchone()
+        old = json.loads(row["json"])
+        new, summary = template_merge(old, tpl)
+        changed = canonical({k: v for k, v in new.items() if k != "meta"}) != canonical({k: v for k, v in old.items() if k != "meta"})
+        cfg_now = current_config()
+        tmods = tpl.get("modules") if isinstance(tpl.get("modules"), dict) else {}
+        mod_changes = {k: bool(v) for k, v in tmods.items() if k in CONFIG_MODULES and (cfg_now.get("modules") or {}).get(k, True) != bool(v)} if want_modules else {}
+        summary["modules"] = mod_changes
+        if dry or (not changed and not mod_changes):
+            con.execute("ROLLBACK")
+            return 200, {"ok": True, "dryRun": dry, "unchanged": not changed and not mod_changes, "summary": summary, "revision": row["revision"]}
+        revision = row["revision"]
+        if changed:
+            ok, code, reason = validate_state(old, new)
+            if not ok:
+                con.execute("ROLLBACK")
+                return 400, mp_error(code, reason)
+            revision = row["revision"] + 1
+            new.setdefault("meta", {})
+            new["meta"]["serverRevision"] = revision
+            new["meta"]["actor"] = user["username"]
+            new["meta"]["storage"] = "server"
+            ts = now_iso()
+            con.execute("UPDATE state SET revision=?,json=?,updated_at=?,updated_by=? WHERE id=1",
+                        (revision, json.dumps(new, ensure_ascii=False, separators=(",", ":")), ts, user["username"]))
+            con.execute("INSERT INTO server_audit(ts,username,action,detail,revision) VALUES(?,?,?,?,?)",
+                        (ts, user["username"], "Vorlage angewendet", tid, revision))
+        con.execute("COMMIT")
+    if mod_changes:
+        status, payload, _detail = config_apply({"revision": config_revision(), "modules": mod_changes})
+        if status != 200:
+            return status, payload
+    return 200, {"ok": True, "summary": summary, "revision": revision}
+
+
 class Handler(BaseHTTPRequestHandler):
     server_version = f"ProduktionsplanungV{APP_VERSION}/1.0"
     # V12.10.2: Socket-Timeout gegen langsame bzw. hängende Verbindungen (Slowloris).
@@ -3871,8 +4109,9 @@ class Handler(BaseHTTPRequestHandler):
         if not client_ip_allowed(self.client_address[0]):
             try:
                 self.request.close()
-            finally:
-                return
+            except Exception:
+                pass
+            return
         try:
             return super().handle()
         except (BrokenPipeError, ConnectionResetError):
@@ -4027,6 +4266,8 @@ class Handler(BaseHTTPRequestHandler):
             user = self.require_user()
             if not user:
                 return
+            if not module_on("chat"):
+                return self.json_response(403, module_error("chat"))
             with DB_LOCK, db_session() as con:
                 status, payload = chat_get(con, user, path, parse_qs(parsed.query))
             return self.json_response(status, payload)
@@ -4034,6 +4275,8 @@ class Handler(BaseHTTPRequestHandler):
             user = self.require_user()
             if not user:
                 return
+            if not module_on("notifications"):
+                return self.json_response(403, module_error("notifications"))
             with DB_LOCK, db_session() as con:
                 status, payload = notif_get(con, user, path, parse_qs(parsed.query))
             return self.json_response(status, payload)
@@ -4047,6 +4290,11 @@ class Handler(BaseHTTPRequestHandler):
             if not user:
                 return
             return self.serve_logo()
+        if path == "/api/templates":
+            user = self.require_user(["admin"])
+            if not user:
+                return
+            return self.json_response(200, {"templates": template_overview()})
         if path == "/api/history-archive":
             # Ältere Ist-Historie (nur lesen), neueste zuerst. Filter: from/to (YYYY-MM-DD, Fertigmeldung), limit/offset.
             user = self.require_user()
@@ -4214,12 +4462,25 @@ class Handler(BaseHTTPRequestHandler):
             except ValueError as e:
                 return self.json_response(400, mp_error("MP-CFG-005", f"Logo abgelehnt: {e}"))
             return self.config_write(user, {"revision": body.get("revision")}, logo=(ext, data))
+        if path == "/api/templates/apply":
+            user = self.require_user(["admin"])
+            if not user:
+                return
+            if not self.require_current_client():
+                return
+            status, payload = template_apply(user, body if isinstance(body, dict) else {})
+            if status == 200 and not payload.get("dryRun") and not payload.get("unchanged"):
+                with REVISION_CONDITION:
+                    REVISION_CONDITION.notify_all()
+            return self.json_response(status, payload)
         if path.startswith("/api/chat/"):
             user = self.require_user()
             if not user:
                 return
             if not self.require_current_client():
                 return
+            if not module_on("chat"):
+                return self.json_response(403, module_error("chat"))
             with DB_LOCK, db_session() as con:
                 status, payload = chat_post(con, user, path, body if isinstance(body, dict) else {})
             if status in (200, 201):
@@ -4232,6 +4493,8 @@ class Handler(BaseHTTPRequestHandler):
                 return
             if not self.require_current_client():
                 return
+            if not module_on("notifications"):
+                return self.json_response(403, module_error("notifications"))
             state = None
             with DB_LOCK, db_session() as con:
                 sig_before = notif_sig(con, user["username"])["sig"]
@@ -4405,6 +4668,8 @@ class Handler(BaseHTTPRequestHandler):
                 return
             if not self.require_current_client():
                 return
+            if not module_on("notifications"):
+                return self.json_response(403, module_error("notifications"))
             try:
                 body = self.read_json(MAX_AUTH_BODY)
             except Exception as e:
@@ -4444,6 +4709,10 @@ class Handler(BaseHTTPRequestHandler):
             strip_archived_history(con, old, incoming)
             # Legacy-Schattenkopie (V12.4.3 und älter) nie wieder in den Live-State übernehmen.
             incoming.pop("orders", None)
+            mod, reason = module_state_guard(old, incoming)
+            if mod:
+                con.execute("ROLLBACK")
+                return self.json_response(403, mp_error("MP-MOD-001", reason, module=mod))
             valid, error_code, reason = validate_state(old, incoming)
             if not valid:
                 con.execute("ROLLBACK")
@@ -4505,7 +4774,8 @@ class Handler(BaseHTTPRequestHandler):
             con.execute("COMMIT")
         try:
             with DB_LOCK, db_session() as con:
-                notify_from_diff(con, old, incoming, user["username"])
+                if module_on("notifications"):
+                    notify_from_diff(con, old, incoming, user["username"])
         except Exception as e:   # Benachrichtigungen dürfen das Speichern nie verhindern
             print(f"NOTIF: Ereignisse konnten nicht erzeugt werden: {e}", flush=True)
         with REVISION_CONDITION:

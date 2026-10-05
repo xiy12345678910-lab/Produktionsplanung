@@ -1,4 +1,4 @@
-MASCHINENPLANUNG V12.15.1 - FEHLERCODES
+MASCHINENPLANUNG V12.16.0 - FEHLERCODES
 ======================================
 
 Jeder Fehler wird dem Mitarbeiter als Klartext + Code angezeigt.
@@ -31,6 +31,7 @@ CODEGRUPPEN
 - MP-FMT-xxx: Formatplanung Tiefziehen (Grundformate, Formate, Lager)
 - MP-CHAT-xxx: Nachrichten (Gruppen, Direktnachrichten, Verweise)
 - MP-NOTIF-xxx: Benachrichtigungen (Glocke)
+- MP-MOD-xxx: Module ein/aus
 
 EINZELCODES (der genaue Klartext kann je nach Kontext zusaetzliche Details enthalten)
 
@@ -409,3 +410,8 @@ MP-CFG-006   Bestandsdatenbank ohne config\firma.json und ohne Firmenname/Logo i
              stoppt, damit Name und Logo nicht still verloren gehen. Abhilfe: .\Firma_Einrichten.ps1 -Vorlage <datei>
              (oder -Neutral), danach UPDATE_LIVE.ps1 erneut. Neuinstallationen sind nicht betroffen.
 
+V12.16.0 NEU (Branchenvorlagen, Module)
+MP-MOD-001   Modul ist abgeschaltet: Schreibzugriff bzw. Endpunkt (Chat, Benachrichtigungen, Projekte, Formate, Personal)
+             wird gesperrt, die Daten bleiben erhalten. Abhilfe: Admin schaltet das Modul im Firmenprofil wieder ein.
+MP-TPL-040   Branchenvorlage nicht gefunden (POST /api/templates/apply).
+MP-DEPT-007  Bereichs-Eigenschaft formats/sharedOperators ist kein true/false.

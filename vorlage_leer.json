@@ -1,0 +1,160 @@
+{
+ "id": "leer",
+ "name": "Leer",
+ "description": "Nur Grundlagen, Bereiche selbst anlegen",
+ "departments": [],
+ "machines": [],
+ "shiftTemplates": {
+  "single": {
+   "name": "1-Schicht Mo–Do",
+   "start": "06:30",
+   "end": "16:00",
+   "breaks": [
+    {
+     "start": "09:00",
+     "end": "09:15"
+    },
+    {
+     "start": "12:00",
+     "end": "12:30"
+    }
+   ]
+  },
+  "fridaySingle": {
+   "name": "1-Schicht Freitag",
+   "start": "06:30",
+   "end": "11:45",
+   "breaks": [
+    {
+     "start": "09:00",
+     "end": "09:15"
+    },
+    {
+     "start": "",
+     "end": ""
+    }
+   ]
+  },
+  "early": {
+   "name": "2-Schicht · Früh",
+   "start": "06:00",
+   "end": "14:30",
+   "breaks": [
+    {
+     "start": "09:00",
+     "end": "09:15"
+    },
+    {
+     "start": "12:00",
+     "end": "12:15"
+    }
+   ]
+  },
+  "late": {
+   "name": "2-Schicht · Spät",
+   "start": "14:30",
+   "end": "22:30",
+   "breaks": [
+    {
+     "start": "17:00",
+     "end": "17:15"
+    },
+    {
+     "start": "19:00",
+     "end": "19:15"
+    }
+   ]
+  }
+ },
+ "processTemplates": [
+  {
+   "id": "tpl_pm_repeat",
+   "kind": "pm",
+   "name": "Wiederholteil",
+   "steps": [
+    {
+     "areaId": "calculation",
+     "title": "Preis / Kalkulation prüfen",
+     "offsetDays": 0,
+     "durationDays": 2
+    },
+    {
+     "areaId": "pm",
+     "title": "Angebot erstellen",
+     "offsetDays": 2,
+     "durationDays": 1
+    }
+   ]
+  },
+  {
+   "id": "tpl_pm_new",
+   "kind": "pm",
+   "name": "Neuteil",
+   "steps": [
+    {
+     "areaId": "engineering",
+     "title": "Machbarkeit prüfen",
+     "offsetDays": 0,
+     "durationDays": 3
+    },
+    {
+     "areaId": "purchasing",
+     "title": "Material / Zukauf anfragen",
+     "offsetDays": 0,
+     "durationDays": 5
+    },
+    {
+     "areaId": "calculation",
+     "title": "Kalkulation",
+     "offsetDays": 3,
+     "durationDays": 3
+    },
+    {
+     "areaId": "pm",
+     "title": "Angebot erstellen",
+     "offsetDays": 6,
+     "durationDays": 1
+    }
+   ]
+  }
+ ],
+ "projectAreas": [
+  {
+   "id": "sales",
+   "name": "Vertrieb"
+  },
+  {
+   "id": "pm",
+   "name": "Projektmanagement"
+  },
+  {
+   "id": "engineering",
+   "name": "Konstruktion / Entwicklung"
+  },
+  {
+   "id": "calculation",
+   "name": "Kalkulation"
+  },
+  {
+   "id": "purchasing",
+   "name": "Einkauf"
+  },
+  {
+   "id": "quality",
+   "name": "Qualitätssicherung"
+  },
+  {
+   "id": "av",
+   "name": "Arbeitsvorbereitung"
+  }
+ ],
+ "modules": {
+  "projects": true,
+  "formats": false,
+  "personnel": true,
+  "chat": true,
+  "notifications": true,
+  "postcalc": true,
+  "kpi": true
+ }
+}

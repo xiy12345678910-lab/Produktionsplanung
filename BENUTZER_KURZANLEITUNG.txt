@@ -1,4 +1,4 @@
-MASCHINENPLANUNG V12.15.1 - KURZANLEITUNG FUER BENUTZER
+MASCHINENPLANUNG V12.16.0 - KURZANLEITUNG FUER BENUTZER
 ======================================================
 
 ANMELDEN
@@ -131,3 +131,7 @@ FIRMENDATEN
 FEHLERCODES
 - Fehler erscheinen als Klartext plus Code, z. B. MP-PLAN-031.
 - Bei Rueckfragen Code, FS/AB und Uhrzeit nennen. Liste: FEHLERCODES.txt
+
+MODULE UND VORLAGEN (nur Admin, System > Firmenprofil)
+- Schalter fuer Module blenden Bereiche aus, die der Betrieb nicht nutzt; die Daten bleiben erhalten.
+- Vorlage waehlen, Vorschau pruefen, Pfeil druecken: ergaenzt nur Fehlendes, nichts wird ueberschrieben.

@@ -1,6 +1,31 @@
-MASCHINENPLANUNG V12.15.1 - RELEASE NOTES
+MASCHINENPLANUNG V12.16.0 - RELEASE NOTES
 =========================================
-Datum: 05.10.2026 · Basis: V12.15.0 · Update mit UPDATE_LIVE.ps1, Daten bleiben erhalten
+Datum: 05.10.2026 · Basis: V12.15.1 · Update mit UPDATE_LIVE.ps1, Daten bleiben erhalten
+
+PAKET B: BRANCHENVORLAGEN, MODULE EIN/AUS, BEGRIFFE
+- Module (System > Firmenprofil, nur Admin): Projekte, Formate, Personal, Nachrichten, Benachrichtigungen, Auswertung,
+  Kennzahlen als Schalter. Aus = Ansicht, Menue und Aktionen verschwinden; der Server sperrt die Schreibwege
+  (Chat und Benachrichtigungen komplett, Projekte/Formate/Personal im Datenstand) mit MP-MOD-001. Die Daten bleiben
+  vollstaendig erhalten; beim Wiedereinschalten ist alles da. Kennzahlen haengen an Auswertung. Nach dem Update sind alle
+  Module an (Bestand unveraendert).
+- Branchenvorlagen als Paketdateien vorlage_werbetechnik/metall_cnc/leer/demo.json (ohne Firmen- oder Personendaten).
+  GET /api/templates (Admin), POST /api/templates/apply (Admin, mit dryRun fuer die Vorschau). Anwenden ERGAENZT nur
+  fehlende Bereiche (samt deren Maschinen), Schichtzeiten und Ablaeufe; Vorhandenes wird nie ueberschrieben oder geloescht.
+  Module der Vorlage werden nur auf Wunsch uebernommen. Bedienung: Auswahl, Vorschau als Chips, Pfeil-Taste.
+- Bereichs-Eigenschaften statt fester Bereichs-IDs: formats (Formate) und sharedOperators (gemeinsame Bediener). Migration
+  setzt thermoforming.formats und cnc.sharedOperators nur, wenn die Eigenschaft fehlt. Der Rueckgriff auf den Bereich 'cnc'
+  ist jetzt der erste aktive Produktionsbereich (bei Bestand weiterhin cnc). Admin setzt die Eigenschaften je Bereich
+  unter GF > Bereiche (Symbole mit Tooltip).
+- Begriffe aus der Config im ganzen Client: Auftragsnummer (neben Projektnummer) und Rollenbezeichnungen (Eingabe unter
+  Firmenprofil > Rollen). Rollen-IDs und Rechte bleiben unveraendert.
+- Python-Warnung "return in finally" in server.py behoben (Verhalten gleich).
+- Bewusst nicht: Projektbereiche aus der Config im Client (bleiben die sieben festen), Modul "export", Einrichtungs-
+  assistent und Demo-Auftraege (Paket C); Vorlagen werden nicht aus dem Datenstand gesperrt, sondern ergaenzen nur.
+- Neuer Code: MP-MOD-001, MP-TPL-040, MP-DEPT-007. Neue Paketdateien nur ueber $MP_AppFiles (vorlage_*.json).
+TESTS: neu tests/test_templates.py, tests/e2e_templates.mjs.
+
+V12.15.1
+
 
 DATENERHALT BEI UPDATES (Abschluss Paket A: Updates aendern nur Code, nie Daten)
 VORAUSSETZUNG: Von V12.14.x oder neuer direkt aktualisieren. Von V12.13 oder aelter: siehe "Bestand ohne Firmenprofil".

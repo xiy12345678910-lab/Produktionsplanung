@@ -302,6 +302,17 @@ def run_case(label: str, commit: str, scenario: str, keep: bool, ip: str):
                         f"[{tag}] falsches und altes Passwort (vor der Änderung) werden abgewiesen")
         problems = L.check_company(srv.url, rec, template=template)
         ok_all &= check(not problems, f"[{tag}] Firmenprofil: Name, Farbe, Logo, Akzent wie vorher", "; ".join(problems))
+        # V12.16.0: nach dem Update sind alle Module an, die Bereichs-Eigenschaften sind gesetzt, die Anzeige bleibt (Daten gleich).
+        adm = L.Api(srv.url)
+        adm.login(ADMIN, ADMIN_PW)
+        sc, pc = adm.call("GET", "/api/config")
+        mods = (pc or {}).get("modules") if sc == 200 and isinstance(pc, dict) else {}
+        ok_all &= check(mods and all(mods.values()) and len(mods) >= 7, f"[{tag}] nach dem Update sind alle Module an", str(mods))
+        sc, st = adm.call("GET", "/api/state")
+        deps = {d["id"]: d for d in (st.get("data", {}).get("departments") or [])} if sc == 200 else {}
+        want = {"thermoforming": "formats", "cnc": "sharedOperators"}
+        miss = [f"{i}.{p}" for i, p in want.items() if i in deps and deps[i].get(p) is not True]
+        ok_all &= check(sc == 200 and not miss, f"[{tag}] Bereichs-Eigenschaften für den Bestand gesetzt (formats, sharedOperators)", ", ".join(miss))
         cfg_path = live / "config" / "firma.json"
         ok_all &= check(cfg_path.exists(), f"[{tag}] config\\firma.json vorhanden")
         if scenario == "ci" or template:
