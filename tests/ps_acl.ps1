@@ -44,7 +44,9 @@ if ($IsWindows -or $env:OS -eq 'Windows_NT') {
     New-Item -ItemType Directory -Path $d | Out-Null
     try {
         & icacls $d /inheritance:r /grant:r '*S-1-5-18:(OI)(CI)F' '*S-1-5-32-544:(OI)(CI)F' '*S-1-5-32-545:(OI)(CI)RX' | Out-Null
-        Check ($null -eq (Test-MPFolderAclSafe $d $false)) 'echte ACL: Users:RX -> sicher'
+        $issue = Test-MPFolderAclSafe $d $false
+        if ($issue) { Write-Host "  Befund: $issue"; & icacls $d }
+        Check ($null -eq $issue) 'echte ACL: Users:RX -> sicher'
         & icacls $d /grant '*S-1-5-32-545:(OI)(CI)M' | Out-Null
         Check ($null -ne (Test-MPFolderAclSafe $d $false)) 'echte ACL: Users:Modify -> unsicher'
         & icacls $d /inheritance:r /grant:r '*S-1-5-18:(OI)(CI)F' '*S-1-5-11:(OI)(CI)W' | Out-Null
