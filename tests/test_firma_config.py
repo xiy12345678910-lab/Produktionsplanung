@@ -89,13 +89,37 @@ check(cfg["company"]["name"] == SEED["company"]["name"] and cfg["company"]["colo
 check(cfg["company"]["logoFile"] in ("logo.jpg", "logo.png") and (server.CONFIG_DIR / cfg["company"]["logoFile"]).stat().st_size <= server.CONFIG_LOGO_MAX, "Bestand ohne data.ci: bisheriges Logo übernommen (<= 420 KB)")
 check(not hasattr(server, "LEGACY_SEED"), "server.py enthält keine eingebauten Firmenwerte mehr")
 
-# 3b) Ohne Seed-Datei (Kundenpaket): Bestand wird aus data.ci + neutralen Werten migriert
+# 3b) Ohne Seed-Datei (Kundenpaket): Bestand ohne Firmenname/Logo startet NIE still neutral (V12.15.1, MP-CFG-006)
 d = fresh()
 make_db(3)
 _old = server.LEGACY_SEED_PATH
 server.LEGACY_SEED_PATH = d / "gibt-es-nicht.json"
-cfg, _ = server.load_config()
-check(cfg["company"]["name"] == "" and cfg["tenantId"] == "firma" and cfg["terms"]["projectNumber"] == "Projekt" and cfg["company"]["logoFile"] == "", "Bestand ohne Seed-Datei und ohne data.ci: neutral")
+try:
+    server.check_firma_config_start()
+    code = ""
+except server.ConfigError as e:
+    code = e.code
+check(code == "MP-CFG-006", "Bestand ohne Seed-Datei und ohne data.ci: Startpruefung meldet MP-CFG-006")
+try:
+    server.load_config()
+    code = ""
+except server.ConfigError as e:
+    code = e.code
+check(code == "MP-CFG-006" and not server.CONFIG_PATH.exists(), "load_config bricht mit MP-CFG-006 ab, schreibt keine Datei")
+check(server.setup_firma_from_template("neutral") == 0 and server.read_config_file()["company"]["name"] == "", "Firma_Einrichten neutral: bewusst neutrale Datei")
+check(server.setup_firma_from_template("neutral") == 4, "Firma_Einrichten ueberschreibt vorhandene firma.json nie")
+server.CONFIG_PATH.unlink()
+tpl = d / "vorlage.json"
+tpl.write_text(json.dumps({"company": {"name": "Vorlage GmbH", "color": "#112233"}, "terms": {"projectNumber": "VL"}}), encoding="utf-8")
+check(server.setup_firma_from_template(str(tpl)) == 0, "Firma_Einrichten mit Vorlage")
+c3 = server.read_config_file()
+check(c3["company"]["name"] == "Vorlage GmbH" and c3["company"]["color"] == "#112233" and c3["terms"]["projectNumber"] == "VL", "Vorlage ergibt Name/Farbe/Begriff")
+check(server.load_config()[0]["company"]["name"] == "Vorlage GmbH", "Danach startet der Bestand normal")
+server.CONFIG_PATH.unlink()
+con = server.sqlite3.connect(server.DB_PATH)
+con.execute("UPDATE state SET json=? WHERE id=1", (json.dumps({"ci": {"company": "Aus CI GmbH", "color": "#445566"}}),))
+con.commit(); con.close()
+check(server.load_config()[0]["company"]["name"] == "Aus CI GmbH", "Bestand mit data.ci: Name aus data.ci, kein Stopp")
 server.LEGACY_SEED_PATH = _old
 
 # 4) Revision 1 (nie gespeichert) gilt nicht als Bestand

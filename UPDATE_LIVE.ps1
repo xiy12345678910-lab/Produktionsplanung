@@ -63,6 +63,11 @@ try {
         if (-not $pre.Ok) {
             Write-Host '--- Ausgabe des Vorabtests ---' -ForegroundColor Yellow
             Write-Host $pre.Log
+            if ($pre.Log -match 'MP-CFG-006') {
+                $zielHint = ''
+                if ($migrating) { $zielHint = " -Ziel '$OldBase'" }
+                throw "MP-CFG-006: Bestand ohne Firmenprofil (config\firma.json fehlt, Name/Logo nicht in den Daten). Live-System wurde NICHT veraendert. Zuerst als Administrator: .\Firma_Einrichten.ps1 -Vorlage <datei>$zielHint (oder -Neutral fuer bewusst neutral), danach UPDATE_LIVE.ps1 erneut starten."
+            }
             throw "Vorabtest fehlgeschlagen: V$NewVersion startet mit einer Kopie der Live-Daten nicht. Live-System wurde NICHT veraendert."
         }
         Write-Host "    PASS: V$NewVersion startet mit Datenkopie (Testport $($pre.Port))." -ForegroundColor Green

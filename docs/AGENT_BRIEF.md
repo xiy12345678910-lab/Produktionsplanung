@@ -37,6 +37,13 @@ Die Bedienung muss ohne Anleitung klar sein:
   Neue Endpunkte sitzen in `_do_GET/_do_POST/...`: Die Hülle prüft Host/Origin und fängt Exceptions ab (500).
   Für POST außer Login/Logout/Passwort muss eine Sitzung bestehen.
 
+## Datenerhalt bei Updates (Regel, ab V12.15.1)
+- Updates ändern nur Code. Nichts außerhalb von `$MP_AppFiles` (`MP_Common.ps1`) schreiben; `config\`, `data\`, `backups\`, `LAN_CONFIG.json`, `BACKUP_ZIEL.txt` gehören dem Betrieb.
+- Datenänderungen nur als additive, idempotente Migration. Nie Felder löschen oder umdeuten; leere Felder füllen ist erlaubt, Vorhandenes bleibt.
+- Ein Bestand (Revision > 1) darf nie still mit anderen Werten starten (Beispiel: `MP-CFG-006`, Firmenprofil fehlt).
+- `python3 tests/test_deploy_upgrade.py` muss grün sein, sonst kein Commit. Neue Datensammlungen/Dateien werden dort automatisch mitgeprüft (feldweiser Vergleich); neue Paketdateien nur über `$MP_AppFiles`.
+- CI-Job `windows-deploy` (`tests/ci_windows_deploy.ps1`) prüft das echte Deploy; nach dem Push den Lauf ansehen.
+
 ## Version und Doku (Pflicht)
 - `APP_VERSION` in `server.py`, `CLIENT_VERSION` und alle `V12.x.y` in `index.html` (sed über `V<alt>`),
   `README.md` Zeile 3, erste Zeile von `README_Windows.txt`, `FEHLERCODES.txt` und `BENUTZER_KURZANLEITUNG.txt`.
@@ -50,6 +57,8 @@ Die Bedienung muss ohne Anleitung klar sein:
 python3 -m py_compile server.py
 python3 tests/test_version.py
 python3 tests/test_v128.py && python3 tests/test_v129.py && python3 tests/test_v12102.py && python3 tests/test_backup.py
+python3 tests/test_notifications.py && python3 tests/test_firma_config.py && python3 tests/test_config_update.py && python3 tests/test_config_api.py && python3 tests/test_no_employer_data.py
+python3 tests/test_deploy_upgrade.py
 d=$(mktemp -d) && python3 tests/make_test_db.py $d >/dev/null && python3 tests/test_regression.py $d | tail -1
 for f in tests/ui_smoke.mjs tests/e2e_*.mjs; do echo -n "$f: "; node $f 2>&1 | tail -1; done
 pwsh -NoProfile -File tests/ps_syntax.ps1 | tail -1      # nur falls .ps1 geändert

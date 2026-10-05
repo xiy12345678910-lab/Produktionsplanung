@@ -31,7 +31,7 @@ $MP_AppFiles = @(
     'Run_Server_LAN.ps1', 'Start_Server.ps1', 'Stop_Server.ps1', 'Neustart_Server.ps1',
     'Server_Status.ps1', 'CHECK_LAN_SICHERHEIT.ps1', 'Deinstallieren.ps1',
     'README_Windows.txt', 'BENUTZER_KURZANLEITUNG.txt', 'FEHLERCODES.txt', 'RELEASE_NOTES.txt',
-    'Update_von_GitHub.ps1', 'Restore_Datenbank.ps1', 'requirements.txt'
+    'Update_von_GitHub.ps1', 'Restore_Datenbank.ps1', 'Firma_Einrichten.ps1', 'requirements.txt'
 )
 
 # Veraltete Dateien frueherer Versionen, die im Live-Ordner nicht liegen bleiben duerfen

@@ -1,4 +1,4 @@
-MASCHINENPLANUNG V12.15.0 - KURZANLEITUNG FUER BENUTZER
+MASCHINENPLANUNG V12.15.1 - KURZANLEITUNG FUER BENUTZER
 ======================================================
 
 ANMELDEN
@@ -126,6 +126,7 @@ FORMATE TIEFZIEHEN (ab V12.10.0 nur Tiefziehen + Admin)
 
 FIRMENDATEN
 - Liegen in config\firma.json neben data\ und bleiben bei jedem Update erhalten.
+- Nach einem Update bleiben alle Daten, Benutzer und Passwoerter; nur die Seite einmal mit Strg+F5 neu laden.
 
 FEHLERCODES
 - Fehler erscheinen als Klartext plus Code, z. B. MP-PLAN-031.

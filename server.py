@@ -27,7 +27,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-APP_VERSION = "12.15.0"
+APP_VERSION = "12.15.1"
 HOST = os.environ.get("MP_HOST", "0.0.0.0")
 PORT = int(os.environ.get("MP_PORT", "8765"))
 BASE = Path(__file__).resolve().parent
@@ -291,13 +291,43 @@ def _existing_state() -> dict | None:
         return None
 
 
-def migrate_firma_config() -> dict:
-    """Fehlt die Datei: aus data.ci (+ optionaler Legacy-Seed-Datei) bzw. neutral anlegen. Idempotent."""
+NEUTRAL_HINT = ("Vor dem Update 'Firma_Einrichten.ps1 -Vorlage <datei>' ausfuehren (Vorlage vom Entwickler) "
+                "oder bewusst neutral starten mit 'Firma_Einrichten.ps1 -Neutral'.")
+
+
+def _legacy_bestand_without_identity() -> bool:
+    """True: Bestand (Revision > 1) ohne firma.json, ohne Firmenname/Logo in data.ci und ohne Vorlage -> Start wäre still neutral."""
+    if CONFIG_PATH.exists():
+        return False
+    st = _existing_state()
+    if st is None:
+        return False
+    ci = st.get("ci") if isinstance(st.get("ci"), dict) else {}
+    seed = legacy_seed()
+    sco = seed.get("company") if isinstance(seed.get("company"), dict) else {}
+    has_name = (isinstance(ci.get("company"), str) and bool(ci["company"].strip())) or bool(sco.get("name"))
+    has_logo = bool(_legacy_logo(ci, seed)[0])
+    return not (has_name or has_logo)
+
+
+def check_firma_config_start() -> None:
+    """V12.15.1: Ein Bestand darf nie still neutral starten (Name/Logo weg). Harter Stopp mit MP-CFG-006."""
+    if _legacy_bestand_without_identity():
+        raise ConfigError("MP-CFG-006", f"MP-CFG-006 Bestandsdatenbank ohne config\\firma.json und ohne Firmenname/Logo in den Daten. "
+                                        f"Start gestoppt, damit Name und Logo nicht still verloren gehen. {NEUTRAL_HINT}")
+
+
+def migrate_firma_config(seed: dict | None = None, neutral_ok: bool = False) -> dict:
+    """Fehlt die Datei: aus data.ci (+ optionaler Legacy-Seed-Datei) bzw. neutral anlegen. Idempotent.
+    Bestand ohne Firmenname/Logo: MP-CFG-006 (außer neutral_ok). Neuinstallation (Revision <= 1) bleibt neutral."""
     cfg = config_defaults()
     st = _existing_state()
+    by_template = seed is not None
+    if by_template and st is None:
+        st = {}          # Einrichtung per Vorlage (Firma_Einrichten): wie ein Bestand behandeln
     if st is not None:
         ci = st.get("ci") if isinstance(st.get("ci"), dict) else {}
-        seed = legacy_seed()
+        seed = legacy_seed() if seed is None else seed
         if seed:
             cfg = _merge_missing({k: v for k, v in seed.items() if k not in ("logoDataUrl", "_hinweis")}, cfg)
         co = cfg["company"]
@@ -309,18 +339,74 @@ def migrate_firma_config() -> dict:
         if isinstance(ci.get("color"), str) and CONFIG_HEX.match(ci["color"]):
             co["color"] = ci["color"]
         name, raw = _legacy_logo(ci, seed)
+        if not name and isinstance(co.get("logoFile"), str) and co["logoFile"]:
+            co["logoFile"] = ""    # Verweis der Vorlage ohne Datei nicht übernehmen
+        if not co.get("name") and not name and not neutral_ok:
+            raise ConfigError("MP-CFG-006", f"MP-CFG-006 Bestandsdatenbank ohne Firmenname/Logo. {NEUTRAL_HINT}")
         if name:
             _atomic_write(CONFIG_DIR / name, raw)
             co["logoFile"] = name
-        if not seed and not co.get("name"):
-            print("WARNUNG: Bestandsdatenbank ohne firma.json und ohne Firmenwerte in data.ci - neutrale Config angelegt. "
-                  "Firmenprofil unter System setzen oder config\\firma.json aus der Sicherung zurueckspielen.", flush=True)
         acc = (st.get("ui") or {}).get("accent") if isinstance(st.get("ui"), dict) else None
         if isinstance(acc, str) and CONFIG_HEX.match(acc):
             co["uiAccent"] = acc
-    cfg["uiAccentSynced"] = True
+    # Per Vorlage ohne Datenbank: Akzent aus data.ui.accent beim ersten Serverstart nachziehen.
+    cfg["uiAccentSynced"] = not (by_template and not _existing_state())
+    cfg["ciSynced"] = True
     save_config(cfg)
     return cfg
+
+
+def setup_firma_from_template(arg: str) -> int:
+    """V12.15.1: 'server.py --firma-einrichten <vorlage.json|neutral>' schreibt config\\firma.json (nur wenn sie fehlt)."""
+    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    if CONFIG_PATH.exists():
+        print(f"{CONFIG_PATH} existiert bereits - nichts geaendert.", file=sys.stderr)
+        return 4
+    if arg.lower() == "neutral":
+        migrate_firma_config(seed={}, neutral_ok=True)
+        print(f"Neutrale Firmenkonfiguration angelegt: {CONFIG_PATH}")
+        return 0
+    try:
+        seed = json.loads(Path(arg).read_text(encoding="utf-8-sig"))
+        if not isinstance(seed, dict):
+            raise ValueError("kein JSON-Objekt")
+    except (OSError, ValueError) as e:
+        print(f"FEHLER: Vorlage nicht lesbar: {e}", file=sys.stderr)
+        return 2
+    try:
+        cfg = migrate_firma_config(seed=seed)
+    except ConfigError as e:
+        print(f"FEHLER: {e.message}", file=sys.stderr)
+        return 3
+    print(f"Firmenkonfiguration angelegt: {CONFIG_PATH} ({cfg['company'].get('name') or 'ohne Name'})")
+    return 0
+
+
+def _fill_company_from_ci(cfg: dict) -> None:
+    """Nur wenn die Config noch keinen Firmennamen und kein Logo hat: Name/Logo/Adresse/Fuß/Schrift/Farbe aus data.ci
+    übernehmen (ergänzt leere Felder, ändert nie vorhandene). Idempotent über das Kennzeichen ciSynced."""
+    co = cfg.setdefault("company", {})
+    if co.get("name") or co.get("logoFile"):
+        return
+    st = _existing_state()
+    ci = st.get("ci") if isinstance(st, dict) and isinstance(st.get("ci"), dict) else None
+    if not ci:
+        return
+    dflt = config_defaults()["company"]
+    name = ci["company"].strip()[:120] if isinstance(ci.get("company"), str) else ""
+    lname, raw = _legacy_logo(ci, {})
+    if not name and not lname:
+        return
+    if name:
+        co["name"] = name
+    for k, mx in (("address", 600), ("footer", 600), ("font", 60)):
+        if isinstance(ci.get(k), str) and ci[k] and co.get(k, dflt[k]) in ("", dflt[k]):
+            co[k] = ci[k][:mx]
+    if isinstance(ci.get("color"), str) and CONFIG_HEX.match(ci["color"]) and co.get("color", dflt["color"]) == dflt["color"]:
+        co["color"] = ci["color"]
+    if lname:
+        _atomic_write(CONFIG_DIR / lname, raw)
+        co["logoFile"] = lname
 
 
 CURRENT_CFG: dict | None = None
@@ -349,6 +435,10 @@ def load_config() -> tuple[dict, list[str]]:
         if isinstance(acc, str) and CONFIG_HEX.match(acc):
             merged["company"]["uiAccent"] = acc
         merged["uiAccentSynced"] = True
+    # V12.15.1: Bestand aus V12.14.x (Config neutral, Firmen-CI nur in data.ci) behält Name/Logo: einmalig leere Felder füllen.
+    if not merged.get("ciSynced"):
+        _fill_company_from_ci(merged)
+        merged["ciSynced"] = True
     if merged != cfg:
         save_config(merged)
     CURRENT_CFG = merged
@@ -4429,8 +4519,11 @@ def main() -> None:
     ap.add_argument("--port", type=int, default=PORT)
     ap.add_argument("--init-admin", metavar="USERNAME")
     ap.add_argument("--allowed-subnet", help="Pflicht im Serverbetrieb, z. B. 192.168.178.0/24")
+    ap.add_argument("--firma-einrichten", metavar="VORLAGE", help="config/firma.json aus Vorlagedatei (oder 'neutral') anlegen und beenden")
     args = ap.parse_args()
     global ALLOWED_NETWORK
+    if args.firma_einrichten:
+        raise SystemExit(setup_firma_from_template(args.firma_einrichten))
     if not args.init_admin:
         if not args.allowed_subnet:
             print("FEHLER: --allowed-subnet ist im Serverbetrieb Pflicht.", file=sys.stderr)
@@ -4444,6 +4537,12 @@ def main() -> None:
         if bind_ip.is_unspecified or bind_ip.is_loopback or bind_ip not in ALLOWED_NETWORK:
             print("FEHLER: Server muss an eine konkrete LAN-IP innerhalb --allowed-subnet gebunden werden.", file=sys.stderr)
             raise SystemExit(2)
+    if not args.init_admin:
+        try:
+            check_firma_config_start()      # vor init_db: bei Stopp bleibt die Datenbank unberuehrt
+        except ConfigError as e:
+            print(f"FEHLER: {e.message}", file=sys.stderr)
+            raise SystemExit(3)
     init_db()
     if not args.init_admin:
         try:

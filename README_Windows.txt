@@ -1,4 +1,4 @@
-MASCHINENPLANUNG V12.15.0 - WINDOWS-SERVER (LAN ONLY)
+MASCHINENPLANUNG V12.15.1 - WINDOWS-SERVER (LAN ONLY)
 =====================================================
 
 1. VORAUSSETZUNGEN
@@ -57,7 +57,10 @@ MASCHINENPLANUNG V12.15.0 - WINDOWS-SERVER (LAN ONLY)
    - Backup_Datenbank.py legt zu jeder Sicherung firma_<zeit>.zip an.
      Restore: .\Restore_Datenbank.ps1 -MitConfig
    - Aenderungen macht der Admin in der Oberflaeche (System > Firma & System > Firmenprofil), nicht per Dateiedit.
-   - Update von V12.13 oder aelter: erst V12.14.1 installieren, dann V12.15.0 (Bestandswerte stehen danach in firma.json).
+   - Update von V12.13 oder aelter ohne firma.json und ohne Firmennamen in den Daten: UPDATE_LIVE.ps1 bricht ab
+     (MP-CFG-006, Live bleibt unveraendert). Vorher einmal als Administrator aus dem neuen Paketordner:
+        .\Firma_Einrichten.ps1 -Vorlage <Vorlagedatei vom Entwickler>      (oder -Neutral = bewusst ohne Name/Logo)
+     Danach UPDATE_LIVE.ps1 erneut starten. Alternativ erst V12.14.1 installieren.
    - Optional in LAN_CONFIG.json: "UpdateRepo": "konto/repo" (Quelle fuer Update_von_GitHub.ps1).
    - Ungueltige Datei: Server startet nicht, Meldung MP-CFG-001/002 (siehe FEHLERCODES.txt).
 

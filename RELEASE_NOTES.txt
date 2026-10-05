@@ -1,6 +1,32 @@
-MASCHINENPLANUNG V12.15.0 - RELEASE NOTES
+MASCHINENPLANUNG V12.15.1 - RELEASE NOTES
 =========================================
-Datum: 05.10.2026 · Basis: V12.14.1 · Update mit UPDATE_LIVE.ps1, Daten bleiben erhalten
+Datum: 05.10.2026 · Basis: V12.15.0 · Update mit UPDATE_LIVE.ps1, Daten bleiben erhalten
+
+DATENERHALT BEI UPDATES (Abschluss Paket A: Updates aendern nur Code, nie Daten)
+VORAUSSETZUNG: Von V12.14.x oder neuer direkt aktualisieren. Von V12.13 oder aelter: siehe "Bestand ohne Firmenprofil".
+- Neuer Dauertest tests/test_deploy_upgrade.py: holt alte Staende aus git (V12.10.1, V12.13.0, V12.14.0 und automatisch den
+  Vorgaenger-Release), legt ueber die API des ALTEN Servers Benutzer, Auftraege, Arbeitsschritte, Personal, Abwesenheiten,
+  Formate, Chat, Benachrichtigungen, Firmenprofil/Logo sowie LAN_CONFIG.json, BACKUP_ZIEL.txt und Backups an, simuliert
+  UPDATE_LIVE.ps1 (nur $MP_AppFiles kopieren, $MP_ObsoleteFiles entfernen) und prueft: alle Datensaetze feldweise gleich (nur
+  NEUE Felder erlaubt), Logins, Firmenprofil (Name/Farbe/Logo/Akzent wie vorher), Dateien ausserhalb von data\ und config\
+  byte-gleich, zweites Update identisch, Rollback auf den Vorgaengerstand (Daten + Config bleiben, alter Server startet).
+- Echtes Windows-Deploy in CI (tests/ci_windows_deploy.ps1, Job windows-deploy): Setup des alten Stands, Daten per API,
+  UPDATE_LIVE.ps1, Health, Datenvergleich, zweites Update, defektes Paket (Abbruch im Vorabtest, Live unveraendert).
+- Gefundene Luecke geschlossen: Ein Bestand aus V12.14.x mit leerer Config und Firmen-CI nur in data.ci verlor mit V12.15.0
+  Name/Logo. Beim ersten Start werden jetzt nur LEERE Felder der Config einmalig aus data.ci gefuellt (Kennzeichen ciSynced).
+BESTAND OHNE FIRMENPROFIL (V12.13 oder aelter, keine firma.json, kein Firmenname in data.ci)
+- Server und Vorabtest in UPDATE_LIVE.ps1 stoppen mit MP-CFG-006 (vor jeder Aenderung an Datenbank oder Live-Ordner), statt still
+  neutral zu starten. Neuinstallationen (Revision 1) bleiben neutral.
+- Neu: Firma_Einrichten.ps1 -Vorlage <datei> (bzw. server.py --firma-einrichten <datei>) legt config\firma.json aus einer
+  Vorlage an (z. B. tools/legacy_employer_seed.json vom Entwickler); -Neutral = bewusst ohne Name/Logo; -Ziel = anderer Live-Ordner.
+  Eine vorhandene firma.json wird nie ueberschrieben.
+- Neuer Code: MP-CFG-006.
+- Bewusst nicht: Windows-Rollback-Test mit echter Rollback-Logik von UPDATE_LIVE.ps1 (nur Dateisystem-Simulation im Python-Test).
+
+TESTS
+- Neu: tests/test_deploy_upgrade.py (alle Plattformen), tests/ci_windows_deploy.ps1. Angepasst: tests/test_firma_config.py.
+
+V12.15.0
 
 FIRMENPROFIL UEBER DIE API, KEINE ARBEITGEBERDATEN MEHR IM PAKET (Rest von Paket A)
 VORAUSSETZUNG FUER BESTANDSKUNDEN: Vor diesem Update muss mindestens V12.14.x einmal gelaufen sein (config\firma.json

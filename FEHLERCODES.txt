@@ -1,4 +1,4 @@
-MASCHINENPLANUNG V12.15.0 - FEHLERCODES
+MASCHINENPLANUNG V12.15.1 - FEHLERCODES
 ======================================
 
 Jeder Fehler wird dem Mitarbeiter als Klartext + Code angezeigt.
@@ -403,4 +403,9 @@ MP-CFG-004   Firmenprofil wurde inzwischen von jemand anderem geaendert (409). D
 MP-CFG-005   Logo abgelehnt: nur PNG, JPG oder SVG bis 420 KB; Dateiinhalt muss zum Typ passen; SVG ohne Script,
              eingebettete Seiten/Bilder, Animation, Event-Handler und externe Verweise.
 MP-CFG-404   Kein Logo hinterlegt (GET /api/config/logo).
+
+V12.15.1 NEU (Datenerhalt bei Updates)
+MP-CFG-006   Bestandsdatenbank ohne config\firma.json und ohne Firmenname/Logo in den Daten: Start bzw. UPDATE_LIVE.ps1
+             stoppt, damit Name und Logo nicht still verloren gehen. Abhilfe: .\Firma_Einrichten.ps1 -Vorlage <datei>
+             (oder -Neutral), danach UPDATE_LIVE.ps1 erneut. Neuinstallationen sind nicht betroffen.
 
