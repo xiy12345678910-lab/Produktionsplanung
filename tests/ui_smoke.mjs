@@ -177,6 +177,22 @@ try {
   const afterRows = await orderRows();
   check(afterRows[0] === beforeRows[1] && afterRows[1] === beforeRows[0], `"Priorität niedriger" tauscht die Reihenfolge (${afterRows.join(', ')})`);
 
+  // ------------------------------------------------------------------ Projektfenster groß, Felder im Raster
+  await page.click('#navOrders');
+  await page.waitForTimeout(300);
+  await page.click('#projectNew');
+  await page.waitForSelector('#newProjectModal.show');
+  await page.fill('#npCustomer', 'Smoke Kunde');
+  await page.click('#npCreate');
+  await page.waitForTimeout(600);
+  if (!(await page.evaluate(() => document.getElementById('projectModal').classList.contains('show')))) await page.locator('#projectBoard [data-project-open]').first().click();
+  await page.waitForSelector('#projectModal.show');
+  const pm = await page.evaluate(() => { const b = document.querySelector('#projectModal .pModalBox').getBoundingClientRect(); const over = [...document.querySelectorAll('#projectModal .pGrid input,#projectModal .pGrid select')].filter(x => x.getBoundingClientRect().right > x.closest('.pGrid').getBoundingClientRect().right + 1).length; return { w: b.width, h: b.height, vw: innerWidth, vh: innerHeight, over }; });
+  check(pm.w >= Math.min(1800, pm.vw * 0.95) - 2 && pm.h >= pm.vh * 0.9, `Projektfenster nutzt den Bildschirm (${Math.round(pm.w)}×${Math.round(pm.h)} bei ${pm.vw}×${pm.vh})`);
+  check(pm.over === 0, `Projekt-Stammdaten: kein Feld ragt über den Rand (${pm.over})`);
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(150);
+
   // ------------------------------------------------------------------ Personal ohne Mitarbeiter, Produktionsmodus
   await page.click('#navPersonnel');
   await page.waitForTimeout(300);

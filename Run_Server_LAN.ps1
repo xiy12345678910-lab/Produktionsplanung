@@ -13,6 +13,26 @@ $Log = Join-Path $LogDir ('server_' + (Get-Date -Format 'yyyy-MM-dd') + '.log')
 function Write-Log([string]$Text) {
     Add-Content -LiteralPath $Log -Value ("{0} {1}" -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $Text) -Encoding UTF8
 }
+# Info-Dateien mit Wiederholung und atomar schreiben: Virenscanner/Indexer (z. B. direkt nach dem Setzen der
+# Ordnerrechte beim Update) halten sie manchmal Sekunden lang fest. Das ist kein Grund, den Server nicht zu starten.
+function Write-InfoFile([string]$Path, [string[]]$Lines) {
+    for ($i = 1; $i -le 20; $i++) {
+        try {
+            # Erst in eine Temp-Datei, dann austauschen: Leser sehen nie eine halb geschriebene Datei.
+            $tmp = "$Path.tmp"
+            Set-Content -LiteralPath $tmp -Value $Lines -Encoding UTF8 -ErrorAction Stop
+            if (Test-Path -LiteralPath $Path) { [IO.File]::Replace($tmp, $Path, [NullString]::Value) } else { [IO.File]::Move($tmp, $Path) }
+            return $true
+        } catch {
+            if ($i -eq 20) {
+                Remove-Item -LiteralPath "$Path.tmp" -Force -ErrorAction SilentlyContinue
+                Write-Log ("WARNUNG: {0} konnte nicht geschrieben werden ({1}) - Server startet trotzdem." -f (Split-Path -Leaf $Path), $_.Exception.Message)
+                return $false
+            }
+            Start-Sleep -Milliseconds 500
+        }
+    }
+}
 # Alte Logs nach 30 Tagen entfernen
 Get-ChildItem -LiteralPath $LogDir -Filter 'server_*.log' -ErrorAction SilentlyContinue |
     Where-Object { $_.LastWriteTime -lt (Get-Date).AddDays(-30) } | Remove-Item -Force -ErrorAction SilentlyContinue
@@ -53,16 +73,16 @@ try {
         updated_at            = (Get-Date).ToString('o')
     }
     # V12.15.0: manuell eingetragenes UpdateRepo ("konto/repo") bleibt beim Neuschreiben erhalten.
-    try { $oldRepo = [string](Get-Content -LiteralPath "$Base\LAN_CONFIG.json" -Raw | ConvertFrom-Json).UpdateRepo; if ($oldRepo) { $config['UpdateRepo'] = $oldRepo } } catch { }
-    $config | ConvertTo-Json | Set-Content -Path "$Base\LAN_CONFIG.json" -Encoding UTF8
-    @(
+    try { $oldRepo = [string](Read-MPConfig $Base).UpdateRepo; if ($oldRepo) { $config['UpdateRepo'] = $oldRepo } } catch { }
+    Write-InfoFile "$Base\LAN_CONFIG.json" @($config | ConvertTo-Json) | Out-Null
+    Write-InfoFile "$Base\LAN_ADRESSEN.txt" @(
         "PC-Name: http://$env:COMPUTERNAME`:$Port",
         "LAN-IP:  http://$($lan.IP)`:$Port",
         "Subnetz: $Subnet",
         "Adapter: $($lan.InterfaceAlias) / $($lan.InterfaceDescription)",
         '',
         'Zugriff ist ausschliesslich aus diesem lokalen Subnetz erlaubt.'
-    ) | Set-Content -Path "$Base\LAN_ADRESSEN.txt" -Encoding UTF8
+    ) | Out-Null
 
     Write-Log "LAN-only Bind: $($lan.IP):$Port / Subnetz $Subnet / Adapter $($lan.InterfaceAlias)"
 } catch {

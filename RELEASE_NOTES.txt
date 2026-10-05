@@ -2,6 +2,14 @@ MASCHINENPLANUNG V12.17.0 - RELEASE NOTES
 =========================================
 Datum: 05.10.2026 · Basis: V12.16.0 · Update mit UPDATE_LIVE.ps1, Daten bleiben erhalten
 
+ABGLEICH MIT MAIN (Fixes aus der Linie V12.7.x, ins aktuelle Design uebernommen)
+- LAN_CONFIG.json sperrfest: Read-MPConfig (MP_Common.ps1) liest mit Wiederholung; gesperrt/unvollstaendig = noch nicht
+  bereit statt Abbruch. Genutzt von Get-MPHealth, UPDATE_LIVE, CHECK_LAN_SICHERHEIT und Run_Server_LAN (UpdateRepo bleibt erhalten).
+- Run_Server_LAN.ps1: LAN_CONFIG.json und LAN_ADRESSEN.txt werden ueber Temp-Datei atomar geschrieben, bei Sperre bis ca. 10 s
+  wiederholt; der Serverstart bricht dann nicht mehr ab (Warnung im Log).
+- Projektfenster: bis 1800 px / 96 % Breite und 94 % Hoehe, Stammdaten-Felder bleiben in ihrer Rasterspalte.
+- tests/test_regression.py: Phasen-Migration und Zeitzonen-Fallback auch auf echten Windows-Daten korrekt geprueft.
+
 PAKET C1: EINRICHTUNGSASSISTENT
 - Neuinstallation startet NEUTRAL: keine Bereiche, keine Maschinen, keine Werbetechnik-Daten. Der Assistent (Vollbild-Dialog
   beim ersten Admin-Login) richtet sie ein. Fuenf Schritte mit Fortschrittspunkten, jeder ueberspringbar, ohne Erklaertext:
