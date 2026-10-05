@@ -145,7 +145,7 @@ LC = login("t_lead_cnc"); DC = login("t_dep_cnc"); LK = login("t_lead_k1")
 def setup(n):
     n["departmentStaffNeeds"] = [{"departmentId": "konf1", "weekStart": "2026-10-19", "requested": 4, "confirmed": 3, "updatedAt": ""}]
     n["workSteps"].append(mstep(n, "ws_k1_a", "FS K1", "konf1", 3, dueDate="2026-10-16"))
-s, code, _ = put(A, setup); check(s == 200, "Admin: Testdaten anlegen")
+s, code, _d = put(A, setup); check(s == 200, f"Admin: Testdaten anlegen ({s} {code})")
 
 # --- Bereichsgrenzen (MP-AUD-032 / Person 2 Rollenmatrix)
 def rehome_machine(n):

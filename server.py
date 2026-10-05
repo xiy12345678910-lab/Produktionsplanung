@@ -726,8 +726,12 @@ def _chat_channel_json(con, row, username: str) -> dict:
     read = con.execute("SELECT last_id FROM chat_reads WHERE username=? AND channel_id=?", (username, row["id"])).fetchone()
     read_id = read["last_id"] if read else 0
     unread = con.execute("SELECT COUNT(*) FROM chat_messages WHERE channel_id=? AND id>? AND author<>? COLLATE NOCASE", (row["id"], read_id, username)).fetchone()[0]
-    mention = con.execute("SELECT COUNT(*) FROM chat_messages WHERE channel_id=? AND id>? AND author<>? COLLATE NOCASE AND instr(lower(text), ?)>0",
-                          (row["id"], read_id, username, f"⟦u:{username.casefold()}⟧")).fetchone()[0]
+    # Erwähnung in Python prüfen: SQLite-lower() kennt nur ASCII (Ö/ß in Benutzernamen).
+    tag = f"⟦u:{username.casefold()}⟧"
+    mention = 0
+    if unread:
+        mention = sum(1 for r in con.execute("SELECT text FROM chat_messages WHERE channel_id=? AND id>? AND author<>? COLLATE NOCASE AND instr(text, '⟦u:')>0 ORDER BY id DESC LIMIT 500",
+                                             (row["id"], read_id, username)).fetchall() if tag in r["text"].casefold())
     return {"id": row["id"], "kind": row["kind"], "name": row["name"], "members": json.loads(row["members"] or "[]"), "createdBy": row["created_by"],
             "last": dict(last) if last else None, "unread": unread, "mentions": mention, "readId": read_id}
 
@@ -3012,6 +3016,8 @@ class Handler(BaseHTTPRequestHandler):
                 department_id = own
             if len(username) < 2 or len(password) < 8 or role not in ROLES or (role in DEPARTMENT_ROLES and not department_id):
                 return self.json_response(400, mp_error("MP-AUTH-010", "Benutzername, Passwort, Rolle oder Bereich ungültig."))
+            if len(username) > 40 or any(ch in username for ch in "⟦⟧|<>\"'`") or any(ord(ch) < 32 for ch in username):
+                return self.json_response(400, mp_error("MP-AUTH-010", "Benutzername: höchstens 40 Zeichen, keine Sonderzeichen ⟦ ⟧ | < > \" ' `."))
             salt, digest = hash_password(password)
             ts = now_iso()
             try:

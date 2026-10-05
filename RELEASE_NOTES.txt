@@ -10,6 +10,34 @@ NACHRICHTEN: AUFBEWAHRUNG 30 TAGE
 - Ab 7 Tagen vor der Loeschung zeigt die Nachricht "noch n T".
 - Datenbank: Spalten keep/kept_by in chat_messages (Migration beim Start). Neuer Code MP-CHAT-007.
 
+KUNDENPLAN (EXCEL)
+- Ohne Liefertermin im Projekt steht im Excel "offen – folgt nach Freigabe". Bisher wurde das
+  spaeteste Aufgabenende als Liefertermin eingesetzt und eine Lieferzeile erzeugt.
+- Aufgaben des Projektmanagements sind beim Anlegen nicht mehr automatisch "nur intern" und
+  erscheinen damit im Kundenplan (automatisch intern bleibt nur die Kalkulation).
+- Interne Aufgaben zeigen "🔒 nicht im Kundenplan"; die Kundenplan-Box listet sie auf.
+  Bestehende Aufgaben: aufklappen und "nur intern" abwaehlen.
+
+ABNAHME / KORREKTUREN
+- System-Reiter "Aenderungen" war fuer GF und Bereichsleitung sichtbar, aber gesperrt
+  (MP-AUTH-018) - jetzt nur noch sichtbar, wenn die Ansicht erlaubt ist.
+- @-Erwaehnungen zaehlen auch bei Benutzernamen mit Umlaut/ß.
+- Neue Benutzernamen: max. 40 Zeichen, ohne ⟦ ⟧ | < > " ' ` (schuetzt Chat-Verweise).
+- GF-Ansicht System am Handy ohne seitliches Scrollen; Auswahlfelder der GF-Einsatzplanung beschriftet.
+
+BEDIENUNG
+- Handy: Navigation ohne abgeschnittene Woerter (seitlich wischen), aktive Ansicht rutscht ins Bild.
+- Symbol-Knoepfe (🔑 ↪ ▶ × …) zeigen beim Darueberfahren ihre Bedeutung.
+- Projektkarten ohne doppelte Nummer; Projektspalten am Handy breiter (wischen).
+- Formate: Suchfeld gestaltet, leere Box rechts entfernt.
+- Chat: Hinweise erscheinen oben, verdecken nicht mehr das Eingabefeld.
+
+TESTS
+- tests/e2e_roles.mjs: jede Rolle × jede Ansicht × Desktop/Handy (402 Pruefungen).
+- tests/e2e_customerplan.mjs: Kundenplan-Excel (nachgebaut nach P-2026-0007).
+- tests/test_v129.py: Nachrichten-Aufbewahrung, Behalten, Erwaehnungen.
+- tests/make_test_db.py: kuenstliche Datenbank fuer tests/test_regression.py (151/151).
+
 MASCHINENPLANUNG V12.9.0 - RELEASE NOTES
 ========================================
 Datum: 05.10.2026 · Basis: V12.8.3 · Update mit UPDATE_LIVE.ps1, Daten bleiben erhalten
