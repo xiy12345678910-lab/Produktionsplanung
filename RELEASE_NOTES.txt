@@ -33,8 +33,20 @@ KORREKTUREN
 - Auswertung: Fertigmeldungen 00:00-02:00 Uhr zaehlen zum richtigen Tag.
 - Nachrichten: schneller Kanalwechsel zeigt keine Nachrichten des alten Kanals mehr.
 
+UPDATE & BACKUP (Betrieb)
+- Update_von_GitHub.ps1 installiert nur noch Releases aus main, immer einen festen Commit; optional
+  SHA256-Pruefung. Download/Pruefung erst im Administrator-Fenster in einem geschuetzten Ordner.
+  Branch-Stand nur noch mit -UnsicherBranch. Erstes Update: siehe README_Windows.txt 2b.
+- Backups entstehen als .tmp, werden geprueft und erst dann umbenannt (nie eine kaputte Sicherung
+  unter gueltigem Namen); Sicherungen sind eigenstaendige Dateien ohne -wal.
+- Neu: Restore_Datenbank.ps1 (Auswahl, Vorab-Sicherung, Health-Check, automatischer Rueckfall).
+- Server_Status.ps1 warnt rot bei fehlgeschlagenem Backup-Task oder Backup aelter als 26 h.
+- Stop_Server.ps1 beendet auch haengende Serverprozesse und prueft den Port.
+- update_backups\ behaelt die letzten 5 Update-Staende.
+
 TESTS
-- Neu: tests/test_v12102.py 27/27, tests/e2e_v12102.mjs 21/21.
+- Neu: tests/test_v12102.py 27/27, tests/e2e_v12102.mjs 21/21, tests/test_backup.py 11/11,
+  tests/ps_syntax.ps1 (Syntax aller PowerShell-Skripte).
 
 MASCHINENPLANUNG V12.10.1 - RELEASE NOTES
 =========================================

@@ -32,17 +32,24 @@ MASCHINENPLANUNG V12.10.2 - WINDOWS-SERVER (LAN ONLY)
    7) Ab V12.4.5/V12.6 wird beim ersten Start die Benutzertabelle um neue Rollen (Arbeitsvorbereitung,
       Vertrieb) erweitert. Dabei werden alle Sitzungen beendet: jeder meldet sich einmal neu an.
 
-2b. UPDATE DIREKT VON GITHUB (Windows-Benutzer, z. B. boensch)
-   Normale PowerShell (kein Administrator) - die drei Zeilen kopieren und einfuegen:
-        $B = 'claude/new-session-mpx5ch'
+2b. UPDATE DIREKT VON GITHUB (Windows-Benutzer, z. B. boensch) - ab V12.10.2 nur aus Releases
+   Normale PowerShell (kein Administrator):
+        powershell -ExecutionPolicy Bypass -File C:\ProgramData\Maschinenplanung\Update_von_GitHub.ps1
+   - Nimmt das neueste GitHub-Release; dessen Commit muss in "main" liegen. Bestimmte Version: -Tag v12.10.2
+   - Installiert wird genau ein fester Commit (Hash wird angezeigt). Mit -Sha256 <hash> wird das ZIP
+     zusaetzlich geprueft (Hash steht in den Release-Notizen bzw. wird beim Download angezeigt).
+   - Download, Pruefung und Entpacken laufen erst im Administrator-Fenster (UAC) in
+     C:\ProgramData\Maschinenplanung_Update\ - nur SYSTEM/Administratoren duerfen dort schreiben.
+   - Branch-Stand nur zum Testen: -Branch <name> -UnsicherBranch
+   - Nur herunterladen (ohne Installation): -NurHerunterladen
+   ERSTES Update auf V12.10.2 (alter Updater kennt noch keine Releases):
+        $B = 'claude/new-session-95ro2l'
         irm "https://raw.githubusercontent.com/xiy12345678910-lab/Produktionsplanung/$B/Update_von_GitHub.ps1" -OutFile "$env:USERPROFILE\Downloads\Update_von_GitHub.ps1"
-        powershell -ExecutionPolicy Bypass -File "$env:USERPROFILE\Downloads\Update_von_GitHub.ps1" -Branch $B
-   Das Skript laedt das Paket nach C:\Users\<Benutzer>\Downloads\Maschinenplanung_Update\<Zeit>\,
-   entsperrt die Dateien und oeffnet UPDATE_LIVE.ps1 in einem Administrator-Fenster (UAC: Admin-
-   Konto bestaetigen). Ablauf und Rueckfall wie unter 2.
-   Ab dieser Version liegt Update_von_GitHub.ps1 auch im Live-Ordner:
-        powershell -ExecutionPolicy Bypass -File C:\ProgramData\Maschinenplanung\Update_von_GitHub.ps1 -Branch main
-   Nur herunterladen (Installation spaeter): Parameter -NurHerunterladen.
+        powershell -ExecutionPolicy Bypass -File "$env:USERPROFILE\Downloads\Update_von_GitHub.ps1" -Branch $B -UnsicherBranch
+   RELEASE ANLEGEN (GitHub, einmal je Version): Stand nach main mergen -> Releases -> "Draft a new
+   release" -> Tag vX.Y.Z auf main -> Veroeffentlichen.
+   BRANCH-SCHUTZ (GitHub -> Settings -> Branches -> main): "Require a pull request before merging",
+   "Do not allow bypassing", kein Force-Push; Tags v* unter Settings -> Rules schuetzen.
 
 3. ERSTINSTALLATION (neuer PC)
    PowerShell als Administrator:
@@ -59,22 +66,25 @@ MASCHINENPLANUNG V12.10.2 - WINDOWS-SERVER (LAN ONLY)
      Der Computer (SYSTEM-Konto, im Netz als WTPC207$) braucht dort Schreibrechte.
 
 5. VERWALTUNG (PowerShell im Live-Ordner C:\ProgramData\Maschinenplanung)
-   .\Server_Status.ps1          Status, Version, letztes Backup, Firewall
+   .\Server_Status.ps1          Status, Version, letztes Backup (rot bei Fehler/>26 h), Firewall
    .\Start_Server.ps1           Server starten
    .\Stop_Server.ps1            Server stoppen (Autostart bleibt)
    .\Neustart_Server.ps1        Neustart mit Health-Check
    .\Backup_Datenbank.ps1       sofortiges Backup
+   .\Restore_Datenbank.ps1      Sicherung zurueckspielen (siehe 6.)
    .\CHECK_LAN_SICHERHEIT.ps1   Sicherheits- und Betriebscheck
    .\Deinstallieren.ps1         Tasks + Firewall entfernen (Daten bleiben)
 
    WICHTIG: Die Datenbank laeuft im WAL-Modus. Nie nur data\maschinenplanung.sqlite3 kopieren -
    der juengste Stand kann in der -wal-Datei liegen. Immer Backup_Datenbank.ps1 verwenden.
 
-6. WIEDERHERSTELLEN EINES BACKUPS
-   1) .\Stop_Server.ps1
-   2) data\maschinenplanung.sqlite3-wal und -shm loeschen (falls vorhanden)
-   3) gewuenschte Sicherung aus backups\ nach data\maschinenplanung.sqlite3 kopieren
-   4) .\Start_Server.ps1
+6. WIEDERHERSTELLEN EINES BACKUPS (als Administrator)
+   .\Restore_Datenbank.ps1                 Auswahl aus den letzten 10 Sicherungen (Enter = neueste)
+   .\Restore_Datenbank.ps1 -Datei <pfad>   bestimmte Sicherung (z. B. von der Zweitkopie)
+   Prueft die Sicherung, stoppt den Server, sichert den aktuellen Stand (*_vor_restore), spielt
+   zurueck (inkl. -wal/-shm), startet und prueft den Server. Startet er nicht, wird der Stand vor
+   dem Restore automatisch zurueckgespielt.
+   update_backups\ behaelt die letzten 5 Update-Staende.
 
 7. ROLLEN
    Admin                   alles, inkl. Benutzerverwaltung und Backup-Import

@@ -133,6 +133,11 @@ try {
     Assert-MPPrivatePaths $health.Config
     Write-Host '    PASS: Programm-, Daten- und Backupdateien sind nicht per HTTP abrufbar.' -ForegroundColor Green
 
+    # V12.10.2: nur die letzten 5 Update-Sicherungen behalten (enthalten je eine volle Datenbankkopie).
+    Get-ChildItem -LiteralPath (Join-Path $TargetBase 'update_backups') -Directory -Filter 'pre_V*' -ErrorAction SilentlyContinue |
+        Sort-Object LastWriteTime -Descending | Select-Object -Skip 5 |
+        ForEach-Object { Remove-Item -LiteralPath $_.FullName -Recurse -Force -ErrorAction SilentlyContinue }
+
     Write-Host ''
     Write-Host "UPDATE ERFOLGREICH - V$NewVersion" -ForegroundColor Green
     Write-Host "Live-Ordner:     $TargetBase"
