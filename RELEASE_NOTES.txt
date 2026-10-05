@@ -1,28 +1,486 @@
-MASCHINENPLANUNG V12.7.6 - RELEASE NOTES
-========================================
-Datum: 25.09.2026 · Basis: V12.7.5
+MASCHINENPLANUNG V12.17.1 - RELEASE NOTES
+=========================================
+Datum: 05.10.2026 · Basis: V12.17.0 · Update mit UPDATE_LIVE.ps1, Daten bleiben erhalten
 
-PROJEKTFENSTER
-- Das Projektfenster nutzt jetzt fast den ganzen Bildschirm (96 % Breite bis 1800 px, 94 % Hoehe).
-  Die Vergroesserung aus V12.7.3 griff nie (fehlerhafte CSS-Regel), das Fenster blieb 640 px breit.
-- Stammdaten & Angebot: Felder ragen nicht mehr ueber den Rand hinaus und stehen buendig.
+FEHLERBEHEBUNG: PERSONAL-GATE GILT AUCH FUER LINIEN
+- Symptom: Bei Personal-Gate EIN und 0 Mitarbeitern wurde ein Auftrag auf einer Linie (z. B. Konfektion 1, "1 Pers.") trotzdem
+  Mo-Fr eingeplant; "Unterbesetzte Schichten" blieb 0. Ursache: Das Gate pruefte nur das Feld staffRequired der Ressource.
+  Linien werden mit staffRequired=0 angelegt (die Besetzung steht in crew), also galt fuer sie nie eine Personalpflicht.
+  Der Fehler bestand schon in V12.10.1.
+- Fix: Erforderliche Personenzahl einer Linie = max(staffRequired, crew). Scheduler, Besetzungspruefung, Startpruefung,
+  Auslastung und "Unterbesetzte Schichten" nutzen dieselbe Funktion. Gate AUS: unveraendert nur Planung.
+- Ist keine besetzte Schicht zu finden, wird der Auftrag nicht eingeplant, sondern als unbesetzt markiert (Symbol 👤⚠ mit Tooltip,
+  Code MP-PERS-003) und zaehlt bei "Termin gefaehrdet". Im Hinweisfeld des Wochenplans steht daneben "Personal zuordnen"
+  (springt zur Personalplanung). Die Kachel "Unterbesetzte Schichten" zeigt bei Gate EIN auch ohne Mitarbeiter die Zahl statt "-".
+- Nur Client (index.html); keine Datenmigration, keine Servervalidierung geaendert.
+- Neuer Test: tests/e2e_gate_lines.mjs (12 Pruefungen).
 
-SERVERSTART & UPDATE
-- Update brach ab, weil Serverstart und Update-Pruefung gleichzeitig auf LAN_CONFIG.json bzw.
-  LAN_ADRESSEN.txt zugriffen ("Datei wird von einem anderen Prozess verwendet").
-- Run_Server_LAN.ps1 schreibt die Dateien ueber eine Temp-Datei und tauscht sie dann aus (Leser
-  sehen nie eine halbe Datei); bei Sperre bis ca. 10 s Wiederholung, danach startet der Server
-  trotzdem (Warnung im Log).
-- UPDATE_LIVE / Server_Status / CHECK_LAN_SICHERHEIT lesen LAN_CONFIG.json ueber Read-MPConfig:
-  kurz gesperrt oder unvollstaendig = "noch nicht bereit" und erneut versuchen, statt Abbruch.
+MASCHINENPLANUNG V12.17.0 - RELEASE NOTES
+=========================================
+Datum: 05.10.2026 · Basis: V12.16.0 · Update mit UPDATE_LIVE.ps1, Daten bleiben erhalten
+
+ABGLEICH MIT MAIN (Fixes aus der Linie V12.7.x, ins aktuelle Design uebernommen)
+- LAN_CONFIG.json sperrfest: Read-MPConfig (MP_Common.ps1) liest mit Wiederholung; gesperrt/unvollstaendig = noch nicht
+  bereit statt Abbruch. Genutzt von Get-MPHealth, UPDATE_LIVE, CHECK_LAN_SICHERHEIT und Run_Server_LAN (UpdateRepo bleibt erhalten).
+- Run_Server_LAN.ps1: LAN_CONFIG.json und LAN_ADRESSEN.txt werden ueber Temp-Datei atomar geschrieben, bei Sperre bis ca. 10 s
+  wiederholt; der Serverstart bricht dann nicht mehr ab (Warnung im Log).
+- Projektfenster: bis 1800 px / 96 % Breite und 94 % Hoehe, Stammdaten-Felder bleiben in ihrer Rasterspalte.
+- tests/test_regression.py: Phasen-Migration und Zeitzonen-Fallback auch auf echten Windows-Daten korrekt geprueft.
+
+PAKET C1: EINRICHTUNGSASSISTENT
+- Neuinstallation startet NEUTRAL: keine Bereiche, keine Maschinen, keine Werbetechnik-Daten. Der Assistent (Vollbild-Dialog
+  beim ersten Admin-Login) richtet sie ein. Fuenf Schritte mit Fortschrittspunkten, jeder ueberspringbar, ohne Erklaertext:
+  1 Firma (Name, Logo, Farbe), 2 Branche (Karten, Vorschau als Chips, Anwenden beim Weiter), 3 Module, 4 Bereiche/Maschinen
+  (umbenennen, anlegen, Maschinen +/-), 5 Benutzer anlegen (optional) und Admin-Passwort aendern, solange es das Startpasswort ist.
+- Jeder Schritt speichert sofort. Schliessen (x) = spaeter fortsetzen; der Stand bleibt, der Assistent kommt beim naechsten
+  Admin-Login wieder. Erst "Fertig" setzt setupDone=true in config\firma.json. Erneut aufrufbar: System > Firmenprofil >
+  Assistent (dann ohne Entfernen von Bereichen/Maschinen).
+- Bestand bekommt NIE einen Assistenten: setupDone=false nur bei Neuinstallation (Revision <= 1 und keinerlei Planungsdaten,
+  keine Config, kein Firma_Einrichten). Vorhandene firma.json ohne das Feld erhaelt true (additiv). Bereiche, Maschinen,
+  Auftraege und alle Daten bleiben unveraendert.
+- Projektbereiche kommen jetzt aus der Config (projectAreas) statt aus der festen Liste im Client. Bestand: dieselben
+  sieben Bereiche in gleicher Reihenfolge (stehen seit V12.14 in der Config). Eine Vorlage ergaenzt fehlende Projektbereiche,
+  benennt oder entfernt nie.
+- Client: ein leerer Serverstand bleibt leer (frueher wurden Maschine 1-3/Werbetechnik-Bereiche lokal ergaenzt).
+- Server: GET /api/config liefert setupDone (und fuer den Admin adminPwUnchanged), PATCH /api/config nimmt setupDone (nur Admin).
+  init_db(seed="werbetechnik") erhaelt den alten Startbestand nur fuer Tests.
+- Bewusst nicht (Paket C2): Demo-Daten, Feiertage nach Bundesland, Sprache/Zeitzone/Bundesland im Assistenten, Lizenzschritt,
+  eigener Admin-Schritt ohne Skript (der Installer legt den Admin weiterhin an).
+- Keine neuen Fehlercodes. CI: windows-deploy um V12.10.1 ohne Firmenwerte (noci) ergaenzt.
+TESTS: neu tests/test_setup.py, tests/e2e_setup.mjs; tests/test_deploy_upgrade.py um Bestand-ohne-Assistent und Neuinstallation erweitert.
+
+V12.16.0
+Datum: 05.10.2026 · Basis: V12.15.1 · Update mit UPDATE_LIVE.ps1, Daten bleiben erhalten
+
+PAKET B: BRANCHENVORLAGEN, MODULE EIN/AUS, BEGRIFFE
+- Module (System > Firmenprofil, nur Admin): Projekte, Formate, Personal, Nachrichten, Benachrichtigungen, Auswertung,
+  Kennzahlen als Schalter. Aus = Ansicht, Menue und Aktionen verschwinden; der Server sperrt die Schreibwege
+  (Chat und Benachrichtigungen komplett, Projekte/Formate/Personal im Datenstand) mit MP-MOD-001. Die Daten bleiben
+  vollstaendig erhalten; beim Wiedereinschalten ist alles da. Kennzahlen haengen an Auswertung. Nach dem Update sind alle
+  Module an (Bestand unveraendert).
+- Branchenvorlagen als Paketdateien vorlage_werbetechnik/metall_cnc/leer/demo.json (ohne Firmen- oder Personendaten).
+  GET /api/templates (Admin), POST /api/templates/apply (Admin, mit dryRun fuer die Vorschau). Anwenden ERGAENZT nur
+  fehlende Bereiche (samt deren Maschinen), Schichtzeiten und Ablaeufe; Vorhandenes wird nie ueberschrieben oder geloescht.
+  Module der Vorlage werden nur auf Wunsch uebernommen. Bedienung: Auswahl, Vorschau als Chips, Pfeil-Taste.
+- Bereichs-Eigenschaften statt fester Bereichs-IDs: formats (Formate) und sharedOperators (gemeinsame Bediener). Migration
+  setzt thermoforming.formats und cnc.sharedOperators nur, wenn die Eigenschaft fehlt. Der Rueckgriff auf den Bereich 'cnc'
+  ist jetzt der erste aktive Produktionsbereich (bei Bestand weiterhin cnc). Admin setzt die Eigenschaften je Bereich
+  unter GF > Bereiche (Symbole mit Tooltip).
+- Begriffe aus der Config im ganzen Client: Auftragsnummer (neben Projektnummer) und Rollenbezeichnungen (Eingabe unter
+  Firmenprofil > Rollen). Rollen-IDs und Rechte bleiben unveraendert.
+- Python-Warnung "return in finally" in server.py behoben (Verhalten gleich).
+- Bewusst nicht: Projektbereiche aus der Config im Client (bleiben die sieben festen), Modul "export", Einrichtungs-
+  assistent und Demo-Auftraege (Paket C); Vorlagen werden nicht aus dem Datenstand gesperrt, sondern ergaenzen nur.
+- Neuer Code: MP-MOD-001, MP-TPL-040, MP-DEPT-007. Neue Paketdateien nur ueber $MP_AppFiles (vorlage_*.json).
+TESTS: neu tests/test_templates.py, tests/e2e_templates.mjs.
+
+V12.15.1
+
+
+DATENERHALT BEI UPDATES (Abschluss Paket A: Updates aendern nur Code, nie Daten)
+VORAUSSETZUNG: Von V12.14.x oder neuer direkt aktualisieren. Von V12.13 oder aelter: siehe "Bestand ohne Firmenprofil".
+- Neuer Dauertest tests/test_deploy_upgrade.py: holt alte Staende aus git (V12.10.1, V12.13.0, V12.14.0 und automatisch den
+  Vorgaenger-Release), legt ueber die API des ALTEN Servers Benutzer, Auftraege, Arbeitsschritte, Personal, Abwesenheiten,
+  Formate, Chat, Benachrichtigungen, Firmenprofil/Logo sowie LAN_CONFIG.json, BACKUP_ZIEL.txt und Backups an, simuliert
+  UPDATE_LIVE.ps1 (nur $MP_AppFiles kopieren, $MP_ObsoleteFiles entfernen) und prueft: alle Datensaetze feldweise gleich (nur
+  NEUE Felder erlaubt), Logins, Firmenprofil (Name/Farbe/Logo/Akzent wie vorher), Dateien ausserhalb von data\ und config\
+  byte-gleich, zweites Update identisch, Rollback auf den Vorgaengerstand (Daten + Config bleiben, alter Server startet).
+- Echtes Windows-Deploy in CI (tests/ci_windows_deploy.ps1, Job windows-deploy): Setup des alten Stands, Daten per API,
+  UPDATE_LIVE.ps1, Health, Datenvergleich, zweites Update, defektes Paket (Abbruch im Vorabtest, Live unveraendert).
+- Gefundene Luecke geschlossen: Ein Bestand aus V12.14.x mit leerer Config und Firmen-CI nur in data.ci verlor mit V12.15.0
+  Name/Logo. Beim ersten Start werden jetzt nur LEERE Felder der Config einmalig aus data.ci gefuellt (Kennzeichen ciSynced).
+BESTAND OHNE FIRMENPROFIL (V12.13 oder aelter, keine firma.json, kein Firmenname in data.ci)
+- Server und Vorabtest in UPDATE_LIVE.ps1 stoppen mit MP-CFG-006 (vor jeder Aenderung an Datenbank oder Live-Ordner), statt still
+  neutral zu starten. Neuinstallationen (Revision 1) bleiben neutral.
+- Neu: Firma_Einrichten.ps1 -Vorlage <datei> (bzw. server.py --firma-einrichten <datei>) legt config\firma.json aus einer
+  Vorlage an (z. B. tools/legacy_employer_seed.json vom Entwickler); -Neutral = bewusst ohne Name/Logo; -Ziel = anderer Live-Ordner.
+  Eine vorhandene firma.json wird nie ueberschrieben.
+- Neuer Code: MP-CFG-006.
+- Bewusst nicht: Windows-Rollback-Test mit echter Rollback-Logik von UPDATE_LIVE.ps1 (nur Dateisystem-Simulation im Python-Test).
 
 TESTS
-- test_regression.py: Migrationspruefung der Projektphasen und Zeitzonen-Fallback laufen auf
-  echten Windows-Daten korrekt (vorher 149/151, jetzt 151/151).
+- Neu: tests/test_deploy_upgrade.py (alle Plattformen), tests/ci_windows_deploy.ps1. Angepasst: tests/test_firma_config.py.
+
+V12.15.0
+
+FIRMENPROFIL UEBER DIE API, KEINE ARBEITGEBERDATEN MEHR IM PAKET (Rest von Paket A)
+VORAUSSETZUNG FUER BESTANDSKUNDEN: Vor diesem Update muss mindestens V12.14.x einmal gelaufen sein (config\firma.json
+existiert). Der Bestandskunde steht dann in seiner config\firma.json und seiner Datenbank, nicht mehr im Code.
+Wer direkt von V12.13 oder aelter kommt, erst V12.14.1 installieren (sonst startet er mit neutralen Werten und
+muss Name/Logo unter System > Firma & System neu setzen; Warnung im Server-Log).
+- API: GET /api/config (alle angemeldeten Rollen: Name, Farben, Schrift, Adresse/Fuss, Logo-URL, Begriffe, Module,
+  Locale, Projekt-Bereiche; ohne Lizenz/Update/Mandant). PUT/PATCH /api/config nur Admin: validiert wie beim Start,
+  firma.json.bak-<zeit>, atomares Schreiben, Revision (veraltet = 409 MP-CFG-004). Audit-Eintrag "Firmenprofil geaendert".
+- Logo: POST /api/config/logo (nur Admin; PNG, JPG oder SVG, max. 420 KB, Inhalt wird geprueft) legt die Datei unter
+  config\ ab; GET /api/config/logo liefert sie mit korrektem Content-Type (nosniff, bei SVG CSP-Sandbox). SVG wird nach
+  Positivliste neu geschrieben; Script, foreignObject, image, a, Animation, externe Verweise, Event-Handler, DOCTYPE/ENTITY
+  = abgelehnt (MP-CFG-005). Das vorherige Logo bleibt als logo.<ext>.bak-<zeit> liegen (letzte 5).
+- Aenderungen erreichen alle Clients ueber den bestehenden Long-Poll (Feld crev/cfg), ohne Neuladen.
+- Client: Kopf (Logo, Programmname), Browser-Titel, Akzentfarbe (--brand), Excel-Kundenplan, Nachkalkulations-Druck und die
+  Bezeichnung der Projektnummer (bisher "WT") kommen aus der Config. System > Firma & System > Firmenprofil (nur Admin)
+  ersetzt "Firmen-CI fuer Kundenplaene"; Vorschau sofort, gespeichert beim Verlassen des Feldes. Die Akzentfarbe wanderte
+  aus "Darstellung & Daten" dorthin; der bisherige Wert wird einmalig aus dem Datenstand in die Config uebernommen.
+  data.ci wird nur noch gelesen, solange keine Config geladen ist (neutraler Fallback CI_DEFAULT).
+- Arbeitgeberdaten raus: LEGACY_SEED, Standardlogo, Firmenname und die Personennamen im Seed (Bereiche "Konfektion 1/2")
+  sind aus server.py und index.html entfernt. Bestandsdatenbanken behalten ihre Bereichsnamen. Die Einbauwerte fuer die
+  Erstmigration liegen in tools/legacy_employer_seed.json (Entwickler-Repo, nicht im Kundenpaket).
+- Zeitzone: MP_TIMEZONE (Umgebung) > locale.timezone der Config > Europe/Berlin; Aenderung wirkt nach Serverneustart.
+- README_Windows.txt: Rechnername und Beispiel-Repo/-Branch als Platzhalter. Update_von_GitHub.ps1 liest das Repo aus
+  LAN_CONFIG.json (UpdateRepo; Run_Server_LAN.ps1 behaelt den Eintrag); ohne Eintrag gilt unveraendert der bisherige Standard.
+- Neue Codes: MP-CFG-004, MP-CFG-005, MP-CFG-404.
+- Bewusst nicht Teil dieser Version: Export/Import-ZIP des Profils (Backup_Datenbank.py sichert config\ bereits),
+  Einrichtungsassistent, Module ein/aus im Client und Bereichs-Eigenschaften (Paket B/C), orderNumber und roleLabels
+  im Client (die API liefert sie), Login-Seite mit Firmenlogo (vor der Anmeldung liefert der Server nichts).
+
+TESTS
+- Neu: tests/test_config_api.py 103/103, tests/test_no_employer_data.py 31/31 (Suchbegriffe nur als Hash),
+  tests/e2e_company.mjs 37/37 (leere Installation neutral, Bestands-DB mit altem Seed-Stand gleiche Anzeige,
+  Admin aendert -> alle Clients, Nicht-Admin verweigert, SVG/Konflikt).
+- Erweitert: tests/test_firma_config.py 50/50.
+
+V12.14.1
+--------
+
+BENACHRICHTIGUNGEN: LONG-POLL ENTLASTET (Korrektur zu V12.13.0)
+- Server: POST /api/notifications/* weckt wartende Long-Polls nur noch, wenn sich der Stand wirklich geaendert hat
+  (neue Eintraege bzw. gelesen). Leere Meldungen und Treffer ohne Zeile loesen keinen Thundering Herd mehr aus.
+- Client: Nach einer Poll-Antwort wird die Server-Signatur uebernommen, auch wenn der Listenabruf fehlschlaegt;
+  dann gibt es keine Dauerschleife mehr. Schlaegt der Abruf fehl, folgt zusaetzlich 5 s Pause.
+- Server ignoriert eine ungueltig geformte nsig (wartet normal). Keine neuen Fehlercodes, keine Datenaenderung.
+- Tests: tests/test_notifications.py 59/59 (Long-Poll ueber echtes HTTP), tests/e2e_notifications.mjs 32/32.
+
+V12.14.0
+--------
+
+FIRMEN-CONFIG AUSSERHALB DES PAKETS
+- Firmenstand (Name, Logo, Farben, Schrift, Begriffe, Module, Feiertagsregion, Zeitzone u. a.) liegt in
+  config\firma.json (+ Logo, Lizenz) neben data\. Updates kopieren nur $MP_AppFiles und beruehren config\ nie.
+- UPDATE_LIVE.ps1: Rollback-Sicherung nimmt config\ rekursiv mit, Rollback stellt sie wieder her, Umzug in einen
+  anderen Ordner kopiert sie, der Vorabtest startet die neue Version mit einer Kopie der echten Config.
+- Backup: zu jeder DB-Sicherung firma_<zeit>.zip (config\ ohne .bak), gleiche Rotation und Zweitkopie.
+  Restore_Datenbank.ps1 -MitConfig spielt sie zurueck (aktuelle Datei vorher als .bak). Deinstallieren behaelt config\.
+- Erststart ohne Datei: wird aus den bisherigen Werten (Bestand: data.ci + bisherige Einbauwerte, Logo nach
+  config\logo.*) bzw. neutral angelegt. Bestehende Installationen laufen ohne Eingriff weiter.
+- server.py (nur Standardbibliothek) validiert die Datei vor dem Port-Bind. Fehlende Felder werden ergaenzt, nichts
+  geloescht, unbekannte Felder bleiben; vor jeder Aenderung firma.json.bak-<zeit> (letzte 20), Schreiben atomar.
+  Ungueltig: Start verweigert (Exit 3), nichts wird ueberschrieben. Neue Codes: MP-CFG-001, MP-CFG-002, MP-CFG-003.
+- Noch nicht Teil dieser Version: Oberflaeche/API fuer die Config (Client liest weiter data.ci).
+
+TESTS
+- Neu: tests/test_firma_config.py 45/45, tests/test_config_update.py 25/25 (Update-/Rollback-/Umzug-Simulation),
+  tests/ps_syntax.ps1 prueft zusaetzlich, dass config nicht in $MP_AppFiles/$MP_ObsoleteFiles steht.
+
+V12.13.0
+--------
+BENACHRICHTIGUNGEN
+- Glocke 🔔 mit Zaehler oben rechts. Klick: kompakte Liste, Klick auf einen Eintrag fuehrt zum Ziel
+  (Kanal, Auftrag, Maschine, Personal, GF) und markiert ihn als gelesen. ✓ alle gelesen, ⚙ Einstellungen.
+- Ereignisse: @Erwaehnung/Direktnachricht, Freigabe/Zurueckziehen, Termin gefaehrdet (Plan-Ende nach Termin
+  oder Puffer unter 1 Arbeitstag), Maschinensperre/Abwesenheit mit offenen Auftraegen, Leiharbeiter-Anfrage/-Entscheidung.
+- Je Benutzer ein/aus (Defaults nach Rolle) und Ruhezeit (nur fuer die Browser-Meldung). Ausgeschaltete Arten
+  erzeugen keinen Eintrag. Jeder sieht nur eigene Eintraege; Bereichsrollen nur ihren Bereich; kein Abwesenheitsgrund im Text.
+- Echte Browser-Meldung (Notification API) nur als Zusatz, wenn die Seite per https/localhost laeuft und in ⚙ eingeschaltet ist.
+  Im LAN ueber http bleibt es bei der Glocke (der Schalter erscheint dann nicht).
+- Technik: Tabellen notifications/notification_prefs (wie chat_*), Aufbewahrung 30 Tage, maximal 500 je Benutzer;
+  Endpunkte /api/notifications (GET), /read, /derived (POST), /prefs (GET/PUT); Abruf im bestehenden Long-Poll
+  /api/revision (nsig), kein weiteres Intervall. Ein offener Chat-Kanal erledigt seine Eintraege automatisch.
+- Neue Codes: MP-NOTIF-001, MP-NOTIF-002.
+
+TESTS
+- Neu: tests/test_notifications.py 54/54, tests/e2e_notifications.mjs 31/31.
+
+MASCHINENPLANUNG V12.12.0 - RELEASE NOTES
+=========================================
+Datum: 05.10.2026 · Basis: V12.11.0 · Update mit UPDATE_LIVE.ps1, Daten bleiben erhalten
+
+RUECKGAENGIG / WIEDERHOLEN
+- Knoepfe ↶ ↷ oben rechts (Tooltip nennt die Aktion), Strg+Z / Strg+Y (bzw. Strg+Umschalt+Z).
+- Gilt fuer Planungsaktionen: Verschieben, Prioritaet, Status geplant/freigegeben, Termine,
+  Auftrag anlegen/loeschen, Personalzuordnung, Abwesenheit, Formate, Projekte.
+  Nie rueckgaengig: Produktion starten/fertig melden, Import, Planstand wiederherstellen, Benutzer.
+- Bis 50 Schritte je Sitzung, nur im Speicher. Wurde derselbe Datensatz inzwischen von jemand anderem
+  geaendert, wird nichts veraendert (MP-UNDO-001, Meldung nennt den Benutzer).
+- In Eingabefeldern bleibt Strg+Z das normale Browser-Rueckgaengig. Lesende sehen keine Knoepfe.
+
+TESTS
+- Neu: tests/e2e_undo.mjs 12/12.
+
+MASCHINENPLANUNG V12.11.0 - RELEASE NOTES
+=========================================
+Datum: 05.10.2026 · Basis: V12.10.2 (enthaelt alle Hotfixes) · Update mit UPDATE_LIVE.ps1, Daten bleiben erhalten
+
+DARSTELLUNG: HELL / DUNKEL / HALLE
+- Knopf oben rechts (☀ / ☾ / ▣) schaltet um; Auswahl gilt je PC. Ohne Auswahl folgt die Darstellung
+  der Windows-Einstellung (hell/dunkel).
+- Dunkel: alle Texte mit Kontrast >= 4,5:1.
+- Halle (Hallenmonitor/Tablet): Schrift >= 14 px, Kontrast >= 7:1, hoehere Plan-Zellen,
+  Auftragsstatus zusaetzlich als Symbol (✓ freigegeben, ▶ laeuft, ⏸ pausiert, ⚠ Konflikt, ⏰ spaet).
+- Fester Hallenbildschirm: ?theme=hall&view=overview&dept=<Bereich> (aendert die gespeicherte
+  Auswahl am PC nicht).
+- Druck/PDF bleibt immer hell. Akzentfarbe aus den Einstellungen bleibt erhalten (in der Halle
+  automatisch abgedunkelt).
+- Technisch: alle Farben und Schriftgroessen als CSS-Variablen.
+
+TESTS
+- Neu: tests/e2e_theme.mjs 20/20 (alle Ansichten je Darstellung, automatische Kontrastmessung).
+
+MASCHINENPLANUNG V12.10.2 - RELEASE NOTES
+=========================================
+Datum: 05.10.2026 · Basis: V12.10.1 · Hotfix aus docs/AUDIT.md (V-02, V-03, V-04, V-12)
+Update mit UPDATE_LIVE.ps1, Daten bleiben erhalten
+
+KEINE AENDERUNGEN MEHR VERLIEREN
+- Tab schliessen mit ungespeicherter Aenderung: Browser fragt nach.
+- Voller Browser-Speicher blockiert das Speichern nicht mehr (Cache ohne Audit/Historie).
+- Kurzer Netzaussetzer: erst nach 3 Fehlern "SERVER OFFLINE", Wiederholung mit Pause 1-30 s,
+  kein Abruf bei verborgenem Tab.
+- Konflikt mit Kollegen (MP-SYNC-004): eigene Eingabe unter System -> "⤓ Verworfene Aenderung".
+
+SICHERHEIT
+- Anmeldesperre je Benutzer und je IP: eigener Login setzt fremde Fehlversuche nicht mehr zurueck,
+  parallele Versuche zaehlen alle. Gilt auch fuer "Passwort aendern".
+- Verbindungen: 30 s Timeout, max. 256 gleichzeitig, Anmeldedaten max. 16 KB, grosse Daten nur
+  mit Sitzung.
+- Aufruf nur ueber Server-IP oder PC-Namen (Schutz gegen DNS-Rebinding, MP-REQ-421). Weitere Namen
+  (DNS-Alias): Umgebungsvariable MP_ALLOWED_HOSTS="name1,name2".
+- Fremde Webseiten koennen nicht mehr anmelden/speichern (Origin-Pruefung, MP-REQ-403).
+- Unerwartete Serverfehler liefern MP-SRV-500 statt Verbindungsabbruch.
+
+RECHTE & DATEN
+- Arbeitsvorbereitung kann Formate serverseitig nicht mehr aendern (wie seit V12.10.0 in der Oberflaeche).
+- Format-Verknuepfung auf einen nicht vorhandenen Auftrag wird abgelehnt (MP-FMT-010); bestehende
+  Altverknuepfungen bleiben speicherbar.
+- meta/ui/planVersions werden typgeprueft (MP-DATA-014); Benutzer "aktiv" nur true/false.
+
+KORREKTUREN
+- CSV-Export: Start/Ende in Ortszeit, Schutz gegen Formeln (=, +, -, @), Dateiname
+  Produktionsplanung_Auftraege_<Datum>.csv.
+- Arbeitstage (PM/AV-Vergleich, Kundenplan) beruecksichtigen Feiertage/Betriebsferien und Sonderschichten.
+- Auswertung: Fertigmeldungen 00:00-02:00 Uhr zaehlen zum richtigen Tag.
+- Nachrichten: schneller Kanalwechsel zeigt keine Nachrichten des alten Kanals mehr.
+
+UPDATE & BACKUP (Betrieb)
+- Update_von_GitHub.ps1 installiert nur noch Releases aus main, immer einen festen Commit; optional
+  SHA256-Pruefung. Download/Pruefung erst im Administrator-Fenster in einem geschuetzten Ordner.
+  Branch-Stand nur noch mit -UnsicherBranch. Erstes Update: siehe README_Windows.txt 2b.
+- Backups entstehen als .tmp, werden geprueft und erst dann umbenannt (nie eine kaputte Sicherung
+  unter gueltigem Namen); Sicherungen sind eigenstaendige Dateien ohne -wal.
+- Neu: Restore_Datenbank.ps1 (Auswahl, Vorab-Sicherung, Health-Check, automatischer Rueckfall).
+- Server_Status.ps1 warnt rot bei fehlgeschlagenem Backup-Task oder Backup aelter als 26 h.
+- Stop_Server.ps1 beendet auch haengende Serverprozesse und prueft den Port.
+- update_backups\ behaelt die letzten 5 Update-Staende.
+- Python-Pruefung (Setup/Update/CHECK) wertet die Ordnerrechte aus: Python, das normale Benutzer
+  veraendern koennen (z. B. C:\Python311), wird gemeldet. tzdata nur mit fester Version + SHA256
+  (requirements.txt, --require-hashes).
+- CI (GitHub Actions): Python-Tests, Browser-E2E, PowerShell-Syntax + PSScriptAnalyzer.
+  Versionsangaben werden automatisch auf Gleichstand geprueft (tests/test_version.py).
+
+TESTS
+- Neu: tests/test_v12102.py 27/27, tests/e2e_v12102.mjs 21/21, tests/test_backup.py 11/11,
+  tests/ps_syntax.ps1 (Syntax aller PowerShell-Skripte).
+
+MASCHINENPLANUNG V12.10.1 - RELEASE NOTES
+=========================================
+Datum: 05.10.2026 · Basis: V12.10.0 · Update mit UPDATE_LIVE.ps1, Daten bleiben erhalten
+
+- GF sieht Wochenplan und Auftragsliste (nur lesen, alle Bereiche bzw. ueber "Bereich" gefiltert).
+  Planen/Verschieben bleibt Abteilung und Arbeitsvorbereitung vorbehalten.
+
+MASCHINENPLANUNG V12.10.0 - RELEASE NOTES
+=========================================
+Datum: 05.10.2026 · Basis: V12.9.1 · Update mit UPDATE_LIVE.ps1, Daten bleiben erhalten
+
+FORMATE (TIEFZIEHEN)
+- Kein eigener Menuepunkt "Formate" mehr. Das Formate-Fenster oeffnet sich aus dem Wochenplan
+  ("▣ Formate"), aus der Auftragsliste (▣ am Tiefzieh-Auftrag) und beim neuen Auftrag
+  ("▣ Anlegen & auf Format": FS anlegen und direkt auf ein neues Format setzen).
+- Sichtbar nur fuer Tiefziehen (Leitung, Stellvertretung, Lesende des Bereichs) und Admin.
+  Arbeitsvorbereitung und GF sehen keine Formate mehr.
+- Offene Tiefzieh-Auftraege: "Auf F-…" (geoeffnetes Format) oder "+ Neues Format" mit dem Auftrag.
+- Maschinenmasse (max. L/B, Ziehtiefe) und Takte stehen jetzt unter System → Maschinen & Linien
+  direkt an der Maschine ("Format & Takte").
+- Grundformate (Platten) unter System: gelten fuer mehrere Maschinen - standardmaessig alle des
+  Bereichs, per Haken einschraenkbar. Die Grundformat-Auswahl im Format folgt der Maschine.
+  Neuer Fehlercode MP-FMT-011.
+
+BEREICHE
+- Nur noch zwei Bereichsarten: Produktion und Entwicklung & Vertrieb (bisherige "Vertrieb"/
+  "Entwicklung" zaehlen als Entwicklung & Vertrieb).
+- Projektfenster nutzt wieder die volle Breite (die Regel griff nie): Status und Aufklapp-Pfeil
+  sind fuer alle Rollen sichtbar - die Leitung eines neuen Bereichs sieht und meldet ihre Aufgaben.
+- Entwicklungs-/Vertriebsbereiche bieten kein "Als Auftrag einplanen" mehr (keine Maschinen).
+- Bereichsauswahl im Projekt gegliedert: "Entwicklung & Vertrieb" | "Produktion".
+
+MASCHINENPLANUNG V12.9.1 - RELEASE NOTES
+========================================
+Datum: 05.10.2026 · Basis: V12.9.0 · Update mit UPDATE_LIVE.ps1, Daten bleiben erhalten
+
+NACHRICHTEN: AUFBEWAHRUNG 30 TAGE
+- Nachrichten werden 30 Tage nach dem Versand automatisch geloescht (beim Serverstart und danach
+  stuendlich). Ausnahme: Nachrichten mit 📌 "Behalten" bleiben dauerhaft.
+- 📌 an jeder Nachricht schaltet "Behalten" ein/aus (jedes Mitglied der Unterhaltung; gespeichert
+  wird, wer behalten hat). 📌 im Kopf zeigt nur die behaltenen Nachrichten der Unterhaltung.
+- Ab 7 Tagen vor der Loeschung zeigt die Nachricht "noch n T".
+- Datenbank: Spalten keep/kept_by in chat_messages (Migration beim Start). Neuer Code MP-CHAT-007.
+
+KUNDENPLAN (EXCEL)
+- Ohne Liefertermin im Projekt steht im Excel "offen – folgt nach Freigabe". Bisher wurde das
+  spaeteste Aufgabenende als Liefertermin eingesetzt und eine Lieferzeile erzeugt.
+- Aufgaben des Projektmanagements sind beim Anlegen nicht mehr automatisch "nur intern" und
+  erscheinen damit im Kundenplan (automatisch intern bleibt nur die Kalkulation).
+- Interne Aufgaben zeigen "🔒 nicht im Kundenplan"; die Kundenplan-Box listet sie auf.
+  Bestehende Aufgaben: aufklappen und "nur intern" abwaehlen.
+
+ABNAHME / KORREKTUREN
+- System-Reiter "Aenderungen" war fuer GF und Bereichsleitung sichtbar, aber gesperrt
+  (MP-AUTH-018) - jetzt nur noch sichtbar, wenn die Ansicht erlaubt ist.
+- @-Erwaehnungen zaehlen auch bei Benutzernamen mit Umlaut/ß.
+- Neue Benutzernamen: max. 40 Zeichen, ohne ⟦ ⟧ | < > " ' ` (schuetzt Chat-Verweise).
+- GF-Ansicht System am Handy ohne seitliches Scrollen; Auswahlfelder der GF-Einsatzplanung beschriftet.
+
+BEDIENUNG
+- Handy: Navigation ohne abgeschnittene Woerter (seitlich wischen), aktive Ansicht rutscht ins Bild.
+- Symbol-Knoepfe (🔑 ↪ ▶ × …) zeigen beim Darueberfahren ihre Bedeutung.
+- Projektkarten ohne doppelte Nummer; Projektspalten am Handy breiter (wischen).
+- Formate: Suchfeld gestaltet, leere Box rechts entfernt.
+- Chat: Hinweise erscheinen oben, verdecken nicht mehr das Eingabefeld.
+
+DEPLOY
+- Neu: Update_von_GitHub.ps1 - als normaler Windows-Benutzer (z. B. <Benutzername>) in einer normalen
+  PowerShell starten; laedt das Paket, entsperrt es und oeffnet UPDATE_LIVE.ps1 als Administrator.
+  Anleitung: README_Windows.txt Abschnitt 2b.
+- Aufgeraeumt: veraltete Entwurfsdateien (docs/mockups, docs/UI_AUDIT_PLAN.md) entfernt.
+
+TESTS
+- tests/e2e_roles.mjs: jede Rolle × jede Ansicht × Desktop/Handy (402 Pruefungen).
+- tests/e2e_customerplan.mjs: Kundenplan-Excel (nachgebaut nach P-2026-0007).
+- tests/test_v129.py: Nachrichten-Aufbewahrung, Behalten, Erwaehnungen.
+- tests/make_test_db.py: kuenstliche Datenbank fuer tests/test_regression.py (151/151).
+
+MASCHINENPLANUNG V12.9.0 - RELEASE NOTES
+========================================
+Datum: 05.10.2026 · Basis: V12.8.3 · Update mit UPDATE_LIVE.ps1, Daten bleiben erhalten
+
+NACHRICHTEN (wie Teams, im Programm)
+- Knopf 💬 rechts unten mit Zaehler ungelesener Nachrichten (rot bei Erwaehnung).
+- Kleines Fenster (unten rechts) oder gross (⤢): Liste links, Verlauf rechts. Auf dem Handy Vollbild.
+- Kanal "Alle" fuer jeden, eigene Gruppen (+ Gruppe, Mitglieder verwaltet der Ersteller) und
+  Direktnachrichten (+ Direkt, je Paar nur ein Chat).
+- "/" im Text: Vorschlaege fuer Auftraege (FS, AB, WT, Beschreibung), Projekte und Formate (auch WKZ-
+  Nummer). Gewaehlt wird ein Link; Klick oeffnet die Auftragsliste gefiltert auf die FS, das Projekt
+  bzw. das Format. Geloeschte Ziele werden durchgestrichen angezeigt.
+- "@Name" erwaehnt eine Person; die Nachricht ist bei ihr markiert und zaehlt als Erwaehnung.
+- Neue Nachrichten erscheinen ohne Neuladen (offener Chat alle 2,5 s, Zaehler alle 5 s).
+- Nachrichten liegen in eigenen Tabellen der Datenbank (Backup inklusive) und veraendern den
+  Planungsstand nicht. Nur Mitglieder lesen eine Gruppe/Direktnachricht (serverseitig geprueft).
+- Neue Fehlercodes MP-CHAT-000 bis MP-CHAT-010.
+- Test: tests/e2e_chat.mjs (Bildschirmfotos mit --shots <ordner>).
+
+MASCHINENPLANUNG V12.8.3 - RELEASE NOTES
+========================================
+Datum: 05.10.2026 · Basis: V12.8.2 · Update mit UPDATE_LIVE.ps1, Daten bleiben erhalten
+
+PM-VORPLAN · AV-PLAN · IST
+- Aendert die Arbeitsvorbereitung Start oder Faelligkeit eines Fertigungsprozesses zum ersten Mal,
+  wird der Termin des Projektmanagements als PM-Vorplan gesichert (mit Zeitpunkt und Benutzer).
+  Danach sind die PM-Termine dieses Prozesses gesperrt; die AV terminiert weiter.
+- Projekt → "Termine: PM-Vorplan · AV · Ist": je Produktionsbereich PM-Vorplan, AV-Plan,
+  Ist (fertig gemeldet) bzw. Prognose aus dem Wochenplan und die Abweichungen in Arbeitstagen
+  (AV − PM, Ist − PM, Ist − AV). Sichtbar fuer Admin, GF, Projektmanagement, Arbeitsvorbereitung.
+- Server prueft: nur die AV sichert den PM-Vorplan, einmalig und mit den bisherigen Terminen;
+  das PM kann ihn weder aendern noch loeschen.
+- Tests: tests/test_v128.py, tests/e2e_pmplan.mjs.
+
+MASCHINENPLANUNG V12.8.2 - RELEASE NOTES
+========================================
+Datum: 05.10.2026 · Basis: V12.8.1 · Update mit UPDATE_LIVE.ps1, Daten bleiben erhalten
+
+GF LEGT BEREICHE AN
+- GF-Ansicht → "Bereiche anlegen & verwalten": neuer Bereich mit Art Produktion, Vertrieb oder
+  Entwicklung. Produktion: gleich die erste Maschine oder Linie mit Schichtmodell (1-/2-schichtig)
+  und Umruestzeit. Bestehende Bereiche umbenennen, Art aendern, deaktivieren (nicht loeschen).
+- Vertrieb/Entwicklung bearbeiten nur Projektaufgaben: keine Maschinen, Auftraege, Formate,
+  Fertigmeldungen (serverseitig MP-DEPT-004). Ihre Bereichsleitung startet in "Projekte" und sieht
+  keinen Wochenplan, kein Personal und kein System.
+- Bereichslisten zeigen nur Produktionsbereiche: Bereichsauswahl, Auftragsdialog,
+  Maschineneinstellungen, GF-Raster, Mitarbeiter-Stammbereich. Projektprozesse koennen allen
+  Bereichen zugeordnet werden; die Arbeitsvorbereitung plant nur Prozesse in Produktionsbereichen.
+- Deaktivieren nur ohne offene Auftraege (MP-DEPT-006); Art aendern nur ohne Maschinen (MP-DEPT-004).
+- Fehlerbehebung zu V12.8.0: Beim Serverstart werden die Formatlisten angelegt. Ohne sie haette der
+  erste Speichervorgang von GF, Projektmanagement und Vertrieb mit "darf 'formats'/'baseFormats'
+  nicht aendern" abgebrochen.
+- Tests: tests/test_v128.py (Server-Regeln), tests/e2e_departments.mjs.
+
+MASCHINENPLANUNG V12.8.1 - RELEASE NOTES
+========================================
+Datum: 05.10.2026 · Basis: V12.8.0 · Update mit UPDATE_LIVE.ps1, Daten bleiben erhalten
+
+PARALLELBELEGUNG (Konfektion, Tiefziehen, jede Maschine/Linie)
+- System → Maschinen/Linien: neue Spalte "Parallel" (1–20). So viele Auftraege laufen auf der
+  Ressource gleichzeitig. Standard 1 = Verhalten wie bisher (das Feld wird dann nicht gespeichert).
+- Planung: Ein Auftrag kollidiert erst, wenn alle Parallelplaetze belegt sind; der naechste beginnt,
+  sobald ein Platz frei wird (vorwaerts und rueckwaerts, fixe Starts, Freigaben, laufende Auftraege).
+- Produktion: bis zu "Parallel" Auftraege gleichzeitig laufend/pausiert je Ressource.
+- Server prueft dieselben Regeln: MP-PROD-010 (laufend/pausiert) und MP-PLAN-058 (Freigabe gegen
+  feste Belegung) zaehlen jetzt die Parallelplaetze.
+- Wochenplan: Ressourcen mit Parallelplaetzen zeigen "∥ n parallel".
+- Verringern der Parallelplaetze ist gesperrt, solange auf der Ressource etwas freigegeben ist oder
+  laeuft (MP-MACH-016).
+- Hinweis: Personalbedarf (Personal/Schicht) und Linienbesetzung gelten weiterhin je Ressource,
+  nicht je Parallelplatz.
+- Test: tests/e2e_parallel.mjs.
+
+MASCHINENPLANUNG V12.8.0 - RELEASE NOTES
+========================================
+Datum: 05.10.2026 · Basis: V12.7.6 · Update mit UPDATE_LIVE.ps1, Daten bleiben erhalten
+
+FORMATPLANUNG TIEFZIEHEN (neue Ansicht "Formate")
+- Mehrere Tiefzieh-Auftraege auf einem Format: offene Auftraege "Auf Format" setzen (FS, Menge,
+  Projekt werden uebernommen) oder Werkzeuge frei anlegen (WKZ-Nr., L×B×H, Nutzen, Menge).
+- Grundformate (Plattengroessen) pflegt die Abteilungsleitung; je Format frei aenderbar
+  ("Individuell"). Werkzeugmasse werden aus frueheren Formaten mit derselben WKZ-Nr. uebernommen.
+- Takte gehoeren an die Maschine (Liste je Maschine, z. B. "Standard", "duenn"); am Format wird
+  der Takt gewaehlt. Optional max. Formatgroesse und Ziehtiefe je Maschine.
+- Draufsicht mit empfohlenem Layout (Rand 100 mm, Abstand ½ Werkzeughoehe), Werkzeuge per Maus/
+  Finger verschieben, Doppelklick dreht. Warnungen bei Ueberlappung, Rand, Ueberproduktion.
+- "In Wochenplan einplanen": die uebernommenen geplanten FS werden durch einen Format-Auftrag
+  ersetzt (Laufzeit = Takte × Takt). Aenderungen am Format aktualisieren den geplanten Auftrag.
+- "Einlagern" mit Lagerort (Vorschlagsliste bekannter Orte), "Auslagern & verwenden", Kopie als
+  Vorlage. Suche nach WKZ- oder FS-Nummer zeigt "X hat das Format hier abgelegt".
+- Rechte: Abteilungsleitung/Stellvertretung nur eigener Bereich (Formate + Grundformate + Takte),
+  Arbeitsvorbereitung Formate, GF/PM/Vertrieb/Lesende nur lesen – serverseitig geprueft.
+- Fehlerbehebung: Das Einlesen ergaenzte Takt-/Formatfelder an allen Maschinen; dadurch lehnte der
+  Server Speichervorgaenge von Abteilungsleitungen ab ("Maschine gehoert nicht zum eigenen
+  Bereich"). Die Felder werden jetzt nur gefuehrt, wenn sie gesetzt sind.
+- Bekannte Grenze: Ein Format mit Positionen aus mehreren Projekten bekommt am Format-Auftrag
+  keine Projektverknuepfung (nur wenn alle Positionen aus einem Projekt stammen).
+- Neue Fehlercodes MP-FMT-001 bis MP-FMT-026, MP-MACH-014 (siehe FEHLERCODES.txt).
+- Test: tests/e2e_formats.mjs (Browser gegen echten Server, 4 Rollen).
+
+MASCHINENPLANUNG V12.7.6 - RELEASE NOTES
+========================================
+Datum: 05.10.2026 · Basis: V12.7.5 · Update mit UPDATE_LIVE.ps1, Daten bleiben erhalten
+
+PRODUKTIONSSTART/-ENDE MIT ZEITERFASSUNG
+- Auftragsliste: Der Knopf ▶ oeffnet ein Popup "Produktion starten" mit Tag und Uhrzeit des
+  tatsaechlichen Starts (vorbelegt mit jetzt). Bei geplanten Auftraegen wird automatisch erst
+  freigegeben und danach gestartet ("Nur freigeben" bleibt als Knopf im Popup). Das Popup zeigt
+  Sollzeit + Umruesten + Pausen/Feierabend und das voraussichtliche Ende.
+- Derselbe Platz zeigt danach ✓: Popup "wann ist er fertig geworden?" mit Rechnung
+  Kalenderzeit − Pausen/Feierabend/freie Tage − gemeldete Produktionspausen = reale Arbeitszeit,
+  − Umruesten = reine Produktionszeit, Vergleich mit dem Soll. Die Werte werden in der Historie
+  gespeichert (actualWorkHours, actualSetupMinutes, actualProductionHours).
+- Wochenplan: laufende Auftraege als "In Produktion (seit …)", fertige als "Abgeschlossen" mit
+  realer Arbeitszeit.
+- Fehlerbehebung MP-PERS-033 ("Freigabe … ist personell unterdeckt (0/1)"): Die Server-Pruefung
+  zaehlt jetzt wie die Oberflaeche auch die Stammmaschine (ohne ausdrueckliche Tageseinteilung),
+  KW-Einsaetze in anderen Bereichen und Leiharbeiter-Zeitraeume. Vorher plante die Oberflaeche
+  mit der Stammbesetzung, der Server lehnte die Freigabe aber ab.
+- Neue Fehlercodes MP-PROD-033 bis MP-PROD-035 (siehe FEHLERCODES.txt).
 
 MASCHINENPLANUNG V12.7.5 - RELEASE NOTES
 ========================================
-Datum: 25.09.2026 · Basis: V12.7.4 · Oberflaeche (siehe docs/UI_AUDIT_PLAN.md)
+Datum: 25.09.2026 · Basis: V12.7.4 · Oberflaeche
 
 BEDIENUNG & DIALOGE
 - Alle Dialoge schliessen mit Escape; die Tab-Taste bleibt im offenen Dialog, danach springt der

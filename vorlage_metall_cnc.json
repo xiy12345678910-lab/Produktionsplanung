@@ -1,0 +1,258 @@
+{
+ "id": "metall_cnc",
+ "name": "Metallbearbeitung / CNC",
+ "description": "Zuschnitt, Fräsen, Drehen, Schweißen, Oberfläche, Montage",
+ "departments": [
+  {
+   "id": "zuschnitt",
+   "name": "Zuschnitt",
+   "planningType": "MACHINE",
+   "sharedOperators": true
+  },
+  {
+   "id": "fraesen",
+   "name": "CNC-Fräsen",
+   "planningType": "MACHINE",
+   "sharedOperators": true
+  },
+  {
+   "id": "drehen",
+   "name": "Drehen",
+   "planningType": "MACHINE",
+   "sharedOperators": true
+  },
+  {
+   "id": "schweissen",
+   "name": "Schweißen",
+   "planningType": "LABOR_HOURS"
+  },
+  {
+   "id": "oberflaeche",
+   "name": "Oberfläche",
+   "planningType": "PROCESS"
+  },
+  {
+   "id": "montage",
+   "name": "Montage",
+   "planningType": "LABOR_HOURS"
+  }
+ ],
+ "machines": [
+  {
+   "id": "zs1",
+   "name": "Säge 1",
+   "departmentId": "zuschnitt"
+  },
+  {
+   "id": "fr1",
+   "name": "Fräse 1",
+   "departmentId": "fraesen"
+  },
+  {
+   "id": "fr2",
+   "name": "Fräse 2",
+   "departmentId": "fraesen"
+  },
+  {
+   "id": "dr1",
+   "name": "Drehmaschine 1",
+   "departmentId": "drehen"
+  }
+ ],
+ "shiftTemplates": {
+  "single": {
+   "name": "1-Schicht Mo–Do",
+   "start": "06:30",
+   "end": "16:00",
+   "breaks": [
+    {
+     "start": "09:00",
+     "end": "09:15"
+    },
+    {
+     "start": "12:00",
+     "end": "12:30"
+    }
+   ]
+  },
+  "fridaySingle": {
+   "name": "1-Schicht Freitag",
+   "start": "06:30",
+   "end": "11:45",
+   "breaks": [
+    {
+     "start": "09:00",
+     "end": "09:15"
+    },
+    {
+     "start": "",
+     "end": ""
+    }
+   ]
+  },
+  "early": {
+   "name": "2-Schicht · Früh",
+   "start": "06:00",
+   "end": "14:30",
+   "breaks": [
+    {
+     "start": "09:00",
+     "end": "09:15"
+    },
+    {
+     "start": "12:00",
+     "end": "12:15"
+    }
+   ]
+  },
+  "late": {
+   "name": "2-Schicht · Spät",
+   "start": "14:30",
+   "end": "22:30",
+   "breaks": [
+    {
+     "start": "17:00",
+     "end": "17:15"
+    },
+    {
+     "start": "19:00",
+     "end": "19:15"
+    }
+   ]
+  }
+ },
+ "processTemplates": [
+  {
+   "id": "tpl_pm_repeat",
+   "kind": "pm",
+   "name": "Wiederholteil",
+   "steps": [
+    {
+     "areaId": "calculation",
+     "title": "Preis / Kalkulation prüfen",
+     "offsetDays": 0,
+     "durationDays": 2
+    },
+    {
+     "areaId": "pm",
+     "title": "Angebot erstellen",
+     "offsetDays": 2,
+     "durationDays": 1
+    }
+   ]
+  },
+  {
+   "id": "tpl_pm_new",
+   "kind": "pm",
+   "name": "Neuteil",
+   "steps": [
+    {
+     "areaId": "engineering",
+     "title": "Machbarkeit prüfen",
+     "offsetDays": 0,
+     "durationDays": 3
+    },
+    {
+     "areaId": "purchasing",
+     "title": "Material / Zukauf anfragen",
+     "offsetDays": 0,
+     "durationDays": 5
+    },
+    {
+     "areaId": "calculation",
+     "title": "Kalkulation",
+     "offsetDays": 3,
+     "durationDays": 3
+    },
+    {
+     "areaId": "pm",
+     "title": "Angebot erstellen",
+     "offsetDays": 6,
+     "durationDays": 1
+    }
+   ]
+  },
+  {
+   "id": "tpl_pm_dev",
+   "kind": "pm",
+   "name": "Entwicklung / Muster",
+   "steps": [
+    {
+     "areaId": "engineering",
+     "title": "Konstruktion / Entwicklung",
+     "offsetDays": 0,
+     "durationDays": 10
+    },
+    {
+     "areaId": "fraesen",
+     "title": "Muster Fräsen",
+     "offsetDays": 10,
+     "durationDays": 5
+    },
+    {
+     "areaId": "montage",
+     "title": "Muster Montage",
+     "offsetDays": 15,
+     "durationDays": 3
+    },
+    {
+     "areaId": "calculation",
+     "title": "Kalkulation",
+     "offsetDays": 10,
+     "durationDays": 5
+    },
+    {
+     "areaId": "sales",
+     "title": "Kundenfreigabe Muster einholen",
+     "offsetDays": 18,
+     "durationDays": 7
+    },
+    {
+     "areaId": "pm",
+     "title": "Angebot erstellen",
+     "offsetDays": 25,
+     "durationDays": 2
+    }
+   ]
+  }
+ ],
+ "projectAreas": [
+  {
+   "id": "sales",
+   "name": "Vertrieb"
+  },
+  {
+   "id": "pm",
+   "name": "Projektmanagement"
+  },
+  {
+   "id": "engineering",
+   "name": "Konstruktion / Entwicklung"
+  },
+  {
+   "id": "calculation",
+   "name": "Kalkulation"
+  },
+  {
+   "id": "purchasing",
+   "name": "Einkauf"
+  },
+  {
+   "id": "quality",
+   "name": "Qualitätssicherung"
+  },
+  {
+   "id": "av",
+   "name": "Arbeitsvorbereitung"
+  }
+ ],
+ "modules": {
+  "projects": true,
+  "formats": false,
+  "personnel": true,
+  "chat": true,
+  "notifications": true,
+  "postcalc": true,
+  "kpi": true
+ }
+}

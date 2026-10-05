@@ -1,0 +1,13 @@
+{
+  "name": "produktionsplanung-tests",
+  "private": true,
+  "description": "Nur Testwerkzeuge (Playwright). Produktivcode bleibt ohne npm-Abhaengigkeiten.",
+  "type": "module",
+  "scripts": {
+    "test:ui": "node tests/ui_smoke.mjs",
+    "test:e2e": "for f in tests/e2e_*.mjs; do node \"$f\" || exit 1; done"
+  },
+  "devDependencies": {
+    "playwright": "1.56.1"
+  }
+}

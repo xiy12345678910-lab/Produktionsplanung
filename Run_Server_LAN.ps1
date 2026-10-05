@@ -13,9 +13,8 @@ $Log = Join-Path $LogDir ('server_' + (Get-Date -Format 'yyyy-MM-dd') + '.log')
 function Write-Log([string]$Text) {
     Add-Content -LiteralPath $Log -Value ("{0} {1}" -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $Text) -Encoding UTF8
 }
-# Info-Dateien mit Wiederholung schreiben: Virenscanner/Indexer (z. B. direkt nach dem Setzen der
-# Ordnerrechte beim Update) oder ein offenes Programm halten sie manchmal Sekunden lang fest.
-# Das ist kein Grund, den Server nicht zu starten.
+# Info-Dateien mit Wiederholung und atomar schreiben: Virenscanner/Indexer (z. B. direkt nach dem Setzen der
+# Ordnerrechte beim Update) halten sie manchmal Sekunden lang fest. Das ist kein Grund, den Server nicht zu starten.
 function Write-InfoFile([string]$Path, [string[]]$Lines) {
     for ($i = 1; $i -le 20; $i++) {
         try {
@@ -73,6 +72,8 @@ try {
         profile               = $lan.Profile
         updated_at            = (Get-Date).ToString('o')
     }
+    # V12.15.0: manuell eingetragenes UpdateRepo ("konto/repo") bleibt beim Neuschreiben erhalten.
+    try { $oldRepo = [string](Read-MPConfig $Base).UpdateRepo; if ($oldRepo) { $config['UpdateRepo'] = $oldRepo } } catch { }
     Write-InfoFile "$Base\LAN_CONFIG.json" @($config | ConvertTo-Json) | Out-Null
     Write-InfoFile "$Base\LAN_ADRESSEN.txt" @(
         "PC-Name: http://$env:COMPUTERNAME`:$Port",

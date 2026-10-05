@@ -14,6 +14,8 @@ import ipaddress
 import os
 import re
 import secrets
+import shutil
+import socket
 import sqlite3
 import sys
 import threading
@@ -25,25 +27,754 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-APP_VERSION = "12.7.6"
+APP_VERSION = "12.17.1"
 HOST = os.environ.get("MP_HOST", "0.0.0.0")
 PORT = int(os.environ.get("MP_PORT", "8765"))
 BASE = Path(__file__).resolve().parent
 if str(BASE) not in sys.path:
     # Anhängen statt voranstellen: Standardbibliothek hat immer Vorrang vor Dateien im Programmordner.
     sys.path.append(str(BASE))
-from release_gates import validate_release_feasibility
+from release_gates import machine_lanes, validate_release_feasibility
 
 DATA_DIR = BASE / "data"
 DB_PATH = DATA_DIR / "maschinenplanung.sqlite3"
 INDEX_PATH = BASE / "index.html"
+
+
+# ---------------------------------------------------------------------------------------------
+# V12.14.0: Firmenkonfiguration config/firma.json (+ Logo) AUSSERHALB des Programmpakets.
+# Updates (UPDATE_LIVE.ps1) kopieren nur $MP_AppFiles und fassen config\ nie an.
+# Nur Standardbibliothek. Ungültige Datei = Start verweigert (MP-CFG-001/002), nichts wird überschrieben.
+# ---------------------------------------------------------------------------------------------
+CONFIG_DIR = Path(os.environ.get("MP_CONFIG_DIR") or (BASE / "config"))
+CONFIG_PATH = CONFIG_DIR / "firma.json"
+CONFIG_SCHEMA = 1
+CONFIG_KEEP_BAK = 20
+CONFIG_LOGO_MAX = 420 * 1024
+CONFIG_LOCK = threading.RLock()
+CONFIG_MODULES = ("projects", "formats", "personnel", "chat", "notifications", "postcalc", "kpi")
+CONFIG_TEMPLATES = {"werbetechnik", "neutral", "metall_cnc", "leer", "demo"}
+CONFIG_HEX = re.compile(r"^#[0-9a-fA-F]{6}$")
+CONFIG_TENANT = re.compile(r"^[a-z0-9-]{3,32}$")
+CONFIG_PROJECT_AREAS = [
+    {"id": "sales", "name": "Vertrieb"}, {"id": "pm", "name": "Projektmanagement"},
+    {"id": "engineering", "name": "Konstruktion / Entwicklung"}, {"id": "calculation", "name": "Kalkulation"},
+    {"id": "purchasing", "name": "Einkauf"}, {"id": "quality", "name": "Qualitätssicherung"},
+    {"id": "av", "name": "Arbeitsvorbereitung"},
+]
+
+
+class ConfigError(Exception):
+    def __init__(self, code: str, message: str):
+        super().__init__(message)
+        self.code = code
+        self.message = message
+
+
+def config_defaults() -> dict:
+    """Neutrale Grundwerte (neue Installation, fehlende Felder)."""
+    return {
+        "schemaVersion": CONFIG_SCHEMA,
+        "tenantId": "firma",
+        "company": {"name": "", "productName": "Produktionsplanung", "logoFile": "", "color": "#1f5eff",
+                    "uiAccent": "#1f5eff", "font": "Arial", "address": "", "footer": ""},
+        "locale": {"language": "de", "timezone": "Europe/Berlin", "holidayRegion": ""},
+        "terms": {"projectNumber": "Projekt", "orderNumber": "Auftrag", "roleLabels": {}},
+        "template": "neutral",
+        "modules": {k: True for k in CONFIG_MODULES},
+        "projectAreas": [dict(a) for a in CONFIG_PROJECT_AREAS],
+        "license": {"file": "lizenz.key"},
+        "update": {"channel": "stable", "source": ""},
+        "setupDone": True,
+    }
+
+
+# V12.15.0: Die bisher fest eingebauten Werte des Bestandskunden stehen NICHT mehr im Programmpaket.
+# Für die Erstmigration (Bestand ohne firma.json) werden sie, falls vorhanden, aus tools/legacy_employer_seed.json
+# gelesen (Entwickler-Repo, nicht in $MP_AppFiles). Ohne Datei bleibt es bei data.ci + neutralen Werten.
+LEGACY_SEED_PATH = Path(os.environ.get("MP_LEGACY_SEED") or (BASE / "tools" / "legacy_employer_seed.json"))
+
+
+def legacy_seed() -> dict:
+    try:
+        d = json.loads(LEGACY_SEED_PATH.read_text(encoding="utf-8-sig"))
+        return d if isinstance(d, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def _merge_missing(cur, default):
+    """Ergänzt nur fehlende Schlüssel; vorhandene Werte und unbekannte Felder bleiben."""
+    if not isinstance(cur, dict) or not isinstance(default, dict):
+        return cur
+    out = dict(cur)
+    for k, v in default.items():
+        out[k] = _merge_missing(out[k], v) if k in out else json.loads(json.dumps(v))
+    return out
+
+
+def validate_config(cfg) -> list[str]:
+    """Liefert Fehler als 'feld: grund'. Unbekannte Felder werden toleriert."""
+    errs: list[str] = []
+    if not isinstance(cfg, dict):
+        return ["(Datei): Objekt erwartet"]
+
+    def sec(name):
+        v = cfg.get(name)
+        if v is None:
+            return {}
+        if not isinstance(v, dict):
+            errs.append(f"{name}: Objekt erwartet")
+            return {}
+        return v
+
+    def text(sect, d, key, mx):
+        v = d.get(key)
+        if v is not None and (not isinstance(v, str) or len(v) > mx):
+            errs.append(f"{sect}.{key}: Text bis {mx} Zeichen erwartet")
+
+    sv = cfg.get("schemaVersion")
+    if sv is not None and (not isinstance(sv, int) or isinstance(sv, bool) or sv < 1):
+        errs.append("schemaVersion: ganze Zahl >= 1 erwartet")
+    rv = cfg.get("revision")
+    if rv is not None and (not isinstance(rv, int) or isinstance(rv, bool) or rv < 0):
+        errs.append("revision: ganze Zahl >= 0 erwartet")
+    t = cfg.get("tenantId")
+    if t is not None and not (isinstance(t, str) and CONFIG_TENANT.match(t)):
+        errs.append("tenantId: [a-z0-9-], 3-32 Zeichen")
+    tp = cfg.get("template")
+    if tp is not None and tp not in CONFIG_TEMPLATES:
+        errs.append("template: unbekannte Vorlage")
+    c = sec("company")
+    for k in ("name", "productName", "font", "address", "footer"):
+        text("company", c, k, 600 if k in ("address", "footer") else 120)
+    for k in ("color", "uiAccent"):
+        if c.get(k) is not None and not (isinstance(c[k], str) and CONFIG_HEX.match(c[k])):
+            errs.append(f"company.{k}: Hex-Farbe #RRGGBB erwartet")
+    lf = c.get("logoFile")
+    if lf not in (None, ""):
+        if not (isinstance(lf, str) and re.match(r"^[A-Za-z0-9_.-]+\.(png|jpe?g|svg)$", lf)):
+            errs.append("company.logoFile: Dateiname .png/.jpg/.svg im config-Ordner erwartet")
+        else:
+            p = CONFIG_DIR / lf
+            if not p.is_file():
+                errs.append(f"company.logoFile: Datei {lf} fehlt")
+            elif p.stat().st_size > CONFIG_LOGO_MAX:
+                errs.append(f"company.logoFile: Datei größer als {CONFIG_LOGO_MAX // 1024} KB")
+            elif lf.lower().endswith(".svg"):
+                try:
+                    svg_sanitize(p.read_bytes())
+                except ValueError as e:
+                    errs.append(f"company.logoFile: SVG nicht zulässig ({e})")
+    lo = sec("locale")
+    if lo.get("language") is not None and lo["language"] not in ("de", "en"):
+        errs.append("locale.language: de oder en")
+    text("locale", lo, "timezone", 64)
+    text("locale", lo, "holidayRegion", 16)
+    te = sec("terms")
+    text("terms", te, "projectNumber", 30)
+    text("terms", te, "orderNumber", 30)
+    if te.get("roleLabels") is not None and not isinstance(te["roleLabels"], dict):
+        errs.append("terms.roleLabels: Objekt erwartet")
+    elif isinstance(te.get("roleLabels"), dict) and any(
+            k not in ROLES or not isinstance(v, str) or len(v) > 40 for k, v in te["roleLabels"].items()):
+        errs.append("terms.roleLabels: Rollen-ID und Text bis 40 Zeichen erwartet")
+    m = sec("modules")
+    for k, v in m.items():
+        if k in CONFIG_MODULES and not isinstance(v, bool):
+            errs.append(f"modules.{k}: true/false erwartet")
+    pa = cfg.get("projectAreas")
+    if pa is not None:
+        ok = isinstance(pa, list) and pa and all(
+            isinstance(a, dict) and isinstance(a.get("id"), str) and re.match(r"^[a-z0-9_-]{1,30}$", a["id"])
+            and isinstance(a.get("name"), str) and 0 < len(a["name"]) <= 60 for a in pa)
+        if not ok or len({a["id"] for a in pa}) != len(pa):
+            errs.append("projectAreas: Liste aus {id, name} (eindeutige id) erwartet")
+    if cfg.get("setupDone") is not None and not isinstance(cfg["setupDone"], bool):
+        errs.append("setupDone: true/false erwartet")
+    sec("license")
+    u = sec("update")
+    text("update", u, "channel", 20)
+    text("update", u, "source", 300)
+    return errs
+
+
+def config_last_bak() -> str:
+    baks = sorted(CONFIG_DIR.glob("firma.json.bak-*"), key=lambda p: p.name, reverse=True)
+    for p in baks:
+        try:
+            if not validate_config(json.loads(p.read_text(encoding="utf-8-sig"))):
+                return str(p)
+        except (OSError, ValueError):
+            continue
+    return ""
+
+
+def _config_fail(code: str, detail: str) -> ConfigError:
+    bak = config_last_bak()
+    msg = f"{code} {CONFIG_PATH}: {detail}" + (f" · letzte gültige Sicherung: {bak}" if bak else "")
+    return ConfigError(code, msg)
+
+
+def read_config_file() -> dict:
+    try:
+        cfg = json.loads(CONFIG_PATH.read_text(encoding="utf-8-sig"))
+    except (OSError, ValueError) as e:
+        raise _config_fail("MP-CFG-001", f"nicht lesbar oder kein JSON ({e.__class__.__name__})")
+    errs = validate_config(cfg)
+    if errs:
+        raise _config_fail("MP-CFG-002", "; ".join(errs[:5]))
+    return cfg
+
+
+def _atomic_write(path: Path, data: bytes) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_bytes(data)
+    os.replace(tmp, path)
+
+
+def save_config(cfg: dict) -> None:
+    """Validiert, sichert die bisherige Datei als .bak (nur bei geänderter Datei, letzte 20) und schreibt atomar."""
+    errs = validate_config(cfg)
+    if errs:
+        raise ConfigError("MP-CFG-002", f"{CONFIG_PATH}: " + "; ".join(errs[:5]))
+    if int(cfg.get("schemaVersion", CONFIG_SCHEMA)) > CONFIG_SCHEMA:
+        raise ConfigError("MP-CFG-003", "schemaVersion neuer als dieses Programm: nicht geschrieben")
+    data = (json.dumps(cfg, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
+    with CONFIG_LOCK:
+        if CONFIG_PATH.exists():
+            if CONFIG_PATH.read_bytes() == data:
+                return
+            stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+            bak = CONFIG_DIR / f"firma.json.bak-{stamp}"
+            n = 1
+            while bak.exists():
+                n += 1
+                bak = CONFIG_DIR / f"firma.json.bak-{stamp}-{n}"
+            shutil.copy2(CONFIG_PATH, bak)
+            for old in sorted(CONFIG_DIR.glob("firma.json.bak-*"), key=lambda p: p.name, reverse=True)[CONFIG_KEEP_BAK:]:
+                old.unlink(missing_ok=True)
+        _atomic_write(CONFIG_PATH, data)
+
+
+def _legacy_logo(ci: dict, seed: dict) -> tuple[str, bytes]:
+    """Logo des Bestands: data.ci.logo, sonst das der Legacy-Seed-Datei. ('', b'') wenn keins/zu groß."""
+    cands = []
+    if isinstance(ci, dict) and isinstance(ci.get("logo"), str):
+        cands.append(ci["logo"])
+    if isinstance(seed.get("logoDataUrl"), str):
+        cands.append(seed["logoDataUrl"])
+    for s in cands:
+        m = re.match(r"^data:image/(png|jpeg);base64,(.+)$", s, re.S)
+        if not m:
+            continue
+        try:
+            raw = base64.b64decode(m.group(2), validate=True)
+        except ValueError:
+            continue
+        if 0 < len(raw) <= CONFIG_LOGO_MAX:
+            return ("logo.png" if m.group(1) == "png" else "logo.jpg"), raw
+    return "", b""
+
+
+def _existing_state() -> dict | None:
+    """Liest (read-only) den Datenstand. None = keine Bestandsdatenbank (Revision <= 1 oder keine)."""
+    if not DB_PATH.exists():
+        return None
+    try:
+        con = sqlite3.connect(f"file:{DB_PATH.as_posix()}?mode=ro", uri=True)
+        try:
+            row = con.execute("SELECT revision,json FROM state WHERE id=1").fetchone()
+        finally:
+            con.close()
+        if not row or int(row[0]) <= 1:
+            return None
+        st = json.loads(row[1])
+        return st if isinstance(st, dict) else {}
+    except (sqlite3.Error, ValueError, TypeError):
+        return None
+
+
+def install_is_fresh() -> bool:
+    """V12.17.0: Neuinstallation = keine Datenbank oder Revision <= 1 ohne jede Planungsdaten. Nur dann startet der
+    Einrichtungsassistent (setupDone=false). Bestand (Revision > 1 oder vorhandene Daten) gilt immer als eingerichtet."""
+    if not DB_PATH.exists():
+        return True
+    try:
+        con = sqlite3.connect(f"file:{DB_PATH.as_posix()}?mode=ro", uri=True)
+        try:
+            row = con.execute("SELECT revision,json FROM state WHERE id=1").fetchone()
+        finally:
+            con.close()
+        if not row:
+            return True
+        if int(row[0]) > 1:
+            return False
+        st = json.loads(row[1])
+        if not isinstance(st, dict):
+            return False
+        return not any(st.get(k) for k in ("departments", "machines", "workSteps", "projects", "employees", "history", "exceptions"))
+    except (sqlite3.Error, ValueError, TypeError):
+        return False
+
+
+NEUTRAL_HINT = ("Vor dem Update 'Firma_Einrichten.ps1 -Vorlage <datei>' ausfuehren (Vorlage vom Entwickler) "
+                "oder bewusst neutral starten mit 'Firma_Einrichten.ps1 -Neutral'.")
+
+
+def _legacy_bestand_without_identity() -> bool:
+    """True: Bestand (Revision > 1) ohne firma.json, ohne Firmenname/Logo in data.ci und ohne Vorlage -> Start wäre still neutral."""
+    if CONFIG_PATH.exists():
+        return False
+    st = _existing_state()
+    if st is None:
+        return False
+    ci = st.get("ci") if isinstance(st.get("ci"), dict) else {}
+    seed = legacy_seed()
+    sco = seed.get("company") if isinstance(seed.get("company"), dict) else {}
+    has_name = (isinstance(ci.get("company"), str) and bool(ci["company"].strip())) or bool(sco.get("name"))
+    has_logo = bool(_legacy_logo(ci, seed)[0])
+    return not (has_name or has_logo)
+
+
+def check_firma_config_start() -> None:
+    """V12.15.1: Ein Bestand darf nie still neutral starten (Name/Logo weg). Harter Stopp mit MP-CFG-006."""
+    if _legacy_bestand_without_identity():
+        raise ConfigError("MP-CFG-006", f"MP-CFG-006 Bestandsdatenbank ohne config\\firma.json und ohne Firmenname/Logo in den Daten. "
+                                        f"Start gestoppt, damit Name und Logo nicht still verloren gehen. {NEUTRAL_HINT}")
+
+
+def migrate_firma_config(seed: dict | None = None, neutral_ok: bool = False) -> dict:
+    """Fehlt die Datei: aus data.ci (+ optionaler Legacy-Seed-Datei) bzw. neutral anlegen. Idempotent.
+    Bestand ohne Firmenname/Logo: MP-CFG-006 (außer neutral_ok). Neuinstallation (Revision <= 1) bleibt neutral."""
+    cfg = config_defaults()
+    st = _existing_state()
+    by_template = seed is not None
+    if by_template and st is None:
+        st = {}          # Einrichtung per Vorlage (Firma_Einrichten): wie ein Bestand behandeln
+    if st is not None:
+        ci = st.get("ci") if isinstance(st.get("ci"), dict) else {}
+        seed = legacy_seed() if seed is None else seed
+        if seed:
+            cfg = _merge_missing({k: v for k, v in seed.items() if k not in ("logoDataUrl", "_hinweis")}, cfg)
+        co = cfg["company"]
+        for k in ("address", "footer", "font"):
+            if isinstance(ci.get(k), str) and ci[k]:
+                co[k] = ci[k][:600 if k != "font" else 60]
+        if isinstance(ci.get("company"), str) and ci["company"].strip():
+            co["name"] = ci["company"].strip()[:120]
+        if isinstance(ci.get("color"), str) and CONFIG_HEX.match(ci["color"]):
+            co["color"] = ci["color"]
+        name, raw = _legacy_logo(ci, seed)
+        if not name and isinstance(co.get("logoFile"), str) and co["logoFile"]:
+            co["logoFile"] = ""    # Verweis der Vorlage ohne Datei nicht übernehmen
+        if not co.get("name") and not name and not neutral_ok:
+            raise ConfigError("MP-CFG-006", f"MP-CFG-006 Bestandsdatenbank ohne Firmenname/Logo. {NEUTRAL_HINT}")
+        if name:
+            _atomic_write(CONFIG_DIR / name, raw)
+            co["logoFile"] = name
+        acc = (st.get("ui") or {}).get("accent") if isinstance(st.get("ui"), dict) else None
+        if isinstance(acc, str) and CONFIG_HEX.match(acc):
+            co["uiAccent"] = acc
+    # Per Vorlage ohne Datenbank: Akzent aus data.ui.accent beim ersten Serverstart nachziehen.
+    cfg["uiAccentSynced"] = not (by_template and not _existing_state())
+    cfg["ciSynced"] = True
+    # V12.17.0: nur eine echte Neuinstallation ohne Vorlage/Daten bekommt den Einrichtungsassistenten.
+    if st is None and not by_template and install_is_fresh():
+        cfg["setupDone"] = False
+    save_config(cfg)
+    return cfg
+
+
+def setup_firma_from_template(arg: str) -> int:
+    """V12.15.1: 'server.py --firma-einrichten <vorlage.json|neutral>' schreibt config\\firma.json (nur wenn sie fehlt)."""
+    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    if CONFIG_PATH.exists():
+        print(f"{CONFIG_PATH} existiert bereits - nichts geaendert.", file=sys.stderr)
+        return 4
+    if arg.lower() == "neutral":
+        migrate_firma_config(seed={}, neutral_ok=True)
+        print(f"Neutrale Firmenkonfiguration angelegt: {CONFIG_PATH}")
+        return 0
+    try:
+        seed = json.loads(Path(arg).read_text(encoding="utf-8-sig"))
+        if not isinstance(seed, dict):
+            raise ValueError("kein JSON-Objekt")
+    except (OSError, ValueError) as e:
+        print(f"FEHLER: Vorlage nicht lesbar: {e}", file=sys.stderr)
+        return 2
+    try:
+        cfg = migrate_firma_config(seed=seed)
+    except ConfigError as e:
+        print(f"FEHLER: {e.message}", file=sys.stderr)
+        return 3
+    print(f"Firmenkonfiguration angelegt: {CONFIG_PATH} ({cfg['company'].get('name') or 'ohne Name'})")
+    return 0
+
+
+def _fill_company_from_ci(cfg: dict) -> None:
+    """Nur wenn die Config noch keinen Firmennamen und kein Logo hat: Name/Logo/Adresse/Fuß/Schrift/Farbe aus data.ci
+    übernehmen (ergänzt leere Felder, ändert nie vorhandene). Idempotent über das Kennzeichen ciSynced."""
+    co = cfg.setdefault("company", {})
+    if co.get("name") or co.get("logoFile"):
+        return
+    st = _existing_state()
+    ci = st.get("ci") if isinstance(st, dict) and isinstance(st.get("ci"), dict) else None
+    if not ci:
+        return
+    dflt = config_defaults()["company"]
+    name = ci["company"].strip()[:120] if isinstance(ci.get("company"), str) else ""
+    lname, raw = _legacy_logo(ci, {})
+    if not name and not lname:
+        return
+    if name:
+        co["name"] = name
+    for k, mx in (("address", 600), ("footer", 600), ("font", 60)):
+        if isinstance(ci.get(k), str) and ci[k] and co.get(k, dflt[k]) in ("", dflt[k]):
+            co[k] = ci[k][:mx]
+    if isinstance(ci.get("color"), str) and CONFIG_HEX.match(ci["color"]) and co.get("color", dflt["color"]) == dflt["color"]:
+        co["color"] = ci["color"]
+    if lname:
+        _atomic_write(CONFIG_DIR / lname, raw)
+        co["logoFile"] = lname
+
+
+CURRENT_CFG: dict | None = None
+
+
+def load_config() -> tuple[dict, list[str]]:
+    """Start-Prüfung. Liefert (Konfiguration, Warnungen). Wirft ConfigError (MP-CFG-001/002) bei ungültiger Datei."""
+    global CURRENT_CFG
+    warnings: list[str] = []
+    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    if not CONFIG_PATH.exists():
+        CURRENT_CFG = migrate_firma_config()
+        return CURRENT_CFG, warnings
+    cfg = read_config_file()
+    if int(cfg.get("schemaVersion", 1)) > CONFIG_SCHEMA:
+        warnings.append(f"MP-CFG-003 {CONFIG_PATH}: schemaVersion {cfg['schemaVersion']} ist neuer als bekannt "
+                        f"({CONFIG_SCHEMA}); Datei wird nur gelesen, nicht geändert.")
+        CURRENT_CFG = cfg
+        return cfg, warnings
+    merged = _merge_missing(cfg, config_defaults())
+    merged["schemaVersion"] = max(int(cfg.get("schemaVersion", 1)), CONFIG_SCHEMA)
+    # V12.15.0: UI-Akzent wandert einmalig aus dem Datenstand (data.ui.accent) in die Config, damit die Anzeige gleich bleibt.
+    if not merged.get("uiAccentSynced"):
+        st = _existing_state()
+        acc = ((st or {}).get("ui") or {}).get("accent") if st else None
+        if isinstance(acc, str) and CONFIG_HEX.match(acc):
+            merged["company"]["uiAccent"] = acc
+        merged["uiAccentSynced"] = True
+    # V12.15.1: Bestand aus V12.14.x (Config neutral, Firmen-CI nur in data.ci) behält Name/Logo: einmalig leere Felder füllen.
+    if not merged.get("ciSynced"):
+        _fill_company_from_ci(merged)
+        merged["ciSynced"] = True
+    if merged != cfg:
+        save_config(merged)
+    CURRENT_CFG = merged
+    return merged, warnings
+
+
+# ---------------------------------------------------------------------------------------------
+# V12.15.0: Config-API (GET alle angemeldeten Rollen, Schreiben nur Admin), Logo-Ablage, SVG-Entschärfung.
+# ---------------------------------------------------------------------------------------------
+CONFIG_WRITE_SECTIONS = {
+    "company": ("name", "productName", "color", "uiAccent", "font", "address", "footer", "logoFile"),
+    "locale": ("language", "timezone", "holidayRegion"),
+    "terms": ("projectNumber", "orderNumber", "roleLabels"),
+    "modules": CONFIG_MODULES,
+}
+LOGO_TYPES = {"image/png": "png", "image/jpeg": "jpg", "image/svg+xml": "svg"}
+LOGO_MIME = {"png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg", "svg": "image/svg+xml"}
+SVG_NS = "http://www.w3.org/2000/svg"
+XLINK_NS = "http://www.w3.org/1999/xlink"
+SVG_TAGS = {
+    "svg", "g", "defs", "path", "rect", "circle", "ellipse", "line", "polyline", "polygon", "text", "tspan",
+    "lineargradient", "radialgradient", "stop", "clippath", "mask", "symbol", "use", "title", "desc", "style",
+}
+SVG_BAD_VALUE = re.compile(r"javascript:|data:|vbscript:|@import|expression\s*\(|behaviou?r\s*:|-moz-binding|<|&#", re.I)
+SVG_URL = re.compile(r"url\s*\(\s*['\"]?\s*([^)'\"\s]*)", re.I)
+
+
+def _svg_value_ok(v: str) -> bool:
+    if SVG_BAD_VALUE.search(v):
+        return False
+    return all(m.startswith("#") for m in SVG_URL.findall(v))
+
+
+def svg_sanitize(raw: bytes) -> bytes:
+    """Prüft und entschärft ein SVG streng nach Positivliste. Wirft ValueError(grund) bei allem Unklaren
+    (Script, foreignObject, image, a, Animation, externe Verweise, Event-Handler, DOCTYPE/ENTITY ...)."""
+    if len(raw) > CONFIG_LOGO_MAX:
+        raise ValueError("zu groß")
+    try:
+        text = raw.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        raise ValueError("kein UTF-8")
+    if re.search(r"<!\s*(DOCTYPE|ENTITY)", text, re.I):
+        raise ValueError("DOCTYPE/ENTITY nicht erlaubt")
+    import xml.etree.ElementTree as ET
+    try:
+        root = ET.fromstring(text)
+    except ET.ParseError:
+        raise ValueError("kein gültiges XML")
+    if root.tag != f"{{{SVG_NS}}}svg":
+        raise ValueError("Wurzel ist nicht svg")
+    count = 0
+
+    def clean(el, depth):
+        nonlocal count
+        count += 1
+        if count > 5000 or depth > 40:
+            raise ValueError("zu komplex")
+        for k in list(el.attrib):
+            v = el.attrib[k]
+            local = k.rsplit("}", 1)[-1].lower()
+            ns = k[1:].split("}", 1)[0] if k.startswith("{") else ""
+            if local.startswith("on"):
+                raise ValueError("Event-Handler")
+            if local == "href":
+                if not v.startswith("#") or ns not in ("", XLINK_NS):
+                    raise ValueError("externer Verweis")
+            elif ns and ns != XLINK_NS and ns != "http://www.w3.org/XML/1998/namespace":
+                del el.attrib[k]          # Editor-Metadaten (inkscape:, sodipodi: ...) entfernen
+                continue
+            if not _svg_value_ok(v):
+                raise ValueError("unzulässiger Attributwert")
+        for ch in list(el):
+            if not isinstance(ch.tag, str):
+                el.remove(ch)
+                continue
+            ns, _, name = ch.tag[1:].partition("}") if ch.tag.startswith("{") else ("", "", ch.tag)
+            if ns != SVG_NS:
+                el.remove(ch)             # fremde Namensräume (metadata, namedview ...) entfernen
+                continue
+            if name.lower() == "metadata":
+                el.remove(ch)
+                continue
+            if name.lower() not in SVG_TAGS:
+                raise ValueError(f"Element {name} nicht erlaubt")
+            clean(ch, depth + 1)
+        if el.tag.endswith("}style") and not _svg_value_ok(el.text or ""):
+            raise ValueError("unzulässiges CSS")
+
+    clean(root, 0)
+    ET.register_namespace("", SVG_NS)
+    ET.register_namespace("xlink", XLINK_NS)
+    out = ET.tostring(root, encoding="utf-8", xml_declaration=True)
+    if len(out) > CONFIG_LOGO_MAX:
+        raise ValueError("zu groß")
+    return out
+
+
+def logo_check(data: bytes, ctype: str) -> tuple[str, bytes]:
+    """(Dateiendung, zu speichernde Bytes) oder ValueError(grund)."""
+    ext = LOGO_TYPES.get(ctype)
+    if not ext:
+        raise ValueError("Logo nur als PNG, JPG oder SVG")
+    if not data or len(data) > CONFIG_LOGO_MAX:
+        raise ValueError(f"Logo max. {CONFIG_LOGO_MAX // 1024} KB")
+    if ext == "png" and not data.startswith(b"\x89PNG\r\n\x1a\n"):
+        raise ValueError("Datei ist kein PNG")
+    if ext == "jpg" and not data.startswith(b"\xff\xd8\xff"):
+        raise ValueError("Datei ist kein JPG")
+    if ext == "svg":
+        data = svg_sanitize(data)
+    return ext, data
+
+
+def current_config() -> dict:
+    global CURRENT_CFG
+    if CURRENT_CFG is None:
+        try:
+            CURRENT_CFG = _merge_missing(read_config_file(), config_defaults()) if CONFIG_PATH.exists() else config_defaults()
+        except ConfigError:
+            CURRENT_CFG = config_defaults()
+    return CURRENT_CFG
+
+
+def config_revision() -> int:
+    r = current_config().get("revision", 0)
+    return r if isinstance(r, int) and not isinstance(r, bool) else 0
+
+
+def public_config(cfg: dict | None = None) -> dict:
+    """Branding-Teil für alle angemeldeten Rollen (ohne Lizenz, Update-Quelle, Mandanten-ID)."""
+    cfg = cfg or current_config()
+    d = config_defaults()
+    c = {**d["company"], **(cfg.get("company") or {})}
+    lf = c.get("logoFile") or ""
+    rev = config_revision()
+    return {
+        "revision": rev,
+        "company": {
+            "name": c["name"], "productName": c["productName"], "color": c["color"], "uiAccent": c["uiAccent"],
+            "font": c["font"], "address": c["address"], "footer": c["footer"],
+            "logoUrl": f"/api/config/logo?v={rev}" if lf else "",
+            "logoType": LOGO_MIME.get(lf.rsplit(".", 1)[-1].lower(), "") if lf else "",
+        },
+        "locale": {**d["locale"], **(cfg.get("locale") or {})},
+        "terms": {**d["terms"], **(cfg.get("terms") or {})},
+        "modules": modules_effective(cfg),
+        "projectAreas": cfg.get("projectAreas") or d["projectAreas"],
+        "readOnly": int(cfg.get("schemaVersion", 1)) > CONFIG_SCHEMA,
+        "setupDone": cfg.get("setupDone") is not False,
+    }
+
+
+# ---------------------------------------------------------------------------------------------
+# V12.16.0: Module ein/aus. Aus = Ansicht/Menü/Aktionen weg, Endpunkte und Schreibzugriffe gesperrt (MP-MOD-001),
+# die Daten bleiben vollständig erhalten. kpi hängt an postcalc (aus -> auch kpi aus).
+# ---------------------------------------------------------------------------------------------
+MODULE_LABELS = {"projects": "Projekte", "formats": "Formate", "personnel": "Personal", "chat": "Nachrichten",
+                 "notifications": "Benachrichtigungen", "postcalc": "Auswertung", "kpi": "Kennzahlen"}
+MODULE_DEPS = {"kpi": ("postcalc",)}
+# Datensammlungen im Datenstand, die ein Modul besitzt (Schreiben nur bei eingeschaltetem Modul).
+MODULE_STATE_KEYS = {
+    "projects": ("projects", "processTemplates"),
+    "formats": ("formats", "baseFormats"),
+    "personnel": ("employees", "personnelAssignments", "personnelAbsences", "weeklyEmployeeDeployments",
+                  "departmentStaffNeeds", "personnelGate"),
+}
+
+
+def modules_effective(cfg: dict | None = None) -> dict:
+    cfg = cfg or current_config()
+    m = {**{k: True for k in CONFIG_MODULES}, **{k: v for k, v in (cfg.get("modules") or {}).items() if k in CONFIG_MODULES}}
+    for k, deps in MODULE_DEPS.items():
+        if not all(m.get(d, True) for d in deps):
+            m[k] = False
+    return m
+
+
+def module_on(name: str) -> bool:
+    return bool(modules_effective().get(name, True))
+
+
+def module_error(name: str) -> dict:
+    return mp_error("MP-MOD-001", f"Modul „{MODULE_LABELS.get(name, name)}“ ist abgeschaltet.", module=name)
+
+
+def _norm_coll(v):
+    return canonical(v if v not in (None, "", False, [], {}) else None)
+
+
+def module_state_guard(old: dict, new: dict) -> tuple[str, str]:
+    """('', '') wenn erlaubt, sonst (Modul, Meldung): ein abgeschaltetes Modul darf seine Datensammlungen nicht ändern."""
+    mods = modules_effective()
+    for mod, keys in MODULE_STATE_KEYS.items():
+        if mods.get(mod, True):
+            continue
+        for k in keys:
+            if _norm_coll(old.get(k)) != _norm_coll(new.get(k)):
+                return mod, f"Modul „{MODULE_LABELS[mod]}“ ist abgeschaltet: '{k}' kann nicht geändert werden."
+    return "", ""
+
+
+def _backup_logo(name: str) -> None:
+    """Vorheriges Logo als logo.<ext>.bak-<zeit> aufheben (letzte 5)."""
+    prev = (CONFIG_DIR / name) if name else None
+    if prev and prev.is_file():
+        shutil.copy2(prev, CONFIG_DIR / f"{name}.bak-{datetime.now().strftime('%Y%m%d-%H%M%S')}")
+        for old in sorted(CONFIG_DIR.glob("logo.*.bak-*"), key=lambda p: p.name, reverse=True)[5:]:
+            old.unlink(missing_ok=True)
+
+
+def config_apply(body: dict, logo: tuple[str, bytes] | None = None, remove_logo: bool = False) -> tuple[int, dict, str]:
+    """Wendet eine Änderung an. Rückgabe (HTTP-Status, Antwort, Audit-Detail). Revision wird geprüft."""
+    with CONFIG_LOCK:
+        cfg = json.loads(json.dumps(current_config()))
+        if int(cfg.get("schemaVersion", 1)) > CONFIG_SCHEMA:
+            return 409, mp_error("MP-CFG-003", "Firmenprofil ist schreibgeschützt (Datei stammt von neuerer Version)."), ""
+        rev = body.get("revision")
+        if not isinstance(rev, int) or isinstance(rev, bool):
+            return 400, mp_error("MP-CFG-002", "revision fehlt."), ""
+        if rev != config_revision():
+            return 409, mp_error("MP-CFG-004", "Firmenprofil wurde inzwischen geändert.", revision=config_revision(),
+                                 config=public_config(cfg)), ""
+        errs: list[str] = []
+        changed: list[str] = []
+        old_logo = (cfg.get("company") or {}).get("logoFile") or ""
+        if (body.get("company") or {}).get("logoFile") == "" if isinstance(body.get("company"), dict) else False:
+            remove_logo = True
+        for k in body:
+            if k != "revision" and k not in CONFIG_WRITE_SECTIONS and k not in ("projectAreas", "setupDone"):
+                errs.append(f"{k}: nicht änderbar")
+        if "setupDone" in body:
+            if not isinstance(body["setupDone"], bool):
+                errs.append("setupDone: true/false erwartet")
+            elif (cfg.get("setupDone") is not False) != body["setupDone"]:
+                cfg["setupDone"] = body["setupDone"]
+                changed.append("setupDone")
+        for sec, allowed in CONFIG_WRITE_SECTIONS.items():
+            part = body.get(sec)
+            if part is None:
+                continue
+            if not isinstance(part, dict):
+                errs.append(f"{sec}: Objekt erwartet")
+                continue
+            for k, v in part.items():
+                if k not in allowed:
+                    errs.append(f"{sec}.{k}: nicht änderbar")
+                elif k == "logoFile" and v != "":
+                    errs.append("company.logoFile: nur '' (entfernen); Logo per Upload setzen")
+                elif (cfg.setdefault(sec, {}).get(k) != v):
+                    cfg[sec][k] = v
+                    changed.append(f"{sec}.{k}")
+        if "projectAreas" in body and body["projectAreas"] != cfg.get("projectAreas"):
+            cfg["projectAreas"] = body["projectAreas"]
+            changed.append("projectAreas")
+        if errs:
+            return 400, mp_error("MP-CFG-002", "; ".join(errs[:5])), ""
+        new_file = ""
+        if logo:
+            new_file = f"logo.{logo[0]}"
+            cfg["company"]["logoFile"] = new_file
+            changed.append("company.logo")
+        if not changed:
+            return 200, {"ok": True, "unchanged": True, "config": public_config(cfg)}, ""
+        # Zuerst Logo-Datei bereitstellen (Validierung prüft ihre Existenz), dann firma.json atomar schreiben.
+        if new_file:
+            probe = [e for e in validate_config({**cfg, "company": {**cfg["company"], "logoFile": ""}})]
+            if probe:
+                return 400, mp_error("MP-CFG-002", "; ".join(probe[:5])), ""
+            _backup_logo(old_logo)
+            _atomic_write(CONFIG_DIR / new_file, logo[1])
+        else:
+            probe = validate_config(cfg)
+            if probe:
+                return 400, mp_error("MP-CFG-002", "; ".join(probe[:5])), ""
+            if remove_logo:
+                _backup_logo(old_logo)
+        cfg["revision"] = config_revision() + 1
+        try:
+            save_config(cfg)
+        except ConfigError as e:
+            return 400, mp_error(e.code, e.message), ""
+        global CURRENT_CFG
+        CURRENT_CFG = cfg
+        if old_logo and old_logo != cfg["company"].get("logoFile") and (CONFIG_DIR / old_logo).is_file():
+            (CONFIG_DIR / old_logo).unlink(missing_ok=True)
+        return 200, {"ok": True, "config": public_config(cfg)}, ", ".join(changed)[:480]
 SESSION_TTL = 12 * 60 * 60
 MAX_BODY = 8 * 1024 * 1024
 PBKDF2_ITERS = 310_000
 DB_LOCK = threading.RLock()
 REVISION_CONDITION = threading.Condition()
 LOGIN_LOCK = threading.Lock()
+# V12.10.2: Fehlversuche je IP, je Benutzer und je (IP, Benutzer); Schlüssel "ip:…", "user:…", "ipuser:…".
 LOGIN_FAILS: dict[str, list[float]] = {}
+LOGIN_WINDOW = 600
+LOGIN_MAX_PER_IP_USER = 8
+LOGIN_MAX_PER_USER = 20
+LOGIN_MAX_PER_IP = 30
+# Login/Logout/Passwort brauchen nur wenige Byte; großer Body vor der Anmeldung = Angriffsfläche.
+MAX_AUTH_BODY = 16 * 1024
+# Begrenzt gleichzeitige Verbindungen (30 Browser mit Long-Poll + Reserve).
+MAX_CONNECTIONS = 256
+# Zusätzlich erlaubte Host-Namen (Komma-getrennt), z. B. DNS-Alias des Servers.
+EXTRA_ALLOWED_HOSTS = {h.strip().lower() for h in os.environ.get("MP_ALLOWED_HOSTS", "").split(",") if h.strip()}
 
 ROLES = {"admin", "gf", "department_lead", "department_deputy", "viewer", "project_management", "production_planning", "sales"}
 WRITE_ROLES = {"admin", "gf", "department_lead", "department_deputy", "project_management", "production_planning", "sales"}
@@ -57,6 +788,7 @@ MANAGEABLE_ROLES = {
     "department_deputy": {"viewer"},
 }
 ALLOWED_NETWORK = None
+AUTH_POST_PATHS = {"/api/login", "/api/logout", "/api/password"}
 
 
 def now_iso() -> str:
@@ -143,7 +875,25 @@ def migrate_users_schema(con: sqlite3.Connection) -> None:
     print("DB-MIGRATION users: Rollenschema aktualisiert (u. a. Arbeitsvorbereitung); Sitzungen zurückgesetzt")
 
 
-def init_db() -> None:
+# V12.17.0: Startbestand der Werbetechnik (bis V12.16.x fest im Seed). Nur noch für Tests (init_db(seed="werbetechnik")).
+LEGACY_MACHINES = [
+    {"id": "m1", "name": "Maschine 1", "departmentId": "cnc", "setupMinutes": 0, "start": "2026-09-07T06:30", "committedUntil": "", "defaultShiftMode": "1", "staffRequired": 1},
+    {"id": "m2", "name": "Maschine 2", "departmentId": "cnc", "setupMinutes": 0, "start": "2026-09-07T06:30", "committedUntil": "", "defaultShiftMode": "1", "staffRequired": 1},
+    {"id": "m3", "name": "Maschine 3", "departmentId": "cnc", "setupMinutes": 0, "start": "2026-09-07T06:30", "committedUntil": "", "defaultShiftMode": "1", "staffRequired": 1},
+]
+LEGACY_DEPARTMENTS = [
+    {"id": "cnc", "name": "CNC", "planningType": "MACHINE", "active": True, "sharedOperators": True},
+    {"id": "konf1", "name": "Konfektion 1", "planningType": "LABOR_HOURS", "active": True},
+    {"id": "konf2", "name": "Konfektion 2", "planningType": "LABOR_HOURS", "active": True},
+    {"id": "konf3", "name": "Konfektion 3", "planningType": "LABOR_HOURS", "active": True},
+    {"id": "screenprint", "name": "Siebdruck", "planningType": "PROCESS", "active": True},
+    {"id": "thermoforming", "name": "Tiefziehen", "planningType": "CYCLE", "active": True, "formats": True},
+]
+
+
+def init_db(seed: str = "neutral") -> None:
+    """seed="neutral": Neuinstallation ohne Bereiche/Maschinen (V12.17.0, der Einrichtungsassistent setzt sie auf).
+    seed="werbetechnik": alter Startbestand, nur für Tests und Entwicklung."""
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     with DB_LOCK, db_session() as con:
         con.executescript(
@@ -179,6 +929,45 @@ def init_db() -> None:
               json TEXT NOT NULL
             );
             CREATE INDEX IF NOT EXISTS history_archive_finished ON history_archive(finished_at);
+            CREATE TABLE IF NOT EXISTS chat_channels(
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              kind TEXT NOT NULL CHECK(kind IN ('all','group','direct')),
+              name TEXT NOT NULL DEFAULT '',
+              members TEXT NOT NULL DEFAULT '[]',
+              created_by TEXT NOT NULL,
+              created_at TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS chat_messages(
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              channel_id INTEGER NOT NULL REFERENCES chat_channels(id) ON DELETE CASCADE,
+              author TEXT NOT NULL,
+              text TEXT NOT NULL,
+              ts TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS chat_messages_channel ON chat_messages(channel_id, id);
+            CREATE TABLE IF NOT EXISTS chat_reads(
+              username TEXT NOT NULL COLLATE NOCASE,
+              channel_id INTEGER NOT NULL,
+              last_id INTEGER NOT NULL DEFAULT 0,
+              PRIMARY KEY(username, channel_id)
+            );
+            CREATE TABLE IF NOT EXISTS notifications(
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              username TEXT NOT NULL COLLATE NOCASE,
+              kind TEXT NOT NULL,
+              ref_type TEXT NOT NULL DEFAULT '',
+              ref_id TEXT NOT NULL DEFAULT '',
+              text TEXT NOT NULL,
+              created_at TEXT NOT NULL,
+              read_at TEXT,
+              dedupe TEXT NOT NULL DEFAULT ''
+            );
+            CREATE INDEX IF NOT EXISTS notifications_user ON notifications(username, id);
+            CREATE UNIQUE INDEX IF NOT EXISTS notifications_dedupe ON notifications(username, dedupe) WHERE dedupe<>'';
+            CREATE TABLE IF NOT EXISTS notification_prefs(
+              username TEXT PRIMARY KEY COLLATE NOCASE,
+              json TEXT NOT NULL
+            );
             CREATE TABLE IF NOT EXISTS server_audit(
               id INTEGER PRIMARY KEY AUTOINCREMENT,
               ts TEXT NOT NULL,
@@ -195,25 +984,14 @@ def init_db() -> None:
             initial = {
                 "version": 12,
                 "meta": {"revision": 1, "actor": "Server", "storage": "server", "createdAt": now_iso(), "serverReady": True},
-                "machines": [
-                    {"id": "m1", "name": "Maschine 1", "departmentId": "cnc", "setupMinutes": 0, "start": "2026-09-07T06:30", "committedUntil": "", "defaultShiftMode": "1", "staffRequired": 1},
-                    {"id": "m2", "name": "Maschine 2", "departmentId": "cnc", "setupMinutes": 0, "start": "2026-09-07T06:30", "committedUntil": "", "defaultShiftMode": "1", "staffRequired": 1},
-                    {"id": "m3", "name": "Maschine 3", "departmentId": "cnc", "setupMinutes": 0, "start": "2026-09-07T06:30", "committedUntil": "", "defaultShiftMode": "1", "staffRequired": 1},
-                ],
                 "shiftTemplates": {
                     "single": {"name": "1-Schicht Mo–Do", "start": "06:30", "end": "16:00", "breaks": [{"start": "09:00", "end": "09:15"}, {"start": "12:00", "end": "12:30"}]},
                     "fridaySingle": {"name": "1-Schicht Freitag", "start": "06:30", "end": "11:45", "breaks": [{"start": "09:00", "end": "09:15"}, {"start": "", "end": ""}]},
                     "early": {"name": "2-Schicht · Früh", "start": "06:00", "end": "14:30", "breaks": [{"start": "09:00", "end": "09:15"}, {"start": "12:00", "end": "12:15"}]},
                     "late": {"name": "2-Schicht · Spät", "start": "14:30", "end": "22:30", "breaks": [{"start": "17:00", "end": "17:15"}, {"start": "19:00", "end": "19:15"}]},
                 },
-                "departments": [
-                    {"id": "cnc", "name": "CNC", "planningType": "MACHINE", "active": True},
-                    {"id": "konf1", "name": "Konfektion 1 – Thomsen", "planningType": "LABOR_HOURS", "active": True},
-                    {"id": "konf2", "name": "Konfektion 2 – Keller", "planningType": "LABOR_HOURS", "active": True},
-                    {"id": "konf3", "name": "Konfektion 3", "planningType": "LABOR_HOURS", "active": True},
-                    {"id": "screenprint", "name": "Siebdruck", "planningType": "PROCESS", "active": True},
-                    {"id": "thermoforming", "name": "Tiefziehen", "planningType": "CYCLE", "active": True}
-                ],
+                "departments": [],
+                "machines": [],
                 "projects": [],
                 "workSteps": [],
                 "yearRules": [], "weekRules": [], "exceptions": [],
@@ -222,6 +1000,9 @@ def init_db() -> None:
                 "history": [], "audit": [], "planVersions": [],
                 "ui": {"accent": "#1f5eff", "cellH": 90},
             }
+            if seed == "werbetechnik":
+                initial["machines"] = LEGACY_MACHINES
+                initial["departments"] = LEGACY_DEPARTMENTS
             con.execute("INSERT INTO state(id,revision,json,updated_at,updated_by) VALUES(1,1,?,?,?)", (json.dumps(initial, ensure_ascii=False), now_iso(), "Server"))
         migrate_state_v1242(con)
         migrate_state_v1243(con)
@@ -230,7 +1011,53 @@ def init_db() -> None:
         migrate_state_v1261(con)
         migrate_state_v1270(con)
         normalize_state_v1270(con)
+        migrate_state_v1280(con)
+        migrate_state_v1216(con)
+        if not con.execute("SELECT 1 FROM chat_channels WHERE kind='all'").fetchone():
+            con.execute("INSERT INTO chat_channels(kind,name,members,created_by,created_at) VALUES('all','Alle','[]','Server',?)", (now_iso(),))
+        migrate_chat_v1291(con)
+        chat_purge(con, force=True)
+        notif_purge(con, force=True)
         archive_history_on_start(con)
+
+
+def migrate_state_v1280(con: sqlite3.Connection) -> None:
+    """V12.8.0: Formatlisten anlegen. Der Client führt sie immer; fehlten sie im Serverstand,
+    sähe der erste Speichervorgang von GF/PM/Vertrieb wie eine unerlaubte Änderung aus."""
+    row = con.execute("SELECT json FROM state WHERE id=1").fetchone()
+    if not row:
+        return
+    state = json.loads(row["json"])
+    changed = False
+    for key in ("formats", "baseFormats"):
+        if not isinstance(state.get(key), list):
+            state[key] = []
+            changed = True
+    if changed:
+        con.execute("UPDATE state SET json=?,updated_at=?,updated_by=? WHERE id=1",
+                    (json.dumps(state, ensure_ascii=False, separators=(",", ":")), now_iso(), "V12.8.0 migration"))
+        print("DB-MIGRATION state: V12.8.0 Formatlisten angelegt")
+
+
+def migrate_state_v1216(con: sqlite3.Connection) -> None:
+    """V12.16.0: Bereichs-Eigenschaften statt fester Bereichs-IDs. Nur additiv und idempotent: thermoforming.formats=true und
+    cnc.sharedOperators=true, wenn die Eigenschaft dort noch FEHLT (ein vorhandener Wert, auch false, bleibt)."""
+    row = con.execute("SELECT json FROM state WHERE id=1").fetchone()
+    if not row:
+        return
+    state = json.loads(row["json"])
+    changed = False
+    for d in state.get("departments") or []:
+        if not isinstance(d, dict):
+            continue
+        for did, prop in (("thermoforming", "formats"), ("cnc", "sharedOperators")):
+            if d.get("id") == did and prop not in d:
+                d[prop] = True
+                changed = True
+    if changed:
+        con.execute("UPDATE state SET json=?,updated_at=?,updated_by=? WHERE id=1",
+                    (json.dumps(state, ensure_ascii=False, separators=(",", ":")), now_iso(), "V12.16.0 migration"))
+        print("DB-MIGRATION state: V12.16.0 Bereichs-Eigenschaften (formats, sharedOperators)")
 
 
 def migrate_state_v1242(con: sqlite3.Connection) -> None:
@@ -627,6 +1454,525 @@ def canonical(obj) -> str:
     return json.dumps(obj, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
 
 
+# --------------------------------------------------------------------------- V12.9.0 Messenger
+# Eigene Tabellen statt Live-State: Nachrichten erhöhen keine Planungsrevision und kollidieren nicht
+# mit Planänderungen. Erwähnungen (/FS, /Projekt, /Format, @Benutzer) speichert der Client als Token
+# im Text; der Server speichert nur Text und prüft Mitgliedschaft.
+CHAT_MAX_TEXT = 2000
+CHAT_MAX_MEMBERS = 100
+# V12.9.1: Nachrichten verschwinden nach CHAT_RETENTION_DAYS Tagen, außer sie sind auf „Behalten“ gesetzt.
+CHAT_RETENTION_DAYS = 30
+CHAT_PURGE_EVERY = 3600
+_CHAT_LAST_PURGE = 0.0
+CHAT_MSG_COLS = "id,author,text,ts,keep,kept_by"
+
+
+def migrate_chat_v1291(con: sqlite3.Connection) -> None:
+    cols = {r["name"] for r in con.execute("PRAGMA table_info(chat_messages)").fetchall()}
+    if "keep" not in cols:
+        con.execute("ALTER TABLE chat_messages ADD COLUMN keep INTEGER NOT NULL DEFAULT 0")
+    if "kept_by" not in cols:
+        con.execute("ALTER TABLE chat_messages ADD COLUMN kept_by TEXT NOT NULL DEFAULT ''")
+
+
+def chat_purge(con: sqlite3.Connection, force: bool = False) -> int:
+    """Löscht nicht behaltene Nachrichten älter als CHAT_RETENTION_DAYS (höchstens einmal pro Stunde)."""
+    global _CHAT_LAST_PURGE
+    now = time.time()
+    if not force and now - _CHAT_LAST_PURGE < CHAT_PURGE_EVERY:
+        return 0
+    _CHAT_LAST_PURGE = now
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=CHAT_RETENTION_DAYS)).isoformat()
+    n = con.execute("DELETE FROM chat_messages WHERE keep=0 AND ts<?", (cutoff,)).rowcount
+    if n:
+        print(f"CHAT: {n} Nachricht(en) älter als {CHAT_RETENTION_DAYS} Tage gelöscht", flush=True)
+    return n
+
+
+def _chat_msg(row) -> dict:
+    return {"id": row["id"], "author": row["author"], "text": row["text"], "ts": row["ts"], "keep": bool(row["keep"]), "keptBy": row["kept_by"]}
+
+
+def _chat_channel_for(con, channel_id, username: str):
+    row = con.execute("SELECT * FROM chat_channels WHERE id=?", (channel_id,)).fetchone()
+    if not row:
+        return None
+    if row["kind"] == "all":
+        return row
+    members = {str(x).casefold() for x in json.loads(row["members"] or "[]")}
+    return row if username.casefold() in members else None
+
+
+def _chat_channel_json(con, row, username: str) -> dict:
+    last = con.execute("SELECT id,author,text,ts FROM chat_messages WHERE channel_id=? ORDER BY id DESC LIMIT 1", (row["id"],)).fetchone()
+    read = con.execute("SELECT last_id FROM chat_reads WHERE username=? AND channel_id=?", (username, row["id"])).fetchone()
+    read_id = read["last_id"] if read else 0
+    unread = con.execute("SELECT COUNT(*) FROM chat_messages WHERE channel_id=? AND id>? AND author<>? COLLATE NOCASE", (row["id"], read_id, username)).fetchone()[0]
+    # Erwähnung in Python prüfen: SQLite-lower() kennt nur ASCII (Ö/ß in Benutzernamen).
+    tag = f"⟦u:{username.casefold()}⟧"
+    mention = 0
+    if unread:
+        mention = sum(1 for r in con.execute("SELECT text FROM chat_messages WHERE channel_id=? AND id>? AND author<>? COLLATE NOCASE AND instr(text, '⟦u:')>0 ORDER BY id DESC LIMIT 500",
+                                             (row["id"], read_id, username)).fetchall() if tag in r["text"].casefold())
+    return {"id": row["id"], "kind": row["kind"], "name": row["name"], "members": json.loads(row["members"] or "[]"), "createdBy": row["created_by"],
+            "last": dict(last) if last else None, "unread": unread, "mentions": mention, "readId": read_id}
+
+
+def chat_get(con, user: dict, path: str, qs: dict) -> tuple[int, dict]:
+    username = user["username"]
+    if path == "/api/chat/users":
+        rows = con.execute("SELECT username,role,department_id FROM users WHERE active=1 ORDER BY username COLLATE NOCASE").fetchall()
+        return 200, {"users": [{"username": r["username"], "role": r["role"], "departmentId": r["department_id"]} for r in rows]}
+    if path == "/api/chat/channels":
+        chat_purge(con)
+        out = []
+        for row in con.execute("SELECT * FROM chat_channels ORDER BY id").fetchall():
+            if _chat_channel_for(con, row["id"], username):
+                out.append(_chat_channel_json(con, row, username))
+        return 200, {"channels": out, "me": username, "retentionDays": CHAT_RETENTION_DAYS}
+    if path == "/api/chat/messages":
+        try:
+            cid = int(qs.get("channel", ["0"])[0])
+            after = max(0, int(qs.get("after", ["0"])[0]))
+            before = max(0, int(qs.get("before", ["0"])[0]))
+        except ValueError:
+            return 400, mp_error("MP-CHAT-001", "Kanal/Position ungültig.")
+        if not _chat_channel_for(con, cid, username):
+            return 404, mp_error("MP-CHAT-002", "Unterhaltung nicht gefunden oder kein Mitglied.")
+        if before:
+            rows = con.execute(f"SELECT {CHAT_MSG_COLS} FROM chat_messages WHERE channel_id=? AND id<? ORDER BY id DESC LIMIT 100", (cid, before)).fetchall()[::-1]
+        elif after:
+            rows = con.execute(f"SELECT {CHAT_MSG_COLS} FROM chat_messages WHERE channel_id=? AND id>? ORDER BY id LIMIT 500", (cid, after)).fetchall()
+        else:
+            rows = con.execute(f"SELECT {CHAT_MSG_COLS} FROM chat_messages WHERE channel_id=? ORDER BY id DESC LIMIT 100", (cid,)).fetchall()[::-1]
+        kept = []
+        if qs.get("kept"):
+            kept = [_chat_msg(r) for r in con.execute(f"SELECT {CHAT_MSG_COLS} FROM chat_messages WHERE channel_id=? AND keep=1 ORDER BY id DESC LIMIT 200", (cid,)).fetchall()]
+        return 200, {"messages": [_chat_msg(r) for r in rows], "kept": kept, "retentionDays": CHAT_RETENTION_DAYS}
+    return 404, mp_error("MP-REQ-404", "Nicht gefunden.")
+
+
+def _chat_members(con, raw, me: str) -> tuple[list | None, str]:
+    if not isinstance(raw, list) or len(raw) > CHAT_MAX_MEMBERS:
+        return None, "Mitgliederliste ist ungültig."
+    known = {r["username"].casefold(): r["username"] for r in con.execute("SELECT username FROM users WHERE active=1").fetchall()}
+    out = []
+    for name in [me, *raw]:
+        key = str(name or "").strip().casefold()
+        if key not in known:
+            return None, f"Benutzer '{name}' ist unbekannt oder inaktiv."
+        if known[key] not in out:
+            out.append(known[key])
+    return out, ""
+
+
+def chat_post(con, user: dict, path: str, body: dict) -> tuple[int, dict]:
+    username = user["username"]
+    ts = now_iso()
+    if path == "/api/chat/channels":
+        kind = str(body.get("kind") or "group")
+        members, err = _chat_members(con, body.get("members") or [], username)
+        if members is None:
+            return 400, mp_error("MP-CHAT-003", err)
+        if kind == "direct":
+            if len(members) != 2:
+                return 400, mp_error("MP-CHAT-003", "Direktnachricht: genau eine andere Person wählen.")
+            for row in con.execute("SELECT * FROM chat_channels WHERE kind='direct'").fetchall():
+                if {x.casefold() for x in json.loads(row["members"])} == {x.casefold() for x in members}:
+                    return 200, {"channel": _chat_channel_json(con, row, username)}
+            name = ""
+        elif kind == "group":
+            name = str(body.get("name") or "").strip()
+            if not name or len(name) > 60:
+                return 400, mp_error("MP-CHAT-004", "Gruppenname fehlt oder ist zu lang (max. 60).")
+            if len(members) < 2:
+                return 400, mp_error("MP-CHAT-003", "Gruppe: mindestens eine weitere Person wählen.")
+        else:
+            return 400, mp_error("MP-CHAT-003", "Unbekannte Art der Unterhaltung.")
+        cur = con.execute("INSERT INTO chat_channels(kind,name,members,created_by,created_at) VALUES(?,?,?,?,?)", (kind, name, json.dumps(members, ensure_ascii=False), username, ts))
+        row = con.execute("SELECT * FROM chat_channels WHERE id=?", (cur.lastrowid,)).fetchone()
+        return 201, {"channel": _chat_channel_json(con, row, username)}
+    try:
+        cid = int(body.get("channel") or 0)
+    except (TypeError, ValueError):
+        return 400, mp_error("MP-CHAT-001", "Kanal ungültig.")
+    row = _chat_channel_for(con, cid, username)
+    if not row:
+        return 404, mp_error("MP-CHAT-002", "Unterhaltung nicht gefunden oder kein Mitglied.")
+    if path == "/api/chat/messages":
+        text = str(body.get("text") or "").strip()
+        if not text:
+            return 400, mp_error("MP-CHAT-005", "Nachricht ist leer.")
+        if len(text) > CHAT_MAX_TEXT:
+            return 400, mp_error("MP-CHAT-005", f"Nachricht ist zu lang (max. {CHAT_MAX_TEXT} Zeichen).")
+        cur = con.execute("INSERT INTO chat_messages(channel_id,author,text,ts) VALUES(?,?,?,?)", (cid, username, text, ts))
+        con.execute("INSERT INTO chat_reads(username,channel_id,last_id) VALUES(?,?,?) ON CONFLICT(username,channel_id) DO UPDATE SET last_id=excluded.last_id", (username, cid, cur.lastrowid))
+        notify_chat_message(con, row, username, text)
+        return 201, {"message": {"id": cur.lastrowid, "author": username, "text": text, "ts": ts, "keep": False, "keptBy": ""}}
+    if path == "/api/chat/keep":
+        try:
+            mid = int(body.get("message") or 0)
+        except (TypeError, ValueError):
+            mid = 0
+        msg = con.execute(f"SELECT {CHAT_MSG_COLS} FROM chat_messages WHERE id=? AND channel_id=?", (mid, cid)).fetchone()
+        if not msg:
+            return 404, mp_error("MP-CHAT-007", "Nachricht nicht gefunden (bereits gelöscht?).")
+        keep = bool(body.get("keep"))
+        con.execute("UPDATE chat_messages SET keep=?, kept_by=? WHERE id=?", (1 if keep else 0, username if keep else "", mid))
+        return 200, {"message": _chat_msg(con.execute(f"SELECT {CHAT_MSG_COLS} FROM chat_messages WHERE id=?", (mid,)).fetchone())}
+    if path == "/api/chat/read":
+        try:
+            last = max(0, int(body.get("lastId") or 0))
+        except (TypeError, ValueError):
+            return 400, mp_error("MP-CHAT-001", "Position ungültig.")
+        con.execute("INSERT INTO chat_reads(username,channel_id,last_id) VALUES(?,?,?) ON CONFLICT(username,channel_id) DO UPDATE SET last_id=max(last_id,excluded.last_id)", (username, cid, last))
+        # Gelesener Kanal: die zugehörigen Glocken-Einträge sind damit ebenfalls erledigt.
+        con.execute("UPDATE notifications SET read_at=? WHERE username=? AND ref_type='chat' AND ref_id=? AND read_at IS NULL", (now_iso(), username, str(cid)))
+        return 200, {"ok": True}
+    if path == "/api/chat/members":
+        if row["kind"] != "group":
+            return 400, mp_error("MP-CHAT-006", "Mitglieder ändern nur bei Gruppen.")
+        if row["created_by"].casefold() != username.casefold() and user["role"] != "admin":
+            return 403, mp_error("MP-CHAT-006", "Mitglieder ändert, wer die Gruppe angelegt hat (oder Admin).")
+        current = json.loads(row["members"])
+        members, err = _chat_members(con, [*current, *(body.get("add") or [])], row["created_by"])
+        if members is None:
+            return 400, mp_error("MP-CHAT-003", err)
+        remove = {str(x).casefold() for x in (body.get("remove") or [])} - {row["created_by"].casefold()}
+        members = [m for m in members if m.casefold() not in remove]
+        name = str(body.get("name") or row["name"]).strip()
+        if not name or len(name) > 60:
+            return 400, mp_error("MP-CHAT-004", "Gruppenname fehlt oder ist zu lang (max. 60).")
+        con.execute("UPDATE chat_channels SET members=?, name=? WHERE id=?", (json.dumps(members, ensure_ascii=False), name, cid))
+        return 200, {"channel": _chat_channel_json(con, con.execute("SELECT * FROM chat_channels WHERE id=?", (cid,)).fetchone(), username)}
+    return 404, mp_error("MP-REQ-404", "Nicht gefunden.")
+
+
+# --------------------------------------------------------------------------- V12.13.0 Benachrichtigungen
+# Wie der Chat in eigenen Tabellen (keine Planungsrevision). Ereignisse entstehen beim PUT /api/state aus dem
+# Diff alt -> neu, aus dem Chat (Erwähnung/Direktnachricht) und aus Client-Meldungen (gefährdeter Liefertermin).
+# Jeder sieht nur die eigenen Einträge; Empfänger werden beim Erzeugen nach Rolle/Bereich gefiltert.
+NOTIF_KINDS = ("mention", "release", "risk", "block", "loan")
+NOTIF_RETENTION_DAYS = 30
+NOTIF_PURGE_EVERY = 3600
+NOTIF_MAX_PER_USER = 500
+NOTIF_MAX_DERIVED = 50
+NOTIF_LIST_LIMIT = 50
+_NOTIF_LAST_PURGE = 0.0
+NOTIF_QUIET_DEFAULT = {"on": False, "from": "20:00", "to": "06:00"}
+_ACTIVE_STEP = {"planned", "released", "running", "paused"}
+_MENTION_TOKEN = re.compile(r"⟦([opfu]):([^|⟧]{1,80})(?:\|([^⟧]{0,80}))?⟧")
+
+
+def notif_default_kinds(role: str) -> dict:
+    dept = role in DEPARTMENT_ROLES
+    return {
+        "mention": True,
+        "release": dept,
+        "risk": dept or role in {"project_management", "sales", "gf"},
+        "block": dept or role == "production_planning",
+        "loan": dept or role == "gf",
+    }
+
+
+def notif_prefs(con, username: str, role: str) -> dict:
+    kinds = notif_default_kinds(role)
+    quiet = dict(NOTIF_QUIET_DEFAULT)
+    row = con.execute("SELECT json FROM notification_prefs WHERE username=?", (username,)).fetchone()
+    if row:
+        try:
+            stored = json.loads(row["json"])
+        except ValueError:
+            stored = {}
+        for k, v in (stored.get("kinds") or {}).items():
+            if k in kinds:
+                kinds[k] = bool(v)
+        q = stored.get("quiet") or {}
+        if _clock_minutes(q.get("from")) is not None and _clock_minutes(q.get("to")) is not None:
+            quiet = {"on": bool(q.get("on")), "from": q["from"], "to": q["to"]}
+    return {"kinds": kinds, "quiet": quiet}
+
+
+def notif_prefs_validate(body) -> tuple[dict | None, str]:
+    if not isinstance(body, dict):
+        return None, "Einstellungen ungültig."
+    out: dict = {}
+    if "kinds" in body:
+        kinds = body["kinds"]
+        if not isinstance(kinds, dict) or set(kinds) - set(NOTIF_KINDS) or any(not isinstance(v, bool) for v in kinds.values()):
+            return None, "Ereignisarten ungültig."
+        out["kinds"] = kinds
+    if "quiet" in body:
+        q = body["quiet"]
+        if not isinstance(q, dict) or set(q) - {"on", "from", "to"} or not isinstance(q.get("on", False), bool) \
+                or _clock_minutes(q.get("from", "20:00")) is None or _clock_minutes(q.get("to", "06:00")) is None:
+            return None, "Ruhezeit ungültig (HH:MM)."
+        out["quiet"] = {"on": q.get("on", False), "from": q.get("from", "20:00"), "to": q.get("to", "06:00")}
+    return out, ""
+
+
+def notif_prefs_save(con, username: str, role: str, patch: dict) -> dict:
+    row = con.execute("SELECT json FROM notification_prefs WHERE username=?", (username,)).fetchone()
+    try:
+        stored = json.loads(row["json"]) if row else {}
+    except ValueError:
+        stored = {}
+    if "kinds" in patch:
+        stored["kinds"] = {**(stored.get("kinds") or {}), **patch["kinds"]}
+    if "quiet" in patch:
+        stored["quiet"] = patch["quiet"]
+    con.execute("INSERT INTO notification_prefs(username,json) VALUES(?,?) ON CONFLICT(username) DO UPDATE SET json=excluded.json",
+                (username, json.dumps(stored, ensure_ascii=False)))
+    return notif_prefs(con, username, role)
+
+
+def notif_purge(con: sqlite3.Connection, force: bool = False) -> int:
+    """Löscht Benachrichtigungen älter als NOTIF_RETENTION_DAYS (höchstens einmal pro Stunde)."""
+    global _NOTIF_LAST_PURGE
+    now = time.time()
+    if not force and now - _NOTIF_LAST_PURGE < NOTIF_PURGE_EVERY:
+        return 0
+    _NOTIF_LAST_PURGE = now
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=NOTIF_RETENTION_DAYS)).isoformat()
+    n = con.execute("DELETE FROM notifications WHERE created_at<?", (cutoff,)).rowcount
+    if n:
+        print(f"NOTIF: {n} Benachrichtigung(en) älter als {NOTIF_RETENTION_DAYS} Tage gelöscht", flush=True)
+    return n
+
+
+def notif_sig(con, username: str) -> dict:
+    row = con.execute("SELECT COALESCE(MAX(id),0) AS last, COALESCE(SUM(read_at IS NULL),0) AS unread FROM notifications WHERE username=?", (username,)).fetchone()
+    last, unread = int(row["last"]), int(row["unread"])
+    return {"last": last, "unread": unread, "sig": f"{last}:{unread}"}
+
+
+def _notif_row(r) -> dict:
+    return {"id": r["id"], "kind": r["kind"], "refType": r["ref_type"], "refId": r["ref_id"], "text": r["text"], "createdAt": r["created_at"], "read": r["read_at"] is not None}
+
+
+def notif_add(con, username: str, role: str, kind: str, ref_type: str, ref_id, text: str, dedupe: str = "") -> bool:
+    """Legt einen Eintrag an, wenn die Art für diesen Benutzer eingeschaltet ist (und nicht doppelt)."""
+    if kind not in NOTIF_KINDS or not notif_prefs(con, username, role)["kinds"].get(kind):
+        return False
+    cur = con.execute("INSERT OR IGNORE INTO notifications(username,kind,ref_type,ref_id,text,created_at,dedupe) VALUES(?,?,?,?,?,?,?)",
+                      (username, kind, ref_type, str(ref_id), text[:240], now_iso(), dedupe))
+    if cur.rowcount:
+        con.execute("DELETE FROM notifications WHERE username=? AND id NOT IN (SELECT id FROM notifications WHERE username=? ORDER BY id DESC LIMIT ?)",
+                    (username, username, NOTIF_MAX_PER_USER))
+    return bool(cur.rowcount)
+
+
+def _notif_users(con) -> list:
+    return [dict(r) for r in con.execute("SELECT username,role,department_id FROM users WHERE active=1").fetchall()]
+
+
+def notif_sees_dept(u: dict, dept_id: str) -> bool:
+    """Bereichsrollen sehen nur den eigenen Bereich; alle anderen Rollen sehen alle Bereiche."""
+    if u["role"] in DEPARTMENT_ROLES:
+        return bool(dept_id) and str(u.get("department_id") or "") == dept_id
+    return True
+
+
+def _short(d) -> str:
+    s = str(d or "")[:10]
+    return f"{s[8:10]}.{s[5:7]}." if _valid_date_key(s) else ""
+
+
+def _berlin_today() -> str:
+    try:
+        from release_gates import LOCAL_TZ
+        return datetime.now(LOCAL_TZ).strftime("%Y-%m-%d") if LOCAL_TZ else datetime.now().strftime("%Y-%m-%d")
+    except Exception:
+        return datetime.now().strftime("%Y-%m-%d")
+
+
+def default_dept_id(state: dict) -> str:
+    """V12.16.0: Ersatz für den festen Rückgriff auf 'cnc': erster aktiver Produktionsbereich (Fallback 'cnc' nur ohne Bereiche).
+    Bei der Bestandsdatenbank bleibt das 'cnc', weil der Bereich dort an erster Stelle steht."""
+    for d in (state or {}).get("departments") or []:
+        if isinstance(d, dict) and d.get("id") and d.get("active") is not False and str(d.get("kind") or "production") == "production":
+            return str(d["id"])
+    return "cnc"
+
+
+def _step_dept(step: dict, machine_dept: dict, dd: str = "cnc") -> str:
+    return str(step.get("departmentId") or machine_dept.get(str(step.get("machineId")), dd))
+
+
+def notify_from_diff(con, old: dict, new: dict, actor: str) -> int:
+    """Erzeugt Einträge aus Freigabe/Rücknahme, Maschinensperre, Abwesenheit und Leiharbeiter-Anfrage."""
+    dd = default_dept_id(new)
+    users = _notif_users(con)
+    machine_dept = {str(m.get("id")): str(m.get("departmentId") or dd) for m in (new.get("machines") or []) if isinstance(m, dict)}
+    machine_name = {str(m.get("id")): str(m.get("name") or m.get("id")) for m in (new.get("machines") or []) if isinstance(m, dict)}
+    dept_name = {str(d.get("id")): str(d.get("name") or d.get("id")) for d in (new.get("departments") or []) if isinstance(d, dict)}
+    made = 0
+
+    def send(recipients, kind, ref_type, ref_id, text, dedupe=""):
+        nonlocal made
+        for u in recipients:
+            if u["username"].casefold() != actor.casefold() and notif_add(con, u["username"], u["role"], kind, ref_type, ref_id, text, dedupe):
+                made += 1
+
+    old_steps = {str(s.get("id")): s for s in (old.get("workSteps") or []) if isinstance(s, dict)}
+    active_by_machine: dict = {}
+    for s in (new.get("workSteps") or []):
+        if isinstance(s, dict) and str(s.get("status") or "planned") in _ACTIVE_STEP and str(s.get("planningType") or "MACHINE") == "MACHINE":
+            active_by_machine[str(s.get("machineId"))] = active_by_machine.get(str(s.get("machineId")), 0) + 1
+    for s in (new.get("workSteps") or []):
+        if not isinstance(s, dict) or str(s.get("planningType") or "MACHINE") != "MACHINE":
+            continue
+        before = old_steps.get(str(s.get("id")))
+        if not before:
+            continue
+        a, b = str(before.get("status") or "planned"), str(s.get("status") or "planned")
+        if a == b or {a, b} != {"planned", "released"}:
+            continue
+        did = _step_dept(s, machine_dept, dd)
+        label = str(s.get("fs") or s.get("order") or s.get("id"))
+        text = f"{label} freigegeben" if b == "released" else f"{label} zurückgezogen"
+        send([u for u in users if notif_sees_dept(u, did)], "release", "order", s.get("id"), f"{text} · {actor}")
+
+    old_blocks = {str(x.get("id")) for x in (old.get("machineBlocks") or []) if isinstance(x, dict)}
+    for blk in (new.get("machineBlocks") or []):
+        if not isinstance(blk, dict) or str(blk.get("id")) in old_blocks:
+            continue
+        mid = str(blk.get("machineId"))
+        n = active_by_machine.get(mid, 0)
+        if not n:
+            continue
+        did = machine_dept.get(mid, dd)
+        a, z = _short(blk.get("start")), _short(blk.get("end"))
+        span = a + ("–" + z if z and z != a else "")
+        send([u for u in users if notif_sees_dept(u, did)], "block", "machine", mid,
+             f"Sperre {machine_name.get(mid, mid)} {span}: {n} {'Auftrag' if n == 1 else 'Aufträge'} betroffen", f"blk|{blk.get('id')}")
+
+    old_abs = {(str(a.get("employeeId")), str(a.get("date"))) for a in (old.get("personnelAbsences") or []) if isinstance(a, dict)}
+    emp = {str(e.get("id")): e for e in (new.get("employees") or []) if isinstance(e, dict)}
+    fresh: dict = {}
+    for a in (new.get("personnelAbsences") or []):
+        if isinstance(a, dict) and (str(a.get("employeeId")), str(a.get("date"))) not in old_abs:
+            fresh.setdefault(str(a.get("employeeId")), []).append(str(a.get("date")))
+    for eid, days in fresh.items():
+        e = emp.get(eid)
+        if not e:
+            continue
+        did = str(e.get("departmentId") or "")
+        open_steps = sum(c for m, c in active_by_machine.items() if machine_dept.get(m) == did)
+        if not open_steps:
+            continue
+        days.sort()
+        span = _short(days[0]) + ("–" + _short(days[-1]) if len(days) > 1 else "")
+        # Kein Abwesenheitsgrund im Text (Datenschutz): nur Name, Zeitraum und Bereich.
+        send([u for u in users if notif_sees_dept(u, did) and u["role"] != "viewer"], "block", "employee", eid,
+             f"Abwesenheit {e.get('name') or eid} {span} · {dept_name.get(did, did)}: {open_steps} {'Auftrag' if open_steps == 1 else 'Aufträge'} offen", f"abs|{eid}|{days[0]}|{days[-1]}")
+
+    old_emp = {str(e.get("id")): e for e in (old.get("employees") or []) if isinstance(e, dict)}
+    for eid, e in emp.items():
+        if str(e.get("employmentType")) != "temporary":
+            continue
+        before = old_emp.get(eid) or {}
+        a = before.get("tempStatus") if before.get("employmentType") == "temporary" else None
+        b = e.get("tempStatus")
+        did = str(e.get("departmentId") or "")
+        key = f"loan|{eid}|{b}|{e.get('tempFrom')}|{e.get('tempTo')}"
+        span = f"{_short(e.get('tempFrom'))}–{_short(e.get('tempTo'))}"
+        if b == "requested" and (a != "requested" or (before.get("tempFrom"), before.get("tempTo")) != (e.get("tempFrom"), e.get("tempTo"))):
+            send([u for u in users if u["role"] == "gf"], "loan", "employee", eid, f"Leiharbeiter angefragt: {e.get('name') or eid} {span} · {dept_name.get(did, did)}", key)
+        elif b in {"approved", "rejected"} and a != b:
+            asker = str(e.get("tempBy") or "").casefold()
+            targets = [u for u in users if u["username"].casefold() == asker] or [u for u in users if u["role"] in DEPARTMENT_ROLES and str(u.get("department_id") or "") == did]
+            send(targets, "loan", "employee", eid, f"Leiharbeiter {'genehmigt' if b == 'approved' else 'abgelehnt'}: {e.get('name') or eid} {span}", key)
+    return made
+
+
+def notify_chat_message(con, channel, author: str, text: str) -> int:
+    """Erwähnung (@) in jedem Kanal, jede Nachricht in einer Direktunterhaltung."""
+    users = {u["username"].casefold(): u for u in _notif_users(con)}
+    if channel["kind"] == "all":
+        member_keys = set(users)
+    else:
+        member_keys = {str(x).casefold() for x in json.loads(channel["members"] or "[]")}
+    mentioned = {m.group(2).casefold() for m in _MENTION_TOKEN.finditer(text) if m.group(1) == "u"}
+    targets = set()
+    for key in member_keys:
+        if key == author.casefold() or key not in users:
+            continue
+        if key in mentioned or channel["kind"] == "direct":
+            targets.add(key)
+    preview = _MENTION_TOKEN.sub(lambda m: ("@" + m.group(2)) if m.group(1) == "u" else "/" + (m.group(3) or m.group(2)), text).replace("\n", " ")
+    preview = preview[:90] + ("…" if len(preview) > 90 else "")
+    made = 0
+    for key in targets:
+        u = users[key]
+        body = f"{author}: {preview}" if channel["kind"] == "direct" else f"{author} erwähnt dich: {preview}"
+        if notif_add(con, u["username"], u["role"], "mention", "chat", channel["id"], body):
+            made += 1
+    return made
+
+
+def notif_get(con, user: dict, path: str, qs: dict) -> tuple[int, dict]:
+    username, role = user["username"], user["role"]
+    if path == "/api/notifications/prefs":
+        return 200, {"prefs": notif_prefs(con, username, role)}
+    if path == "/api/notifications":
+        notif_purge(con)
+        try:
+            since = max(0, int(qs.get("since", ["0"])[0]))
+        except ValueError:
+            return 400, mp_error("MP-NOTIF-001", "Position ungültig.")
+        rows = con.execute("SELECT * FROM notifications WHERE username=? AND id>? ORDER BY id DESC LIMIT ?", (username, since, NOTIF_LIST_LIMIT)).fetchall()
+        return 200, {"items": [_notif_row(r) for r in rows], **notif_sig(con, username), "prefs": notif_prefs(con, username, role), "retentionDays": NOTIF_RETENTION_DAYS}
+    return 404, mp_error("MP-REQ-404", "Nicht gefunden.")
+
+
+def notif_post(con, user: dict, path: str, body: dict, state: dict | None = None) -> tuple[int, dict]:
+    username, role = user["username"], user["role"]
+    if path == "/api/notifications/read":
+        if body.get("all"):
+            con.execute("UPDATE notifications SET read_at=? WHERE username=? AND read_at IS NULL", (now_iso(), username))
+        else:
+            ids = body.get("ids")
+            if not isinstance(ids, list) or len(ids) > 200 or any(not isinstance(i, int) or isinstance(i, bool) for i in ids):
+                return 400, mp_error("MP-NOTIF-001", "Einträge ungültig.")
+            con.executemany("UPDATE notifications SET read_at=? WHERE username=? AND id=? AND read_at IS NULL", [(now_iso(), username, i) for i in ids])
+        return 200, {"ok": True, **notif_sig(con, username)}
+    if path == "/api/notifications/derived":
+        items = body.get("items")
+        if not isinstance(items, list) or len(items) > NOTIF_MAX_DERIVED:
+            return 400, mp_error("MP-NOTIF-001", f"Höchstens {NOTIF_MAX_DERIVED} Einträge je Meldung.")
+        state = state or {}
+        steps = {str(s.get("id")): s for s in (state.get("workSteps") or []) if isinstance(s, dict)}
+        dd = default_dept_id(state)
+        machine_dept = {str(m.get("id")): str(m.get("departmentId") or dd) for m in (state.get("machines") or []) if isinstance(m, dict)}
+        today, made = _berlin_today(), 0
+        me = {"username": username, "role": role, "department_id": user.get("department_id") or ""}
+        for it in items:
+            if not isinstance(it, dict) or it.get("kind") not in {"late", "tight"} or not _valid_date_key(it.get("end")):
+                return 400, mp_error("MP-NOTIF-001", "Meldung ungültig.")
+            s = steps.get(str(it.get("orderId")))
+            # Nur echte, aktive Aufträge mit Termin und nur aus sichtbaren Bereichen; der Termin kommt vom Server.
+            if not s or str(s.get("status") or "planned") not in _ACTIVE_STEP or not _valid_date_key(s.get("dueDate")) \
+                    or not notif_sees_dept(me, _step_dept(s, machine_dept, dd)):
+                continue
+            label = str(s.get("fs") or s.get("order") or s.get("id"))
+            text = f"{label}: Plan-Ende {_short(it['end'])} nach Termin {_short(s['dueDate'])}" if it["kind"] == "late" \
+                else f"{label}: Puffer unter 1 Arbeitstag (Termin {_short(s['dueDate'])})"
+            if notif_add(con, username, role, "risk", "order", s["id"], text, f"risk|{s['id']}|{today}"):
+                made += 1
+        return 200, {"created": made, **notif_sig(con, username)}
+    return 404, mp_error("MP-REQ-404", "Nicht gefunden.")
+
+
+def notif_put(con, user: dict, path: str, body: dict) -> tuple[int, dict]:
+    if path == "/api/notifications/prefs":
+        patch, err = notif_prefs_validate(body)
+        if patch is None:
+            return 400, mp_error("MP-NOTIF-002", err)
+        return 200, {"prefs": notif_prefs_save(con, user["username"], user["role"], patch)}
+    return 404, mp_error("MP-REQ-404", "Nicht gefunden.")
+
+
 def mp_error(code: str, message: str, **extra) -> dict:
     body = {"errorCode": code, "error": message}
     body.update(extra)
@@ -969,6 +2315,11 @@ def validate_projects(old: dict, projects: list) -> tuple[bool, str, str]:
                 return False, "MP-PM-010", f"Projekt '{label}': Prozess hat ein ungültiges Startdatum."
             if _valid_date_key(pr.get("startDate")) and _valid_date_key(pr.get("dueDate")) and str(pr["startDate"]) > str(pr["dueDate"]):
                 return False, "MP-PM-016", f"Projekt '{label}': Prozess „{pr.get('title')}“ startet nach seiner Fälligkeit."
+            pm_plan = pr.get("pmPlan")
+            if pm_plan is not None and (not isinstance(pm_plan, dict) or set(pm_plan) - {"startDate", "dueDate", "at", "by"}
+                                        or any(pm_plan.get(k) not in (None, "") and not _valid_date_key(pm_plan.get(k)) for k in ("startDate", "dueDate"))
+                                        or len(str(pm_plan.get("by") or "")) > 80 or len(str(pm_plan.get("at") or "")) > 40):
+                return False, "MP-PM-017", f"Projekt '{label}': PM-Vorplan von „{pr.get('title')}“ ist ungültig."
         cp = project.get("customerPlan")
         if cp is not None:
             # Kundenplan = an den Kunden gegebener PM-Terminplan (Stand), Vergleichsbasis für die AV.
@@ -987,7 +2338,143 @@ def validate_projects(old: dict, projects: list) -> tuple[bool, str, str]:
     return True, "", ""
 
 
+# --------------------------------------------------------------------------- Tiefziehen: Formate
+_SAFE_ID = re.compile(r"[A-Za-z0-9_-]{1,80}")
+FORMAT_STATUS = {"active", "stored"}
+
+
+def _num_in(v, lo, hi, integer=False):
+    x = _finite_float(v)
+    return x is not None and lo <= x <= hi and (not integer or x.is_integer())
+
+
+def _validate_machine_format_fields(m: dict) -> tuple[bool, str]:
+    """Tiefziehen: Takte je Maschine (Name + Sekunden) und maximale Formatgröße/Ziehtiefe."""
+    for f in ("maxL", "maxB", "maxH"):
+        if m.get(f) not in (None, "") and not _num_in(m.get(f), 0, 10000):
+            return False, f"{f} ist ungültig."
+    takte = m.get("takte")
+    if takte in (None, ""):
+        return True, ""
+    if not isinstance(takte, list) or len(takte) > 30:
+        return False, "Taktliste ist ungültig (max. 30)."
+    seen = set()
+    for t in takte:
+        if not isinstance(t, dict) or not _SAFE_ID.fullmatch(str(t.get("id") or "")) or str(t.get("id")) in seen:
+            return False, "Takt benötigt eine eindeutige ID."
+        seen.add(str(t.get("id")))
+        if not str(t.get("name") or "").strip() or len(str(t.get("name"))) > 40:
+            return False, "Taktname fehlt oder ist zu lang."
+        if not _num_in(t.get("sec"), 1, 3600):
+            return False, f"Takt „{t.get('name')}“: Sekunden müssen zwischen 1 und 3600 liegen."
+    return True, ""
+
+
+def validate_formats(old: dict, new: dict, dept_ids: set) -> tuple[bool, str, str]:
+    """Grundformate und Formate (Tiefziehen)."""
+    dd = default_dept_id(new)
+    base = new.get("baseFormats")
+    if base in (None, ""):
+        base = []
+    if not isinstance(base, list) or len(base) > 200:
+        return False, "MP-FMT-001", "Grundformate sind ungültig."
+    base_ids = set()
+    for g in base:
+        if not isinstance(g, dict) or not _SAFE_ID.fullmatch(str(g.get("id") or "")) or str(g.get("id")) in base_ids:
+            return False, "MP-FMT-001", "Grundformat benötigt eine eindeutige ID."
+        base_ids.add(str(g.get("id")))
+        if str(g.get("departmentId") or "") not in dept_ids:
+            return False, "MP-FMT-001", f"Grundformat '{g.get('name')}' verweist auf einen unbekannten Bereich."
+        if not str(g.get("name") or "").strip() or len(str(g.get("name"))) > 60:
+            return False, "MP-FMT-001", "Grundformat: Name fehlt oder ist zu lang."
+        if not _num_in(g.get("L"), 100, 5000, True) or not _num_in(g.get("B"), 100, 5000, True):
+            return False, "MP-FMT-001", f"Grundformat '{g.get('name')}': Länge/Breite 100–5000 mm."
+        # V12.10.0: Grundformat für mehrere Maschinen; leer/fehlend = alle Maschinen des Bereichs
+        mids = g.get("machineIds")
+        if mids is not None:
+            dep_machines = {str(m.get("id")) for m in (new.get("machines") or []) if isinstance(m, dict) and str(m.get("departmentId") or dd) == str(g.get("departmentId"))}
+            if not isinstance(mids, list) or not mids or len(mids) > 50 or len(set(map(str, mids))) != len(mids) or any(str(x) not in dep_machines for x in mids):
+                return False, "MP-FMT-011", f"Grundformat '{g.get('name')}': Maschinenauswahl ungültig (nur Maschinen des Bereichs)."
+    formats = new.get("formats")
+    if formats in (None, ""):
+        formats = []
+    if not isinstance(formats, list) or len(formats) > 5000:
+        return False, "MP-FMT-002", "Formatliste ist ungültig."
+    machine_dept = {str(m.get("id")): str(m.get("departmentId") or dd) for m in (new.get("machines") or []) if isinstance(m, dict)}
+    step_ids = {str(x.get("id")) for x in (new.get("workSteps") or []) if isinstance(x, dict)}
+    # Fertige Aufträge wandern in die Historie; das Format behält die Verknüpfung (originalOrderId).
+    step_ids |= {str(h.get("originalOrderId")) for h in (new.get("history") or []) if isinstance(h, dict) and h.get("originalOrderId")}
+    old_links = {str(f.get("id")): str(f.get("workStepId") or "") for f in (old.get("formats") or []) if isinstance(f, dict)}
+    ids, numbers = set(), set()
+    for f in formats:
+        if not isinstance(f, dict) or not _SAFE_ID.fullmatch(str(f.get("id") or "")) or str(f.get("id")) in ids:
+            return False, "MP-FMT-002", "Format benötigt eine eindeutige ID."
+        ids.add(str(f.get("id")))
+        number = str(f.get("number") or "").strip()
+        label = number or str(f.get("id"))
+        if not number or len(number) > 20 or number.casefold() in numbers:
+            return False, "MP-FMT-003", f"Format '{label}': Formatnummer fehlt oder ist doppelt."
+        numbers.add(number.casefold())
+        did = str(f.get("departmentId") or "")
+        if did not in dept_ids:
+            return False, "MP-FMT-002", f"Format '{label}' verweist auf einen unbekannten Bereich."
+        if len(str(f.get("name") or "")) > 120:
+            return False, "MP-FMT-002", f"Format '{label}': Name ist zu lang."
+        status = str(f.get("status") or "active")
+        if status not in FORMAT_STATUS:
+            return False, "MP-FMT-002", f"Format '{label}' hat einen ungültigen Status."
+        if f.get("baseId") not in (None, "") and str(f.get("baseId")) not in base_ids:
+            return False, "MP-FMT-004", f"Format '{label}' verweist auf ein unbekanntes Grundformat."
+        mid = str(f.get("machineId") or "")
+        if mid and machine_dept.get(mid) != did:
+            return False, "MP-FMT-005", f"Format '{label}': Maschine gehört nicht zum Bereich."
+        if not _num_in(f.get("L"), 100, 5000, True) or not _num_in(f.get("B"), 100, 5000, True):
+            return False, "MP-FMT-002", f"Format '{label}': Länge/Breite 100–5000 mm."
+        if not _num_in(f.get("H", 0), 0, 2000) or not _num_in(f.get("rand", 0), 0, 1000):
+            return False, "MP-FMT-002", f"Format '{label}': Ziehtiefe/Rand ungültig."
+        tools = f.get("tools") or []
+        if not isinstance(tools, list) or len(tools) > 60:
+            return False, "MP-FMT-006", f"Format '{label}': Werkzeugliste ist ungültig (max. 60)."
+        tool_ids = set()
+        for t in tools:
+            if not isinstance(t, dict) or not _SAFE_ID.fullmatch(str(t.get("id") or "")) or str(t.get("id")) in tool_ids:
+                return False, "MP-FMT-006", f"Format '{label}': Werkzeug ohne eindeutige ID."
+            tool_ids.add(str(t.get("id")))
+            for k, lim in (("wkz", 40), ("fs", 40), ("order", 80), ("article", 120), ("stepId", 80), ("projectId", 80)):
+                if len(str(t.get(k) or "")) > lim:
+                    return False, "MP-FMT-006", f"Format '{label}': Feld '{k}' ist zu lang."
+            if not all(_num_in(t.get(k), 1, 5000) for k in ("l", "b", "h")):
+                return False, "MP-FMT-006", f"Format '{label}': Werkzeugmaße 1–5000 mm."
+            if not _num_in(t.get("n"), 1, 500, True) or not _num_in(t.get("qty", 0), 0, 10_000_000, True):
+                return False, "MP-FMT-006", f"Format '{label}': Nutzen (1–500) bzw. Menge ungültig."
+        layout = f.get("layout")
+        if layout is not None and (not isinstance(layout, dict) or len(layout) > 5000):
+            return False, "MP-FMT-007", f"Format '{label}': Layout ist ungültig."
+        lager = f.get("lager")
+        if status == "stored":
+            if not isinstance(lager, dict) or not str(lager.get("ort") or "").strip() or len(str(lager.get("ort"))) > 120:
+                return False, "MP-FMT-008", f"Format '{label}': Eingelagert ohne Lagerort."
+        elif lager not in (None, ""):
+            return False, "MP-FMT-008", f"Format '{label}': Lagerort nur bei eingelagerten Formaten."
+        log = f.get("log") or []
+        if not isinstance(log, list) or len(log) > 500 or any(not isinstance(x, dict) for x in log):
+            return False, "MP-FMT-009", f"Format '{label}': Verlauf ist ungültig."
+        wsid = str(f.get("workStepId") or "")
+        # V12.10.2 (N8): neue Verknüpfung muss auf einen vorhandenen Auftrag zeigen. Bestehende
+        # Verknüpfungen auf gelöschte Aufträge bleiben erlaubt, sonst blockiert ein Altbestand jedes Speichern.
+        if wsid and (len(wsid) > 80 or (wsid not in step_ids and wsid != old_links.get(str(f.get("id")), ""))):
+            return False, "MP-FMT-010", f"Format '{label}': Verknüpfung zum Auftrag ist ungültig."
+    return True, "", ""
+
+
 TEMPLATE_KINDS = {"pm", "av"}
+# V12.8.2: Bereichsarten. Produktion plant über Maschinen/Linien, Vertrieb/Entwicklung nur Projektaufgaben.
+DEPARTMENT_KINDS = {"production", "sales", "development"}
+PROJECT_FIXED_AREA_IDS = {"sales", "pm", "engineering", "calculation", "purchasing", "quality", "av"}
+
+
+def production_department_ids(state: dict) -> set:
+    return {str(d.get("id")) for d in (state.get("departments") or []) if isinstance(d, dict) and str(d.get("kind") or "production") == "production"}
 
 
 def validate_process_templates(templates) -> tuple[bool, str, str]:
@@ -1038,6 +2525,7 @@ def validate_state(old: dict, new: dict) -> tuple[bool, str, str]:
     machines = new.get("machines")
     work_steps = new.get("workSteps")
     departments = new.get("departments") or []
+    dd = default_dept_id(new)
     projects = new.get("projects") or []
     if not isinstance(machines, list) or not machines:
         return False, "MP-DATA-011", "Mindestens eine Maschine ist erforderlich."
@@ -1045,21 +2533,51 @@ def validate_state(old: dict, new: dict) -> tuple[bool, str, str]:
         return False, "MP-STEP-001", "Arbeitsgangliste fehlt."
     if not isinstance(departments, list) or not departments:
         return False, "MP-DEPT-001", "Produktionsbereiche fehlen."
+    # V12.10.2 (N1): Wurzelfelder ohne Fachprüfung zumindest typisieren (sonst TypeError beim Speichern).
+    for key, typ, what in (("meta", dict, "Objekt"), ("ui", dict, "Objekt"), ("planVersions", list, "Liste")):
+        if new.get(key) is not None and not isinstance(new.get(key), typ):
+            return False, "MP-DATA-014", f"Feld '{key}' muss ein {what} sein."
+    if any(not isinstance(v, dict) for v in new.get("planVersions") or []):
+        return False, "MP-DATA-014", "Planversionen sind ungültig."
 
     dept_ids = set()
     dept_types = {}
+    dept_kinds = {}
     valid_types = {"MACHINE", "LABOR_HOURS", "PROCESS", "CYCLE"}
     for dep in departments:
         if not isinstance(dep, dict) or not re.fullmatch(r"[A-Za-z0-9_-]{1,40}", str(dep.get("id") or "")):
             return False, "MP-DEPT-002", "Produktionsbereich hat eine ungültige ID."
         did = str(dep["id"])
         ptype = str(dep.get("planningType") or "")
+        if any(k in dep and not isinstance(dep[k], bool) for k in ("formats", "sharedOperators")):
+            return False, "MP-DEPT-007", f"Bereich '{did}': Eigenschaften formats/sharedOperators sind true/false."
         if did in dept_ids:
             return False, "MP-DEPT-002", f"Doppelte Bereichs-ID '{did}'."
         if ptype not in valid_types:
             return False, "MP-DEPT-003", f"Bereich '{did}' hat einen ungültigen Planungstyp."
+        kind = str(dep.get("kind") or "production")
+        if kind not in DEPARTMENT_KINDS:
+            return False, "MP-DEPT-004", f"Bereich '{did}' hat eine ungültige Art."
+        name = str(dep.get("name") or "").strip()
+        if not name or len(name) > 60:
+            return False, "MP-DEPT-005", f"Bereich '{did}': Name fehlt oder ist zu lang (max. 60)."
+        if did in PROJECT_FIXED_AREA_IDS:
+            return False, "MP-DEPT-005", f"Bereichs-ID '{did}' ist für feste Projektbereiche reserviert."
         dept_ids.add(did)
         dept_types[did] = ptype
+        dept_kinds[did] = kind
+
+    # V12.8.2: Vertrieb/Entwicklung bearbeiten nur Projektaufgaben – keine Maschinen, Aufträge, Formate.
+    for name, what in (("machines", "Maschine/Linie"), ("workSteps", "Auftrag"), ("formats", "Format"), ("baseFormats", "Grundformat")):
+        for rec in new.get(name) or []:
+            if isinstance(rec, dict) and dept_kinds.get(str(rec.get("departmentId") or dd), "production") != "production":
+                return False, "MP-DEPT-004", f"Bereich '{rec.get('departmentId')}' ist kein Produktionsbereich – {what} nicht zulässig."
+    old_inactive = {str(d.get("id")) for d in (old.get("departments") or []) if isinstance(d, dict) and d.get("active") is False}
+    for dep in departments:
+        if dep.get("active") is False and str(dep.get("id")) not in old_inactive:
+            did = str(dep.get("id"))
+            if any(isinstance(x, dict) and str(x.get("departmentId")) == did and str(x.get("status") or "planned") in {"planned", "released", "running", "paused"} for x in work_steps if isinstance(work_steps, list)):
+                return False, "MP-DEPT-006", f"Bereich '{dep.get('name') or did}' hat noch offene Aufträge und kann nicht deaktiviert werden."
 
     if not isinstance(projects, list):
         return False, "MP-PM-001", "Projekt-/Auftragsstamm ist ungültig."
@@ -1067,6 +2585,9 @@ def validate_state(old: dict, new: dict) -> tuple[bool, str, str]:
     if not ok:
         return False, code, reason
     ok, code, reason = validate_process_templates(new.get("processTemplates"))
+    if not ok:
+        return False, code, reason
+    ok, code, reason = validate_formats(old, new, dept_ids)
     if not ok:
         return False, code, reason
     seen_project_ids = {str(p.get("id")) for p in projects}
@@ -1193,14 +2714,20 @@ def validate_state(old: dict, new: dict) -> tuple[bool, str, str]:
         sr = _finite_float(m.get("staffRequired", 1))
         if sr is None or sr < 0 or not sr.is_integer() or sr > 99:
             return False, "MP-MACH-007", f"Maschine '{m.get('name') or mid}' hat einen ungültigen Personalbedarf."
-        if str(m.get("departmentId") or "cnc") not in dept_ids:
+        if str(m.get("departmentId") or dd) not in dept_ids:
             return False, "MP-MACH-008", f"Maschine '{m.get('name') or mid}' verweist auf einen unbekannten Bereich."
         setup = _finite_float(m.get("setupMinutes", 0))
         if setup is None or setup < 0 or setup > 1440:
             return False, "MP-MACH-009", f"Umrüstzeit von Maschine '{m.get('name') or mid}' ist ungültig."
+        ok, reason = _validate_machine_format_fields(m)
+        if not ok:
+            return False, "MP-MACH-014", f"Maschine '{m.get('name') or mid}': {reason}"
         crew = _finite_float(m.get("crew", 1))
         if crew is None or crew < 1 or not crew.is_integer() or crew > 99:
             return False, "MP-MACH-010", f"Besetzung von '{m.get('name') or mid}' muss eine ganze Zahl von 1 bis 99 sein."
+        lanes = m.get("lanes")
+        if lanes not in (None, "") and not _num_in(lanes, 1, 20, True):
+            return False, "MP-MACH-015", f"Parallelplätze von '{m.get('name') or mid}' müssen eine ganze Zahl von 1 bis 20 sein."
         if str(m.get("kind") or "machine") not in {"machine", "line"}:
             return False, "MP-MACH-011", f"Ressource '{m.get('name') or mid}' hat einen ungültigen Typ."
     if len(mids) != len(set(mids)):
@@ -1302,7 +2829,7 @@ def validate_state(old: dict, new: dict) -> tuple[bool, str, str]:
     eidset = set(eids)
 
     assignment_keys = set()
-    machine_dept_new = {str(m.get("id")): str(m.get("departmentId") or "cnc") for m in (new.get("machines") or []) if isinstance(m, dict)}
+    machine_dept_new = {str(m.get("id")): str(m.get("departmentId") or dd) for m in (new.get("machines") or []) if isinstance(m, dict)}
     deployment_new = _deployment_map(new)
     # Unveraenderte Zuordnungen nicht erneut gegen Freigabe/KW-Einsatz pruefen: Nimmt die GF
     # einen KW-Einsatz zurueck, darf das nicht jeden weiteren Speichervorgang blockieren.
@@ -1385,7 +2912,7 @@ def validate_state(old: dict, new: dict) -> tuple[bool, str, str]:
 
     seen_orders = set()
     seen_pos = set()
-    locked_by_machine: dict[str, str] = {}
+    locked_by_machine: dict[str, set] = {}
     old_orders = {str(o.get("id")): o for o in (old.get("workSteps") or []) if isinstance(o, dict) and o.get("id") and o.get("planningType") == "MACHINE"}
     planning_fields = (
         "projectId", "fs", "ab", "wt", "sequence", "departmentId", "planningType", "predecessorIds", "pos", "machineId", "altMachineId", "allowAlternative", "order", "articleNo", "description",
@@ -1416,11 +2943,11 @@ def validate_state(old: dict, new: dict) -> tuple[bool, str, str]:
         alt = str(o.get("altMachineId", "") or "")
         if mid not in midset:
             return False, "MP-PLAN-003", f"Auftrag '{o.get('order') or oid}' verweist auf eine unbekannte Hauptmaschine."
-        order_department = str(o.get("departmentId") or next((m.get("departmentId") or "cnc" for m in machines if str(m.get("id")) == mid), "cnc"))
+        order_department = str(o.get("departmentId") or next((m.get("departmentId") or dd for m in machines if str(m.get("id")) == mid), dd))
         if order_department not in dept_ids:
             return False, "MP-DEPT-004", f"Auftrag '{o.get('order') or oid}' verweist auf einen unbekannten Bereich."
         for used_mid in (mid, alt):
-            if used_mid and str((machine_map.get(used_mid) or {}).get("departmentId") or "cnc") != order_department:
+            if used_mid and str((machine_map.get(used_mid) or {}).get("departmentId") or dd) != order_department:
                 return False, "MP-DEPT-005", f"Auftrag '{o.get('order') or oid}' ist einer Maschine aus einem anderen Bereich zugeordnet."
         project_id = str(o.get("projectId") or "")
         if project_id and project_id not in project_ids:
@@ -1547,9 +3074,11 @@ def validate_state(old: dict, new: dict) -> tuple[bool, str, str]:
                 return False, "MP-PROD-019", f"Auftrag '{o.get('order') or oid}': Laufzeitpunkt fehlt."
 
         if status in {"running", "paused"}:
-            if mid in locked_by_machine and locked_by_machine[mid] != oid:
-                return False, "MP-PROD-010", f"Auf Maschine '{mid}' sind mehrere laufende/pausierte Aufträge hinterlegt."
-            locked_by_machine[mid] = oid
+            # V12.8.1: bis zu 'lanes' laufende/pausierte Aufträge je Maschine/Linie (Parallelbelegung)
+            running_here = locked_by_machine.setdefault(mid, set())
+            running_here.add(oid)
+            if len(running_here) > machine_lanes(new, mid):
+                return False, "MP-PROD-010", f"Auf Maschine '{mid}' sind mehr laufende/pausierte Aufträge hinterlegt als Parallelplätze."
 
         oo = old_orders.get(oid)
         if not oo:
@@ -1708,11 +3237,43 @@ def _need_map(state: dict) -> dict:
     return {_need_key(x): x for x in (state.get("departmentStaffNeeds") or []) if isinstance(x, dict)}
 
 
+def _gf_departments_change(old: dict, new: dict) -> tuple[bool, str]:
+    """V12.8.2: GF legt Bereiche an (Name, Art, aktiv) und richtet einem neuen Produktionsbereich
+    die erste Maschine/Linie ein. Bereiche werden nicht gelöscht, nur deaktiviert."""
+    dd = default_dept_id(old)
+    da, db = _record_map(old.get("departments")), _record_map(new.get("departments"))
+    if set(da) - set(db):
+        return False, "GF löscht keine Bereiche – stattdessen deaktivieren."
+    for did, b in db.items():
+        a = da.get(did)
+        if a is None:
+            if set(b) - {"id", "name", "kind", "active", "planningType"} or str(b.get("planningType") or "") != "MACHINE":
+                return False, "Neuer Bereich: nur Name, Art und aktiv (Planung über Maschinen/Linien)."
+            continue
+        diff = {k for k in set(a) | set(b) if canonical(a.get(k)) != canonical(b.get(k))}
+        if diff - {"name", "kind", "active"}:
+            return False, f"GF ändert an Bereichen nur Name, Art und aktiv ({sorted(diff)[0]})."
+    ma, mb = _record_map(old.get("machines")), _record_map(new.get("machines"))
+    old_with_machines = {str(m.get("departmentId") or dd) for m in ma.values()}
+    for mid in set(ma) | set(mb):
+        a, b = ma.get(mid), mb.get(mid)
+        if canonical(a) == canonical(b):
+            continue
+        if a is not None:
+            return False, "Bestehende Maschinen/Linien pflegt der Bereich bzw. Admin."
+        if str(b.get("departmentId") or dd) in old_with_machines:
+            return False, "GF legt nur die erste Maschine/Linie eines Bereichs an."
+    return True, ""
+
+
 def gf_change_allowed(old: dict, new: dict) -> tuple[bool, str]:
-    allowed_root = {"departmentStaffNeeds", "weeklyEmployeeDeployments", "exceptions", "audit", "meta", "ui", "employees"}
+    allowed_root = {"departmentStaffNeeds", "weeklyEmployeeDeployments", "exceptions", "audit", "meta", "ui", "employees", "departments", "machines"}
     for key in set(old) | set(new):
         if key not in allowed_root and canonical(old.get(key)) != canonical(new.get(key)):
             return False, f"GF darf operative Produktionsdaten '{key}' nicht ändern."
+    ok, reason = _gf_departments_change(old, new)
+    if not ok:
+        return False, reason
     ea, eb = _record_map(old.get("employees")), _record_map(new.get("employees"))
     if set(ea) != set(eb):
         return False, "GF legt keine Mitarbeiter an und entfernt keine."
@@ -1787,7 +3348,7 @@ def project_changes_allowed(old: dict, new: dict, role: str, username: str, depa
     elif role == "sales":
         own_areas = {"sales"}
     elif role == "production_planning":
-        own_areas = {str(d.get("id")) for d in (new.get("departments") or []) if isinstance(d, dict)} | {"av"}
+        own_areas = production_department_ids(new) | {"av"}
     else:
         own_areas = set()
     fields = PROJECT_FIELDS.get(kind, set())
@@ -1855,7 +3416,24 @@ def _pm_process_change(a: dict, b: dict, label: str) -> tuple[bool, str]:
             return False, f"Projekt {label}: Den Status von „{y.get('title')}“ meldet die zuständige Abteilung, nicht das Projektmanagement."
         if x is None and after != "open" and str(y.get("areaId")) not in PM_STATUS_AREAS:
             return False, f"Projekt {label}: Neue Abteilungsprozesse starten mit Status „Offen“."
+        if x is not None and canonical(x.get("pmPlan")) != canonical(y.get("pmPlan")):
+            return False, f"Projekt {label}: Den PM-Vorplan von „{y.get('title')}“ sichert nur die Arbeitsvorbereitung."
+        if x is not None and x.get("pmPlan") and any(canonical(x.get(k)) != canonical(y.get(k)) for k in ("startDate", "dueDate")):
+            return False, f"Projekt {label}: „{y.get('title')}“ wird von der Arbeitsvorbereitung terminiert – PM-Termine sind gesperrt."
+    for pid, x in pa.items():
+        if pid not in pb and x.get("pmPlan"):
+            return False, f"Projekt {label}: „{x.get('title')}“ ist von der Arbeitsvorbereitung übernommen und kann nicht entfernt werden."
     return True, ""
+
+
+def _pm_plan_snapshot_ok(x: dict, y: dict) -> bool:
+    """V12.8.3: Beim ersten Überschreiben durch die AV wird der PM-Termin unverändert gesichert."""
+    a, b = x.get("pmPlan"), y.get("pmPlan")
+    if canonical(a) == canonical(b):
+        return True
+    if a or not isinstance(b, dict) or set(b) - {"startDate", "dueDate", "at", "by"}:
+        return False
+    return str(b.get("startDate") or "") == str(x.get("startDate") or "") and str(b.get("dueDate") or "") == str(x.get("dueDate") or "")
 
 
 def _av_process_change(a: dict, b: dict, own_areas: set, label: str) -> tuple[bool, str]:
@@ -1879,6 +3457,10 @@ def _av_process_change(a: dict, b: dict, own_areas: set, label: str) -> tuple[bo
                 return False, f"Projekt {label}: Nur offene, noch nicht übernommene Prozesse dürfen entfernt werden."
             continue
         diff = {k for k in set(x) | set(y) if canonical(x.get(k)) != canonical(y.get(k))}
+        if "pmPlan" in diff:
+            if not _pm_plan_snapshot_ok(x, y):
+                return False, f"Projekt {label}: PM-Vorplan von „{y.get('title')}“ darf nur einmal unverändert gesichert werden."
+            diff.discard("pmPlan")
         if diff - PROCESS_TIMING_FIELDS:
             return False, f"Projekt {label}: Feld '{sorted(diff - PROCESS_TIMING_FIELDS)[0]}' am Prozess „{y.get('title')}“ ist für die Arbeitsvorbereitung nicht änderbar."
     return True, ""
@@ -1945,6 +3527,7 @@ def production_planning_change_allowed(old: dict, new: dict) -> tuple[bool, str]
     löschen, AB-Verknüpfung). Freigabe, Produktion, Fertigmeldung, Personal,
     Maschinen und Einstellungen bleiben bei Bereichen/Admin.
     """
+    # V12.10.2: "formats" entfernt – Formate pflegen nur Tiefzieh-Leitung/-Stellvertretung und Admin (V12.10.0).
     allowed_root = {"workSteps", "projects", "processTemplates", "audit", "meta", "ui", "planVersions"}
     for key in set(old) | set(new):
         if key not in allowed_root and canonical(old.get(key)) != canonical(new.get(key)):
@@ -1972,10 +3555,11 @@ def _record_map(items):
 
 
 def department_change_allowed(old: dict, new: dict, department_id: str) -> tuple[bool, str]:
+    dd = default_dept_id(new)
     if not department_id:
         return False, "Kein Bereich am Benutzer hinterlegt."
     globally_allowed = {"audit", "meta", "ui", "planVersions", "departmentStaffNeeds"}
-    scoped = {"workSteps", "machines", "machineBlocks", "employees", "personnelAssignments", "personnelAbsences", "history", "yearRules", "weekRules", "projects"}
+    scoped = {"workSteps", "machines", "machineBlocks", "employees", "personnelAssignments", "personnelAbsences", "history", "yearRules", "weekRules", "projects", "formats", "baseFormats"}
     # Sprechende Meldungen für häufige Fälle, danach die allgemeine Regel.
     if canonical(old.get("exceptions")) != canonical(new.get("exceptions")):
         return False, "Globale Betriebsferien/Kalender-Ausnahmen dürfen nur GF/Admin ändern."
@@ -2008,8 +3592,8 @@ def department_change_allowed(old: dict, new: dict, department_id: str) -> tuple
 
     # Zuordnung aus dem ALTEN Stand (Fallback: neu angelegte Datensätze), damit ein
     # Umhängen im selben Speichervorgang keine fremden Sperren/Regeln freischaltet.
-    machine_dept = {str(m.get("id")): str(m.get("departmentId") or "cnc") for m in (new.get("machines") or []) if isinstance(m, dict)}
-    machine_dept.update({str(m.get("id")): str(m.get("departmentId") or "cnc") for m in (old.get("machines") or []) if isinstance(m, dict)})
+    machine_dept = {str(m.get("id")): str(m.get("departmentId") or dd) for m in (new.get("machines") or []) if isinstance(m, dict)}
+    machine_dept.update({str(m.get("id")): str(m.get("departmentId") or dd) for m in (old.get("machines") or []) if isinstance(m, dict)})
     old_orders = {k:v for k,v in _record_map(old.get("workSteps")).items() if v.get("planningType") == "MACHINE"}
     new_orders = {k:v for k,v in _record_map(new.get("workSteps")).items() if v.get("planningType") == "MACHINE"}
     employee_dept = {str(e.get("id")): str(e.get("departmentId") or "") for e in (new.get("employees") or []) if isinstance(e, dict)}
@@ -2035,10 +3619,14 @@ def department_change_allowed(old: dict, new: dict, department_id: str) -> tuple
                         yield side
 
     for rec in changed_records("machines"):
-        if str(rec.get("departmentId") or "cnc") != department_id:
+        if str(rec.get("departmentId") or dd) != department_id:
             return False, "Maschine gehört nicht zum eigenen Bereich."
+    for name, what in (("formats", "Format"), ("baseFormats", "Grundformat")):
+        for rec in changed_records(name):
+            if str(rec.get("departmentId") or "") != department_id:
+                return False, f"{what} gehört nicht zum eigenen Bereich."
     for rec in changed_records("workSteps"):
-        did = str(rec.get("departmentId") or machine_dept.get(str(rec.get("machineId")), "cnc"))
+        did = str(rec.get("departmentId") or machine_dept.get(str(rec.get("machineId")), dd))
         if did != department_id:
             return False, "Arbeitsgang gehört nicht zum eigenen Bereich."
     old_steps = _record_map(old.get("workSteps"))
@@ -2085,7 +3673,7 @@ def department_change_allowed(old: dict, new: dict, department_id: str) -> tuple
     for rec in changed_records("history"):
         oid = str(rec.get("originalOrderId") or "")
         source = old_orders.get(oid) or new_orders.get(oid) or {}
-        did = str(source.get("departmentId") or machine_dept.get(str(source.get("machineId")), "cnc"))
+        did = str(source.get("departmentId") or machine_dept.get(str(source.get("machineId")), dd))
         if did != department_id:
             return False, "Historieneintrag gehört nicht zum eigenen Bereich."
     return True, ""
@@ -2263,22 +3851,51 @@ def prune_sessions(con: sqlite3.Connection) -> None:
     con.execute("DELETE FROM sessions WHERE expires_at < ?", (int(time.time()),))
 
 
-def failed_login_blocked(ip: str) -> bool:
+def _login_keys(ip: str, username: str) -> list[tuple[str, int]]:
+    u = str(username or "").strip().lower()[:80]
+    return [
+        ("ip:" + ip, LOGIN_MAX_PER_IP),
+        ("user:" + u, LOGIN_MAX_PER_USER),
+        ("ipuser:" + ip + "|" + u, LOGIN_MAX_PER_IP_USER),
+    ]
+
+
+def _prune_login_fails(now: float) -> None:
+    """Abgelaufene Versuche und leere Schlüssel entfernen (hält LOGIN_FAILS klein)."""
+    for key in list(LOGIN_FAILS):
+        xs = [t for t in LOGIN_FAILS[key] if now - t < LOGIN_WINDOW]
+        if xs:
+            LOGIN_FAILS[key] = xs
+        else:
+            del LOGIN_FAILS[key]
+
+
+def login_attempt_reserve(ip: str, username: str) -> float | None:
+    """Prüft die Sperre und zählt den Versuch atomar vorab als Fehlversuch.
+
+    Rückgabe: Zeitstempel der Reservierung, None = gesperrt. Parallele Anfragen
+    während der Passwortprüfung (~0,2 s) zählen dadurch alle mit.
+    """
     now = time.time()
+    keys = _login_keys(ip, username)
     with LOGIN_LOCK:
-        xs = [t for t in LOGIN_FAILS.get(ip, []) if now - t < 600]
-        LOGIN_FAILS[ip] = xs
-        return len(xs) >= 8
+        _prune_login_fails(now)
+        if any(len(LOGIN_FAILS.get(key, [])) >= limit for key, limit in keys):
+            return None
+        for key, _ in keys:
+            LOGIN_FAILS.setdefault(key, []).append(now)
+        return now
 
 
-def record_failed_login(ip: str) -> None:
+def login_attempt_succeeded(ip: str, username: str, stamp: float) -> None:
+    """Erfolg: nur die Zähler dieses Benutzers löschen; frühere Fehlversuche der IP bleiben."""
+    ip_key, user_key, ip_user_key = (k for k, _ in _login_keys(ip, username))
     with LOGIN_LOCK:
-        LOGIN_FAILS.setdefault(ip, []).append(time.time())
-
-
-def clear_failed_login(ip: str) -> None:
-    with LOGIN_LOCK:
-        LOGIN_FAILS.pop(ip, None)
+        LOGIN_FAILS.pop(user_key, None)
+        LOGIN_FAILS.pop(ip_user_key, None)
+        xs = LOGIN_FAILS.get(ip_key)
+        if xs and stamp in xs:
+            xs.remove(stamp)
 
 
 def client_ip_allowed(ip: str) -> bool:
@@ -2290,15 +3907,258 @@ def client_ip_allowed(ip: str) -> bool:
         return False
 
 
+def _local_host_names() -> set[str]:
+    names = set()
+    for fn in (socket.gethostname, socket.getfqdn):
+        try:
+            n = str(fn() or "").strip().lower().rstrip(".")
+        except OSError:
+            n = ""
+        if n:
+            names.add(n)
+            names.add(n.split(".", 1)[0])
+    return names
+
+
+LOCAL_HOST_NAMES = _local_host_names()
+
+
+def host_name_allowed(host: str, bind_ip: str) -> bool:
+    """Schutz gegen DNS-Rebinding: nur Server-IP, eigener PC-Name (auch mit DNS-Suffix) oder MP_ALLOWED_HOSTS."""
+    h = str(host or "").strip().lower().rstrip(".")
+    if not h:
+        return False
+    if h.startswith("["):
+        h = h[1:].split("]", 1)[0]
+    if h == str(bind_ip).lower() or h in EXTRA_ALLOWED_HOSTS or h in LOCAL_HOST_NAMES:
+        return True
+    try:
+        ip = ipaddress.ip_address(h)
+    except ValueError:
+        ip = None
+    if ip is not None:
+        try:
+            bind = ipaddress.ip_address(bind_ip)
+        except ValueError:
+            return False
+        # Server an 0.0.0.0 (nur Testbetrieb): jede IP-Adresse ist ein direkter Aufruf, kein Rebinding.
+        return ip == bind or bind.is_unspecified or (ip.is_loopback and bind.is_loopback)
+    if h == "localhost":
+        try:
+            return ipaddress.ip_address(bind_ip).is_loopback
+        except ValueError:
+            return False
+    # PC-Name mit beliebigem DNS-Suffix (pc01.firma.local), sofern der erste Teil der eigene Name ist.
+    return h.split(".", 1)[0] in LOCAL_HOST_NAMES and "." in h
+
+
+def split_host_port(value: str) -> tuple[str, int | None]:
+    v = str(value or "").strip()
+    if v.startswith("["):
+        host, _, rest = v[1:].partition("]")
+        port = rest[1:] if rest.startswith(":") else ""
+    elif v.count(":") == 1:
+        host, _, port = v.partition(":")
+    else:
+        host, port = v, ""
+    try:
+        return host, (int(port) if port else None)
+    except ValueError:
+        return host, -1
+
+
 class MPHTTPServer(ThreadingHTTPServer):
     # 30 gleichzeitige Browser + kurze Bursts bei Login/Reload/Long-Poll-Reconnect.
     request_queue_size = 128
     daemon_threads = True
     allow_reuse_address = True
 
+    def __init__(self, *args, **kwargs):
+        self._conn_slots = threading.BoundedSemaphore(MAX_CONNECTIONS)
+        super().__init__(*args, **kwargs)
+
+    def process_request(self, request, client_address):
+        # V12.10.2: begrenzte Threadzahl – Verbindungen über dem Limit werden sofort geschlossen.
+        if not self._conn_slots.acquire(blocking=False):
+            self.shutdown_request(request)
+            return
+        try:
+            super().process_request(request, client_address)
+        except Exception:
+            self._conn_slots.release()
+            raise
+
+    def process_request_thread(self, request, client_address):
+        try:
+            super().process_request_thread(request, client_address)
+        finally:
+            self._conn_slots.release()
+
+
+# ---------------------------------------------------------------------------------------------
+# V12.16.0: Branchenvorlagen (vorlage_<id>.json im Paket). Eine Vorlage wird nur auf Wunsch (Admin) angewendet und
+# ERGÄNZT nur: vorhandene Bereiche, Maschinen, Schichten und Abläufe bleiben unverändert, nichts wird gelöscht.
+# Die Vorlage enthält keine Firmen-/Personendaten.
+# ---------------------------------------------------------------------------------------------
+TEMPLATE_FILE = re.compile(r"^vorlage_([a-z0-9_]{1,30})\.json$")
+TEMPLATE_MACHINE_KEYS = ("kind", "crew", "lanes", "setupMinutes", "defaultShiftMode", "staffRequired")
+
+
+def load_templates() -> dict:
+    out = {}
+    for p in sorted(BASE.glob("vorlage_*.json")):
+        m = TEMPLATE_FILE.match(p.name)
+        if not m:
+            continue
+        try:
+            t = json.loads(p.read_text(encoding="utf-8-sig"))
+        except (OSError, ValueError):
+            continue
+        if isinstance(t, dict) and t.get("id") == m.group(1) and isinstance(t.get("name"), str):
+            out[t["id"]] = t
+    return out
+
+
+def _tpl_list(t: dict, key: str) -> list:
+    v = t.get(key)
+    return [x for x in v if isinstance(x, dict)] if isinstance(v, list) else []
+
+
+def template_overview() -> list[dict]:
+    out = []
+    for t in load_templates().values():
+        out.append({
+            "id": t["id"], "name": t["name"], "description": str(t.get("description") or ""),
+            "departments": [{"id": d.get("id"), "name": d.get("name"), "planningType": d.get("planningType")} for d in _tpl_list(t, "departments")],
+            "machines": len(_tpl_list(t, "machines")),
+            "processTemplates": [x.get("name") for x in _tpl_list(t, "processTemplates")],
+            "modules": {k: bool(v) for k, v in (t.get("modules") or {}).items() if k in CONFIG_MODULES} if isinstance(t.get("modules"), dict) else {},
+        })
+    return out
+
+
+def template_merge(state: dict, tpl: dict) -> tuple[dict, dict]:
+    """Liefert (neuer Datenstand, Zusammenfassung). Der übergebene Stand wird nicht verändert."""
+    new = json.loads(json.dumps(state))
+    summary = {"departments": [], "machines": [], "shiftTemplates": [], "processTemplates": [], "skipped": 0}
+    deps = new.setdefault("departments", [])
+    dep_ids = {str(d.get("id")) for d in deps if isinstance(d, dict)}
+    dep_names = {str(d.get("name") or "").strip().casefold() for d in deps if isinstance(d, dict)}
+    added_deps = set()
+    for d in _tpl_list(tpl, "departments"):
+        did, name = str(d.get("id") or ""), str(d.get("name") or "").strip()
+        if (not re.fullmatch(r"[A-Za-z0-9_-]{1,40}", did) or did in dep_ids or did in PROJECT_FIXED_AREA_IDS
+                or name.casefold() in dep_names or d.get("planningType") not in {"MACHINE", "LABOR_HOURS", "PROCESS", "CYCLE"}):
+            summary["skipped"] += 1
+            continue
+        rec = {"id": did, "name": name[:60], "planningType": d["planningType"], "active": True}
+        for flag in ("formats", "sharedOperators"):
+            if d.get(flag) is True:
+                rec[flag] = True
+        deps.append(rec)
+        dep_ids.add(did)
+        dep_names.add(name.casefold())
+        added_deps.add(did)
+        summary["departments"].append(name)
+    machines = new.setdefault("machines", [])
+    mids = {str(m.get("id")) for m in machines if isinstance(m, dict)}
+    monday = datetime.now().date() - timedelta(days=datetime.now().weekday())
+    for m in _tpl_list(tpl, "machines"):
+        mid = str(m.get("id") or "")
+        if str(m.get("departmentId") or "") not in added_deps:
+            continue     # Maschinen nur für Bereiche, die diese Anwendung neu anlegt
+        if not re.fullmatch(r"[A-Za-z0-9_-]{1,40}", mid) or mid in mids:
+            summary["skipped"] += 1
+            continue
+        rec = {"id": mid, "name": str(m.get("name") or mid)[:60], "departmentId": str(m["departmentId"]), "setupMinutes": 0,
+               "start": f"{monday.isoformat()}T06:30", "committedUntil": "", "defaultShiftMode": "1", "staffRequired": 1}
+        rec.update({k: m[k] for k in TEMPLATE_MACHINE_KEYS if k in m})
+        machines.append(rec)
+        mids.add(mid)
+        summary["machines"].append(rec["name"])
+    if isinstance(tpl.get("shiftTemplates"), dict):
+        st = new.setdefault("shiftTemplates", {})
+        for k, v in tpl["shiftTemplates"].items():
+            if k not in st and isinstance(v, dict):
+                st[k] = json.loads(json.dumps(v))
+                summary["shiftTemplates"].append(k)
+    areas = {a["id"] for a in (current_config().get("projectAreas") or CONFIG_PROJECT_AREAS)} | dep_ids
+    pts = new.setdefault("processTemplates", [])
+    pids = {str(x.get("id")) for x in pts if isinstance(x, dict)}
+    pnames = {(str(x.get("kind")), str(x.get("name") or "").strip().casefold()) for x in pts if isinstance(x, dict)}
+    for t in _tpl_list(tpl, "processTemplates"):
+        key = (str(t.get("kind")), str(t.get("name") or "").strip().casefold())
+        if str(t.get("id")) in pids or key in pnames or any(str(st.get("areaId")) not in areas for st in t.get("steps") or [] if isinstance(st, dict)):
+            summary["skipped"] += 1
+            continue
+        pts.append(json.loads(json.dumps(t)))
+        pids.add(str(t.get("id")))
+        pnames.add(key)
+        summary["processTemplates"].append(str(t.get("name")))
+    return new, summary
+
+
+def template_apply(user: dict, body: dict) -> tuple[int, dict]:
+    tid = str(body.get("id") or "")
+    tpl = load_templates().get(tid)
+    if not tpl:
+        return 404, mp_error("MP-TPL-040", "Vorlage nicht gefunden.")
+    dry = body.get("dryRun") is True
+    want_modules = body.get("modules") is True
+    with DB_LOCK, db_session() as con:
+        con.execute("BEGIN IMMEDIATE")
+        row = con.execute("SELECT revision,json FROM state WHERE id=1").fetchone()
+        old = json.loads(row["json"])
+        new, summary = template_merge(old, tpl)
+        changed = canonical({k: v for k, v in new.items() if k != "meta"}) != canonical({k: v for k, v in old.items() if k != "meta"})
+        cfg_now = current_config()
+        tmods = tpl.get("modules") if isinstance(tpl.get("modules"), dict) else {}
+        mod_changes = {k: bool(v) for k, v in tmods.items() if k in CONFIG_MODULES and (cfg_now.get("modules") or {}).get(k, True) != bool(v)} if want_modules else {}
+        summary["modules"] = mod_changes
+        # V12.17.0: Projektbereiche der Vorlage werden nur ergänzt (nie entfernt oder umbenannt).
+        have_pa = cfg_now.get("projectAreas") or CONFIG_PROJECT_AREAS
+        have_ids = {a["id"] for a in have_pa}
+        add_pa = [{"id": a["id"], "name": a["name"]} for a in _tpl_list(tpl, "projectAreas")
+                  if isinstance(a.get("id"), str) and re.fullmatch(r"[a-z0-9_-]{1,30}", a["id"]) and a["id"] not in have_ids
+                  and isinstance(a.get("name"), str) and 0 < len(a["name"]) <= 60 and a["id"] not in {d["id"] for d in new.get("departments", []) if isinstance(d, dict)}]
+        summary["projectAreas"] = [a["name"] for a in add_pa]
+        if dry or (not changed and not mod_changes and not add_pa):
+            con.execute("ROLLBACK")
+            return 200, {"ok": True, "dryRun": dry, "unchanged": not changed and not mod_changes and not add_pa, "summary": summary, "revision": row["revision"]}
+        revision = row["revision"]
+        if changed:
+            ok, code, reason = validate_state(old, new)
+            if not ok:
+                con.execute("ROLLBACK")
+                return 400, mp_error(code, reason)
+            revision = row["revision"] + 1
+            new.setdefault("meta", {})
+            new["meta"]["serverRevision"] = revision
+            new["meta"]["actor"] = user["username"]
+            new["meta"]["storage"] = "server"
+            ts = now_iso()
+            con.execute("UPDATE state SET revision=?,json=?,updated_at=?,updated_by=? WHERE id=1",
+                        (revision, json.dumps(new, ensure_ascii=False, separators=(",", ":")), ts, user["username"]))
+            con.execute("INSERT INTO server_audit(ts,username,action,detail,revision) VALUES(?,?,?,?,?)",
+                        (ts, user["username"], "Vorlage angewendet", tid, revision))
+        con.execute("COMMIT")
+    if mod_changes or add_pa:
+        body_cfg = {"revision": config_revision()}
+        if mod_changes:
+            body_cfg["modules"] = mod_changes
+        if add_pa:
+            body_cfg["projectAreas"] = [dict(a) for a in have_pa] + add_pa
+        status, payload, _detail = config_apply(body_cfg)
+        if status != 200:
+            return status, payload
+    return 200, {"ok": True, "summary": summary, "revision": revision}
+
 
 class Handler(BaseHTTPRequestHandler):
     server_version = f"ProduktionsplanungV{APP_VERSION}/1.0"
+    # V12.10.2: Socket-Timeout gegen langsame bzw. hängende Verbindungen (Slowloris).
+    # Long-Poll (/api/revision) wartet serverseitig max. 15 s und liest dabei nicht vom Socket.
+    timeout = 30
 
     def handle(self):
         # Defense in depth: clients outside the configured LAN subnet are
@@ -2306,8 +4166,9 @@ class Handler(BaseHTTPRequestHandler):
         if not client_ip_allowed(self.client_address[0]):
             try:
                 self.request.close()
-            finally:
-                return
+            except Exception:
+                pass
+            return
         try:
             return super().handle()
         except (BrokenPipeError, ConnectionResetError):
@@ -2344,12 +4205,15 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(raw)
 
-    def read_json(self) -> dict:
+    def read_json(self, limit: int = MAX_BODY) -> dict:
         try:
             n = int(self.headers.get("Content-Length", "0"))
         except ValueError:
+            self.close_connection = True
             raise ValueError("Ungültige Content-Length")
-        if n <= 0 or n > MAX_BODY:
+        if n <= 0 or n > limit:
+            # Body bleibt ungelesen -> Verbindung nach der Antwort schließen.
+            self.close_connection = True
             raise ValueError("Ungültige oder zu große Anfrage")
         raw = self.rfile.read(n)
         def reject_constant(value):
@@ -2358,6 +4222,52 @@ class Handler(BaseHTTPRequestHandler):
         if not isinstance(obj, dict):
             raise ValueError("JSON-Objekt erwartet")
         return obj
+
+    def request_origin_ok(self, write: bool) -> bool:
+        """Host-Header (DNS-Rebinding) und bei Schreibzugriffen Origin prüfen."""
+        bind_ip, bind_port = self.server.server_address[:2]
+        host, port = split_host_port(self.headers.get("Host", ""))
+        if not host_name_allowed(host, bind_ip) or port not in (None, bind_port):
+            self.close_connection = True
+            self.json_response(421, mp_error("MP-REQ-421", "Falsche Adresse. Bitte die Server-Adresse vom Admin nutzen."))
+            return False
+        if write:
+            origin = str(self.headers.get("Origin", "") or "").strip()
+            if origin and origin != "null":
+                o = urlparse(origin)
+                if o.scheme != "http" or not host_name_allowed(o.hostname or "", bind_ip) or (o.port or 80) != bind_port:
+                    self.close_connection = True
+                    self.json_response(403, mp_error("MP-REQ-403", "Anfrage von fremder Seite abgelehnt."))
+                    return False
+        return True
+
+    def _guarded(self, fn, write: bool):
+        if not self.request_origin_ok(write):
+            return
+        try:
+            return fn()
+        except (BrokenPipeError, ConnectionResetError, socket.timeout):
+            raise
+        except Exception as e:
+            # V12.10.2: unerwartete Fehler -> 500 mit Fehlercode statt Verbindungsabbruch.
+            sys.stderr.write(f"MP-SRV-500 {self.command} {urlparse(self.path).path}: {type(e).__name__}: {e}\n")
+            self.close_connection = True
+            try:
+                self.json_response(500, mp_error("MP-SRV-500", "Serverfehler. Bitte erneut versuchen."))
+            except Exception:
+                pass
+
+    def do_GET(self):
+        return self._guarded(self._do_GET, False)
+
+    def do_POST(self):
+        return self._guarded(self._do_POST, True)
+
+    def do_PUT(self):
+        return self._guarded(self._do_PUT, True)
+
+    def do_PATCH(self):
+        return self._guarded(self._do_PATCH, True)
 
     def session_user(self):
         c = SimpleCookie(self.headers.get("Cookie", ""))
@@ -2392,7 +4302,7 @@ class Handler(BaseHTTPRequestHandler):
             return False
         return True
 
-    def do_GET(self):
+    def _do_GET(self):
         parsed = urlparse(self.path)
         path = parsed.path
         if path == "/api/health":
@@ -2409,6 +4319,45 @@ class Handler(BaseHTTPRequestHandler):
             with DB_LOCK, db_session() as con:
                 row = con.execute("SELECT revision,json,updated_at,updated_by FROM state WHERE id=1").fetchone()
             return self.json_response(200, {"revision": row["revision"], "data": redact_state(json.loads(row["json"]), user), "updatedAt": row["updated_at"], "updatedBy": row["updated_by"]})
+        if path.startswith("/api/chat/"):
+            user = self.require_user()
+            if not user:
+                return
+            if not module_on("chat"):
+                return self.json_response(403, module_error("chat"))
+            with DB_LOCK, db_session() as con:
+                status, payload = chat_get(con, user, path, parse_qs(parsed.query))
+            return self.json_response(status, payload)
+        if path.startswith("/api/notifications"):
+            user = self.require_user()
+            if not user:
+                return
+            if not module_on("notifications"):
+                return self.json_response(403, module_error("notifications"))
+            with DB_LOCK, db_session() as con:
+                status, payload = notif_get(con, user, path, parse_qs(parsed.query))
+            return self.json_response(status, payload)
+        if path == "/api/config":
+            user = self.require_user()
+            if not user:
+                return
+            payload = public_config()
+            if user["role"] == "admin" and not payload["setupDone"]:
+                # V12.17.0: Passwortschritt des Assistenten nur, solange der Admin sein Startpasswort nie geändert hat.
+                with DB_LOCK, db_session() as con:
+                    ur = con.execute("SELECT created_at,updated_at FROM users WHERE id=?", (user["id"],)).fetchone()
+                payload["adminPwUnchanged"] = bool(ur) and ur["created_at"] == ur["updated_at"]
+            return self.json_response(200, payload)
+        if path == "/api/config/logo":
+            user = self.require_user()
+            if not user:
+                return
+            return self.serve_logo()
+        if path == "/api/templates":
+            user = self.require_user(["admin"])
+            if not user:
+                return
+            return self.json_response(200, {"templates": template_overview()})
         if path == "/api/history-archive":
             # Ältere Ist-Historie (nur lesen), neueste zuerst. Filter: from/to (YYYY-MM-DD, Fertigmeldung), limit/offset.
             user = self.require_user()
@@ -2447,18 +4396,29 @@ class Handler(BaseHTTPRequestHandler):
                 wait_ms = max(0, min(25000, int(qs.get("wait", ["0"])[0])))
             except Exception:
                 wait_ms = 0
+            # V12.13.0: Benachrichtigungen im selben Long-Poll. Der Client nennt den zuletzt gesehenen Stand
+            # (nsig); ändert er sich (neu/gelesen), endet die Wartezeit sofort.
+            nsig = qs.get("nsig", [""])[0]
+            if not re.fullmatch(r"\d{1,18}:\d{1,18}", nsig):
+                nsig = ""   # V12.14.1: ungültige Signatur ignorieren, sonst käme der Poll nie zur Ruhe
+            # V12.15.0: Firmenprofil-Revision (crev) im selben Long-Poll; Änderung beendet die Wartezeit.
+            try:
+                crev = int(qs.get("crev", [""])[0])
+            except ValueError:
+                crev = None
             deadline = time.monotonic() + wait_ms / 1000.0
             with REVISION_CONDITION:
                 while True:
                     with DB_LOCK, db_session() as con:
                         row = con.execute("SELECT revision,updated_at,updated_by FROM state WHERE id=1").fetchone()
-                    if int(row["revision"]) != since or wait_ms <= 0:
+                        notif = notif_sig(con, user["username"])
+                    if int(row["revision"]) != since or wait_ms <= 0 or (nsig and nsig != notif["sig"]) or (crev is not None and crev != config_revision()):
                         break
                     remaining = deadline - time.monotonic()
                     if remaining <= 0:
                         break
                     REVISION_CONDITION.wait(remaining)
-            return self.json_response(200, {"revision": row["revision"], "updatedAt": row["updated_at"], "updatedBy": row["updated_by"], "version": APP_VERSION})
+            return self.json_response(200, {"revision": row["revision"], "updatedAt": row["updated_at"], "updatedBy": row["updated_by"], "version": APP_VERSION, "notif": notif, "cfg": config_revision()})
         if path == "/api/users":
             user = self.require_user(USER_MANAGER_ROLES)
             if not user:
@@ -2477,6 +4437,52 @@ class Handler(BaseHTTPRequestHandler):
         self.send_error(404)
         return
 
+    def _config_patch(self):
+        user = self.require_user(["admin"])
+        if not user:
+            return
+        if not self.require_current_client():
+            return
+        try:
+            body = self.read_json(64 * 1024)
+        except Exception as e:
+            return self.json_response(400, mp_error("MP-DATA-013", str(e)))
+        return self.config_write(user, body)
+
+    def serve_logo(self):
+        lf = (current_config().get("company") or {}).get("logoFile") or ""
+        p = CONFIG_DIR / lf if lf else None
+        if not p or not p.is_file():
+            return self.json_response(404, mp_error("MP-CFG-404", "Kein Logo hinterlegt."))
+        raw = p.read_bytes()
+        etag = '"' + hashlib.sha256(raw).hexdigest()[:32] + '"'
+        if self.headers.get("If-None-Match") == etag:
+            self.send_response(304)
+            self.send_header("ETag", etag)
+            self.end_headers()
+            return
+        self.send_response(200)
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Referrer-Policy", "no-referrer")
+        self.send_header("Cache-Control", "private, no-cache")
+        self.send_header("ETag", etag)
+        # SVG darf nie aktiv werden, auch nicht beim direkten Aufruf: keine Skripte, keine Ressourcen, Sandbox.
+        self.send_header("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; sandbox")
+        self.send_header("Content-Type", LOGO_MIME.get(lf.rsplit(".", 1)[-1].lower(), "application/octet-stream"))
+        self.send_header("Content-Length", str(len(raw)))
+        self.end_headers()
+        self.wfile.write(raw)
+
+    def config_write(self, user, body: dict, logo=None, remove_logo: bool = False):
+        status, payload, detail = config_apply(body, logo, remove_logo)
+        if status == 200 and detail:
+            with DB_LOCK, db_session() as con:
+                con.execute("INSERT INTO server_audit(ts,username,action,detail,revision) VALUES(?,?,?,?,NULL)",
+                            (now_iso(), user["username"], "Firmenprofil geändert", detail))
+            with REVISION_CONDITION:
+                REVISION_CONDITION.notify_all()
+        return self.json_response(status, payload)
+
     def serve_file(self, path: Path, ctype: str):
         if not path.exists():
             self.send_error(404, "index.html fehlt")
@@ -2489,18 +4495,88 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(raw)
 
-    def do_POST(self):
+    def _do_POST(self):
         path = urlparse(self.path).path
+        if path in AUTH_POST_PATHS:
+            # Login-CSRF: fremde Seiten können den eigenen Header nicht ohne CORS-Freigabe setzen.
+            if not str(self.headers.get("X-MP-Client-Version", "")).strip():
+                self.close_connection = True
+                return self.json_response(403, mp_error("MP-REQ-403", "Anfrage ohne Client-Kennung abgelehnt."))
+            limit = MAX_AUTH_BODY
+        else:
+            # Body erst nach erfolgreicher Anmeldung lesen (kein 8-MB-Upload ohne Sitzung).
+            if not self.session_user():
+                self.close_connection = True
+                return self.json_response(401, mp_error("MP-AUTH-001", "Nicht angemeldet."))
+            limit = MAX_BODY
         try:
-            body = self.read_json()
+            body = self.read_json(limit)
         except Exception as e:
             return self.json_response(400, mp_error("MP-DATA-013", str(e)))
+        if path == "/api/config/logo":
+            user = self.require_user(["admin"])
+            if not user:
+                return
+            if not self.require_current_client():
+                return
+            try:
+                raw = base64.b64decode(str(body.get("data", "")), validate=True)
+                ext, data = logo_check(raw, str(body.get("contentType", "")))
+            except ValueError as e:
+                return self.json_response(400, mp_error("MP-CFG-005", f"Logo abgelehnt: {e}"))
+            return self.config_write(user, {"revision": body.get("revision")}, logo=(ext, data))
+        if path == "/api/templates/apply":
+            user = self.require_user(["admin"])
+            if not user:
+                return
+            if not self.require_current_client():
+                return
+            status, payload = template_apply(user, body if isinstance(body, dict) else {})
+            if status == 200 and not payload.get("dryRun") and not payload.get("unchanged"):
+                with REVISION_CONDITION:
+                    REVISION_CONDITION.notify_all()
+            return self.json_response(status, payload)
+        if path.startswith("/api/chat/"):
+            user = self.require_user()
+            if not user:
+                return
+            if not self.require_current_client():
+                return
+            if not module_on("chat"):
+                return self.json_response(403, module_error("chat"))
+            with DB_LOCK, db_session() as con:
+                status, payload = chat_post(con, user, path, body if isinstance(body, dict) else {})
+            if status in (200, 201):
+                with REVISION_CONDITION:
+                    REVISION_CONDITION.notify_all()   # V12.13.0: Glocke sofort aktualisieren
+            return self.json_response(status, payload)
+        if path.startswith("/api/notifications/"):
+            user = self.require_user()
+            if not user:
+                return
+            if not self.require_current_client():
+                return
+            if not module_on("notifications"):
+                return self.json_response(403, module_error("notifications"))
+            state = None
+            with DB_LOCK, db_session() as con:
+                sig_before = notif_sig(con, user["username"])["sig"]
+                if path.endswith("/derived"):
+                    state = json.loads(con.execute("SELECT json FROM state WHERE id=1").fetchone()["json"])
+                status, payload = notif_post(con, user, path, body if isinstance(body, dict) else {}, state)
+                changed = status == 200 and notif_sig(con, user["username"])["sig"] != sig_before
+            # V12.14.1: nur wecken, wenn sich der Stand wirklich geändert hat (kein Thundering Herd bei No-op-POSTs).
+            if changed:
+                with REVISION_CONDITION:
+                    REVISION_CONDITION.notify_all()
+            return self.json_response(status, payload)
         if path == "/api/login":
             ip = self.client_address[0]
-            if failed_login_blocked(ip):
-                return self.json_response(429, mp_error("MP-AUTH-003", "Zu viele Fehlversuche. Bitte später erneut versuchen."))
             username = str(body.get("username", "")).strip()
             password = str(body.get("password", ""))
+            stamp = login_attempt_reserve(ip, username)
+            if stamp is None:
+                return self.json_response(429, mp_error("MP-AUTH-003", "Zu viele Fehlversuche. Bitte später erneut versuchen."))
             with DB_LOCK, db_session() as con:
                 row = con.execute("SELECT * FROM users WHERE username=?", (username,)).fetchone()
             # Passwortprüfung (~0,2 s) bewusst außerhalb der globalen DB-Sperre.
@@ -2511,9 +4587,8 @@ class Handler(BaseHTTPRequestHandler):
                 verify_password(password, DUMMY_SALT, DUMMY_HASH)
                 ok = False
             if not ok:
-                record_failed_login(ip)
                 return self.json_response(401, mp_error("MP-AUTH-004", "Benutzer oder Passwort falsch."))
-            clear_failed_login(ip)
+            login_attempt_succeeded(ip, username, stamp)
             token = secrets.token_urlsafe(32)
             token_hash = hashlib.sha256(token.encode()).hexdigest()
             expires = int(time.time()) + SESSION_TTL
@@ -2546,6 +4621,8 @@ class Handler(BaseHTTPRequestHandler):
                 department_id = own
             if len(username) < 2 or len(password) < 8 or role not in ROLES or (role in DEPARTMENT_ROLES and not department_id):
                 return self.json_response(400, mp_error("MP-AUTH-010", "Benutzername, Passwort, Rolle oder Bereich ungültig."))
+            if len(username) > 40 or any(ch in username for ch in "⟦⟧|<>\"'`") or any(ord(ch) < 32 for ch in username):
+                return self.json_response(400, mp_error("MP-AUTH-010", "Benutzername: höchstens 40 Zeichen, keine Sonderzeichen ⟦ ⟧ | < > \" ' `."))
             salt, digest = hash_password(password)
             ts = now_iso()
             try:
@@ -2570,11 +4647,15 @@ class Handler(BaseHTTPRequestHandler):
         new_pw = str(body.get("newPassword", ""))
         if len(new_pw) < 8:
             return self.json_response(400, mp_error("MP-AUTH-017", "Passwort muss mindestens 8 Zeichen haben."))
+        ip = self.client_address[0]
+        stamp = login_attempt_reserve(ip, user["username"])
+        if stamp is None:
+            return self.json_response(429, mp_error("MP-AUTH-003", "Zu viele Fehlversuche. Bitte später erneut versuchen."))
         with DB_LOCK, db_session() as con:
             row = con.execute("SELECT salt,password_hash FROM users WHERE id=?", (user["id"],)).fetchone()
         if not row or not verify_password(current, row["salt"], row["password_hash"]):
-            record_failed_login(self.client_address[0])
             return self.json_response(403, mp_error("MP-AUTH-023", "Aktuelles Passwort ist falsch."))
+        login_attempt_succeeded(ip, user["username"], stamp)
         salt, digest = hash_password(new_pw)
         c = SimpleCookie(self.headers.get("Cookie", ""))
         keep = hashlib.sha256(c["mp_session"].value.encode()).hexdigest()
@@ -2591,8 +4672,10 @@ class Handler(BaseHTTPRequestHandler):
     do_DELETE = _method_not_allowed
     do_OPTIONS = _method_not_allowed
 
-    def do_PATCH(self):
+    def _do_PATCH(self):
         path = urlparse(self.path).path
+        if path == "/api/config":
+            return self._config_patch()
         if not path.startswith("/api/users/"):
             return self.json_response(404, mp_error("MP-REQ-404", "Nicht gefunden."))
         user = self.require_user(USER_MANAGER_ROLES)
@@ -2611,7 +4694,10 @@ class Handler(BaseHTTPRequestHandler):
                 return self.json_response(404, mp_error("MP-AUTH-014", "Benutzer nicht gefunden."))
             role = str(body.get("role", target["role"]))
             department_id = str(body.get("departmentId", target["department_id"]) or "").strip()
-            active = 1 if body.get("active", bool(target["active"])) else 0
+            raw_active = body.get("active", bool(target["active"]))
+            if not isinstance(raw_active, bool):
+                return self.json_response(400, mp_error("MP-AUTH-015", "Feld 'active' muss true oder false sein."))
+            active = 1 if raw_active else 0
             if uid == user["id"]:
                 return self.json_response(400, mp_error("MP-AUTH-016", "Das eigene Konto wird hier nicht geändert. Eigenes Passwort über „Passwort ändern“ setzen."))
             if user["role"] != "admin":
@@ -2637,8 +4723,25 @@ class Handler(BaseHTTPRequestHandler):
             con.execute("INSERT INTO server_audit(ts,username,action,detail,revision) VALUES(?,?,?,?,NULL)", (now_iso(), user["username"], "Benutzer geändert", target["username"]))
         return self.json_response(200, {"ok": True})
 
-    def do_PUT(self):
+    def _do_PUT(self):
         path = urlparse(self.path).path
+        if path == "/api/notifications/prefs":
+            user = self.require_user()
+            if not user:
+                return
+            if not self.require_current_client():
+                return
+            if not module_on("notifications"):
+                return self.json_response(403, module_error("notifications"))
+            try:
+                body = self.read_json(MAX_AUTH_BODY)
+            except Exception as e:
+                return self.json_response(400, mp_error("MP-DATA-013", str(e)))
+            with DB_LOCK, db_session() as con:
+                status, payload = notif_put(con, user, path, body)
+            return self.json_response(status, payload)
+        if path == "/api/config":
+            return self._config_patch()
         if path != "/api/state":
             return self.json_response(404, mp_error("MP-REQ-404", "Nicht gefunden."))
         user = self.require_user(WRITE_ROLES)
@@ -2669,6 +4772,10 @@ class Handler(BaseHTTPRequestHandler):
             strip_archived_history(con, old, incoming)
             # Legacy-Schattenkopie (V12.4.3 und älter) nie wieder in den Live-State übernehmen.
             incoming.pop("orders", None)
+            mod, reason = module_state_guard(old, incoming)
+            if mod:
+                con.execute("ROLLBACK")
+                return self.json_response(403, mp_error("MP-MOD-001", reason, module=mod))
             valid, error_code, reason = validate_state(old, incoming)
             if not valid:
                 con.execute("ROLLBACK")
@@ -2728,6 +4835,12 @@ class Handler(BaseHTTPRequestHandler):
             con.execute("UPDATE state SET revision=?,json=?,updated_at=?,updated_by=? WHERE id=1", (new_revision, raw, ts, user["username"]))
             con.execute("INSERT INTO server_audit(ts,username,action,detail,revision) VALUES(?,?,?,?,?)", (ts, user["username"], action, detail, new_revision))
             con.execute("COMMIT")
+        try:
+            with DB_LOCK, db_session() as con:
+                if module_on("notifications"):
+                    notify_from_diff(con, old, incoming, user["username"])
+        except Exception as e:   # Benachrichtigungen dürfen das Speichern nie verhindern
+            print(f"NOTIF: Ereignisse konnten nicht erzeugt werden: {e}", flush=True)
         with REVISION_CONDITION:
             REVISION_CONDITION.notify_all()
         return self.json_response(200, {"ok": True, "revision": new_revision, "data": redact_state(incoming, user), "archivedHistoryIds": archived_ids})
@@ -2739,8 +4852,11 @@ def main() -> None:
     ap.add_argument("--port", type=int, default=PORT)
     ap.add_argument("--init-admin", metavar="USERNAME")
     ap.add_argument("--allowed-subnet", help="Pflicht im Serverbetrieb, z. B. 192.168.178.0/24")
+    ap.add_argument("--firma-einrichten", metavar="VORLAGE", help="config/firma.json aus Vorlagedatei (oder 'neutral') anlegen und beenden")
     args = ap.parse_args()
     global ALLOWED_NETWORK
+    if args.firma_einrichten:
+        raise SystemExit(setup_firma_from_template(args.firma_einrichten))
     if not args.init_admin:
         if not args.allowed_subnet:
             print("FEHLER: --allowed-subnet ist im Serverbetrieb Pflicht.", file=sys.stderr)
@@ -2754,7 +4870,21 @@ def main() -> None:
         if bind_ip.is_unspecified or bind_ip.is_loopback or bind_ip not in ALLOWED_NETWORK:
             print("FEHLER: Server muss an eine konkrete LAN-IP innerhalb --allowed-subnet gebunden werden.", file=sys.stderr)
             raise SystemExit(2)
+    if not args.init_admin:
+        try:
+            check_firma_config_start()      # vor init_db: bei Stopp bleibt die Datenbank unberuehrt
+        except ConfigError as e:
+            print(f"FEHLER: {e.message}", file=sys.stderr)
+            raise SystemExit(3)
     init_db()
+    if not args.init_admin:
+        try:
+            _cfg, cfg_warn = load_config()
+        except ConfigError as e:
+            print(f"FEHLER: {e.message}", file=sys.stderr)
+            raise SystemExit(3)
+        for w in cfg_warn:
+            print(f"WARNUNG: {w}", flush=True)
     if args.init_admin:
         password = os.environ.get("MP_ADMIN_PASSWORD")
         if not password:

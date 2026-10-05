@@ -42,7 +42,7 @@ before = sqlite3.connect(server.DB_PATH)
 before_state = json.loads(before.execute("SELECT json FROM state").fetchone()[0])
 before_rev = before.execute("SELECT revision FROM state").fetchone()[0]
 before.close()
-server.init_db()
+server.init_db(seed="werbetechnik")
 con = sqlite3.connect(server.DB_PATH)
 after_state = json.loads(con.execute("SELECT json FROM state").fetchone()[0])
 check("orders" not in after_state, "Migration: Legacy-orders aus Live-State entfernt")
@@ -66,7 +66,7 @@ _proj_pairs = list(zip(before_state.get("projects") or [], after_state.get("proj
 check(len(before_state.get("projects") or []) == len(after_state.get("projects") or []) and all(a.get("phase") == (b.get("phase") or ("accepted" if str(b.get("ab") or "").strip() else "inquiry")) for b, a in _proj_pairs if isinstance(a, dict) and isinstance(b, dict)), "Migration: bestehende AB-Datensätze = angenommene Projekte (Phase nur ergänzt, nie geändert)")
 check(len([t for t in after_state.get("processTemplates", []) if t["kind"] == "pm"]) == 3, "Migration: 3 PM-Standardabläufe als Daten angelegt")
 con.close()
-server.init_db()  # idempotent
+server.init_db(seed="werbetechnik")  # idempotent
 check(True, "Migration: zweiter Start idempotent")
 
 
@@ -147,7 +147,7 @@ LC = login("t_lead_cnc"); DC = login("t_dep_cnc"); LK = login("t_lead_k1")
 def setup(n):
     n["departmentStaffNeeds"] = [{"departmentId": "konf1", "weekStart": "2026-10-19", "requested": 4, "confirmed": 3, "updatedAt": ""}]
     n["workSteps"].append(mstep(n, "ws_k1_a", "FS K1", "konf1", 3, dueDate="2026-10-16"))
-s, code, _ = put(A, setup); check(s == 200, "Admin: Testdaten anlegen")
+s, code, _d = put(A, setup); check(s == 200, f"Admin: Testdaten anlegen ({s} {code})")
 
 # --- Bereichsgrenzen (MP-AUD-032 / Person 2 Rollenmatrix)
 def rehome_machine(n):

@@ -19,6 +19,10 @@ $MP_LegacyFirewallRules = @(
     "Maschinenplanung V11 LAN Block Internet $MP_Port"
 )
 
+# V12.14.0: Firmenkonfiguration (config\firma.json, Logo, Lizenz) liegt NEBEN dem Programm, nicht in $MP_AppFiles.
+# Updates, Setup und $MP_ObsoleteFiles duerfen config\ nie ueberschreiben oder loeschen.
+$MP_ConfigDir = 'config'
+
 # Alle Programmdateien des Pakets. Nur diese werden kopiert/gesichert.
 $MP_AppFiles = @(
     'server.py', 'release_gates.py', 'index.html',
@@ -26,7 +30,9 @@ $MP_AppFiles = @(
     'MP_Common.ps1', 'Setup_Windows.ps1', 'INSTALLIEREN_ALS_ADMIN.ps1', 'UPDATE_LIVE.ps1',
     'Run_Server_LAN.ps1', 'Start_Server.ps1', 'Stop_Server.ps1', 'Neustart_Server.ps1',
     'Server_Status.ps1', 'CHECK_LAN_SICHERHEIT.ps1', 'Deinstallieren.ps1',
-    'README_Windows.txt', 'BENUTZER_KURZANLEITUNG.txt', 'FEHLERCODES.txt', 'RELEASE_NOTES.txt'
+    'README_Windows.txt', 'BENUTZER_KURZANLEITUNG.txt', 'FEHLERCODES.txt', 'RELEASE_NOTES.txt',
+    'Update_von_GitHub.ps1', 'Restore_Datenbank.ps1', 'Firma_Einrichten.ps1', 'requirements.txt',
+    'vorlage_werbetechnik.json', 'vorlage_metall_cnc.json', 'vorlage_leer.json', 'vorlage_demo.json'
 )
 
 # Veraltete Dateien frueherer Versionen, die im Live-Ordner nicht liegen bleiben duerfen
@@ -68,10 +74,24 @@ function Get-MPPython {
 }
 
 function Test-MPPythonLocationSafe([string]$PythonExe) {
-    # Der Server laeuft als SYSTEM. Liegt Python in einem Benutzerprofil, kann dieser
-    # Benutzer Python-Dateien veraendern, die dann als SYSTEM ausgefuehrt werden.
+    # Der Server laeuft als SYSTEM. Darf ein normaler Benutzer Python-Dateien veraendern
+    # (Benutzerprofil oder z. B. C:\Python311 mit Schreibrecht fuer "Authentifizierte Benutzer"),
+    # wird dessen Code als SYSTEM ausgefuehrt.
     $full = [IO.Path]::GetFullPath($PythonExe)
-    return -not ($full -like "$env:SystemDrive\Users\*")
+    if ($full -like "$env:SystemDrive\Users\*") { return $false }
+    # V12.10.2: Rechte des Python-Ordners und der Standardbibliothek pruefen, nicht nur den Pfad.
+    $dir = Split-Path -Parent $full
+    foreach ($p in @($dir, (Join-Path $dir 'Lib'))) {
+        # Besitzer ist bei Installation unter Program Files oft das installierende Admin-Konto -> nur Schreibrechte werten.
+        if ((Test-Path -LiteralPath $p) -and (Test-MPFolderAclSafe $p $false)) { return $false }
+    }
+    return $true
+}
+
+function Install-MPTzdata([string]$PythonExe, [string]$Folder) {
+    # Version und SHA256 fest in requirements.txt (keine ungeprueften Pakete als Administrator).
+    & $PythonExe -m pip install --disable-pip-version-check --quiet --require-hashes -r (Join-Path $Folder 'requirements.txt')
+    if ($LASTEXITCODE -ne 0) { Write-Warning 'tzdata nicht installiert; Server nutzt die Windows-Zeitzone.' }
 }
 
 function Get-MPLanInfo {
@@ -138,10 +158,11 @@ function Protect-MPInstall([string]$Base) {
     }
 }
 
-function Test-MPFolderAclSafe([string]$Path) {
+function Test-MPFolderAclSafe([string]$Path, [bool]$CheckOwner = $true) {
     # Liefert $null wenn sicher, sonst eine Beschreibung des Problems.
     $acl = Get-Acl -LiteralPath $Path
-    $trusted = @('S-1-5-18', 'S-1-5-32-544', 'S-1-3-0')
+    # SYSTEM, Administratoren, ERSTELLER-BESITZER, TrustedInstaller (Windows-Installer unter C:\Program Files)
+    $trusted = @('S-1-5-18', 'S-1-5-32-544', 'S-1-3-0', 'S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464')
     $writeRights = [Security.AccessControl.FileSystemRights]'Write,Modify,FullControl,CreateFiles,AppendData,WriteData,ChangePermissions,TakeOwnership,Delete'
     foreach ($ace in $acl.Access) {
         if ($ace.AccessControlType -ne 'Allow') { continue }
@@ -152,7 +173,7 @@ function Test-MPFolderAclSafe([string]$Path) {
         }
     }
     try { $owner = (New-Object Security.Principal.NTAccount($acl.Owner)).Translate([Security.Principal.SecurityIdentifier]).Value } catch { $owner = '' }
-    if ($owner -and $owner -notin @('S-1-5-18', 'S-1-5-32-544')) { return "Besitzer ist $($acl.Owner)" }
+    if ($CheckOwner -and $owner -and $owner -notin @('S-1-5-18', 'S-1-5-32-544')) { return "Besitzer ist $($acl.Owner)" }
     return $null
 }
 
@@ -267,13 +288,17 @@ function Get-MPLogTail([string]$Base, [int]$Lines = 40) {
     return ((Get-Content -LiteralPath $last.FullName -Tail $Lines -Encoding UTF8) -join [Environment]::NewLine)
 }
 
-function Invoke-MPPreflight([string]$NewSource, [string]$PythonExe, [string]$DbCopySource, [object]$Config, [string]$ExpectedVersion) {
+function Invoke-MPPreflight([string]$NewSource, [string]$PythonExe, [string]$DbCopySource, [object]$Config, [string]$ExpectedVersion, [string]$LiveBase = '') {
     # Startet die NEUE Version mit einer KOPIE der Datenbank auf einem Ersatzport.
     # Das Live-System wird dabei nicht beruehrt.
     $dir = Join-Path $env:TEMP ('mp_preflight_' + [guid]::NewGuid().ToString('N').Substring(0, 8))
     New-Item -ItemType Directory -Path (Join-Path $dir 'data') -Force | Out-Null
     foreach ($name in $MP_AppFiles) { Copy-Item -LiteralPath (Join-Path $NewSource $name) -Destination $dir -Force }
     Copy-Item -LiteralPath $DbCopySource -Destination (Join-Path $dir 'data\maschinenplanung.sqlite3') -Force
+    # V12.14.0: neue Version mit der ECHTEN Firmenkonfiguration pruefen (Kopie, Live bleibt unberuehrt).
+    if ($LiveBase -and (Test-Path -LiteralPath (Join-Path $LiveBase $MP_ConfigDir))) {
+        Copy-Item -LiteralPath (Join-Path $LiveBase $MP_ConfigDir) -Destination (Join-Path $dir $MP_ConfigDir) -Recurse -Force
+    }
     $port = 8799
     while ($port -gt 8780 -and @(Get-NetTCPConnection -State Listen -LocalPort $port -ErrorAction SilentlyContinue).Count -gt 0) { $port-- }
     $out = Join-Path $dir 'preflight_out.log'; $err = Join-Path $dir 'preflight_err.log'

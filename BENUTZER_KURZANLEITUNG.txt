@@ -1,4 +1,4 @@
-MASCHINENPLANUNG V12.7.6 - KURZANLEITUNG FUER BENUTZER
+MASCHINENPLANUNG V12.17.1 - KURZANLEITUNG FUER BENUTZER
 ======================================================
 
 ANMELDEN
@@ -11,6 +11,20 @@ EIGENES PASSWORT AENDERN
 - Oben rechts auf das Schluessel-Symbol (🔑) klicken.
 - Aktuelles Passwort und zweimal das neue Passwort (mind. 8 Zeichen) eingeben.
 - Andere angemeldete Sitzungen dieses Kontos werden dabei abgemeldet.
+
+RUECKGAENGIG
+- ↶ / ↷ oben rechts oder Strg+Z / Strg+Y. Geht nicht, wenn jemand anderes denselben Auftrag inzwischen geaendert hat.
+
+BENACHRICHTIGUNGEN
+- Glocke 🔔 oben rechts: Zahl = neu. Klick oeffnet die Liste, Klick auf einen Eintrag fuehrt zum Ziel und markiert ihn als gelesen.
+- ✓ alle gelesen, ⚙ Einstellungen (Arten an/aus, Ruhezeit). Meldung im Browser nur mit https.
+
+FIRMENPROFIL (nur Admin)
+- System > Firma & System: Name, Logo (⤒ hochladen, ✕ entfernen), Farben, Schrift, Begriff fuer die Projektnummer. Aenderungen sehen alle sofort.
+
+DARSTELLUNG
+- Oben rechts ☀ / ☾ / ▣ klicken: Hell -> Dunkel -> Halle (gross, hoher Kontrast). Gilt nur fuer diesen PC.
+- Hallenbildschirm fest einstellen: Adresse mit ?theme=hall&view=overview (Wochenplan) aufrufen.
 
 ABMELDEN
 - Oben rechts auf ↪ klicken. Beim Abmelden werden die im Browser zwischengespeicherten
@@ -87,6 +101,44 @@ FREIGABE / PRODUKTION
 - Freigabe friert den Planstand ein. Fuer Aenderungen zuerst die Freigabe zuruecknehmen.
 - Produktion starten, pausieren, fortsetzen, Restzeit korrigieren, fertigmelden oder mit Grund abbrechen.
 
+BEREICHE
+- Zwei Arten: Produktion (Maschinen/Linien, Wochenplan) und Entwicklung & Vertrieb (nur Projektaufgaben).
+- Die Leitung eines Bereichs meldet im Projekt den Status der eigenen Aufgaben (Aufgabe anklicken).
+
+NACHRICHTEN (ab V12.9.0)
+- Rechts unten der Knopf 💬 (rote Zahl = ungelesen). Kleines Fenster; ⤢ macht es gross, – schliesst.
+- "+ Gruppe": Name und Personen waehlen. "+ Direkt": Nachricht an eine Person. "Alle" erreicht jeden.
+- Im Text "/" tippen und z. B. die FS-Nummer: Auftrag, Projekt oder Format auswaehlen → wird ein
+  Link; ein Klick darauf oeffnet ihn direkt. "@" + Name erwaehnt eine Person (rot markiert).
+- Enter sendet, Umschalt+Enter macht eine neue Zeile.
+- Nachrichten werden 30 Tage nach dem Versand automatisch geloescht. Wichtiges mit 📌 an der
+  Nachricht "behalten" (gilt fuer alle in der Unterhaltung). 📌 oben zeigt nur die behaltenen.
+  Ab 7 Tagen vor der Loeschung steht "noch n T" an der Nachricht.
+
+FORMATE TIEFZIEHEN (ab V12.10.0 nur Tiefziehen + Admin)
+- Wochenplan → "▣ Formate" oeffnet das Formate-Fenster. Dort Auftraege "Auf F-…" oder "+ Neues Format"
+  setzen, Werkzeuge anordnen, "In Wochenplan einplanen". Escape/"Schliessen" schliesst das Fenster.
+- Neuer Auftrag im Bereich Tiefziehen: "▣ Anlegen & auf Format" legt die FS an und setzt sie direkt
+  auf ein neues Format. In der Auftragsliste oeffnet ▣ das Format bzw. setzt den Auftrag auf ein Format.
+- Grundformate (Platten) sowie Maschinenmasse und Takte: System → Maschinen & Linien.
+  Ein Grundformat gilt fuer alle Maschinen des Bereichs; per Haken auf einzelne Maschinen einschraenken.
+- Nach der Fertigung "Einlagern" mit Lagerort; wiederfinden ueber die Suche nach WKZ- oder FS-Nummer.
+
+FIRMENDATEN
+- Liegen in config\firma.json neben data\ und bleiben bei jedem Update erhalten.
+- Nach einem Update bleiben alle Daten, Benutzer und Passwoerter; nur die Seite einmal mit Strg+F5 neu laden.
+
 FEHLERCODES
 - Fehler erscheinen als Klartext plus Code, z. B. MP-PLAN-031.
 - Bei Rueckfragen Code, FS/AB und Uhrzeit nennen. Liste: FEHLERCODES.txt
+
+MODULE UND VORLAGEN (nur Admin, System > Firmenprofil)
+- Schalter fuer Module blenden Bereiche aus, die der Betrieb nicht nutzt; die Daten bleiben erhalten.
+- Vorlage waehlen, Vorschau pruefen, Pfeil druecken: ergaenzt nur Fehlendes, nichts wird ueberschrieben.
+
+EINRICHTUNGSASSISTENT (nur Admin, neue Installation)
+- Erscheint beim ersten Admin-Login: Firma, Branche, Module, Bereiche, Benutzer. Jeder Schritt laesst sich ueberspringen; x = spaeter weitermachen.
+- Erneut: System > Firmenprofil > Assistent.
+
+PERSONAL-GATE (nur Admin, Personal)
+- Bei EIN wird nur eingeplant, wo die geforderte Personenzahl zugeordnet ist (Linie: Besetzung). Fehlt sie: 👤⚠ im Wochenplan, dort Knopf "Personal zuordnen".

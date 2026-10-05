@@ -44,7 +44,7 @@ if ($running -and $running.Health -and $running.Health.version) {
 Write-Host "Updatepaket: V$NewVersion ($NewSource)" -ForegroundColor Cyan
 Write-Host "Live-Ordner: $OldBase$(if($migrating){" -> $TargetBase"})" -ForegroundColor Cyan
 Write-Host "Python:      $PythonExe" -ForegroundColor DarkGray
-if (-not (Test-MPPythonLocationSafe $PythonExe)) { Write-Warning 'Python liegt in einem Benutzerprofil. Empfehlung: Python fuer alle Benutzer installieren und Update erneut ausfuehren.' }
+if (-not (Test-MPPythonLocationSafe $PythonExe)) { Write-Warning 'Python-Ordner ist fuer normale Benutzer beschreibbar. Empfehlung: Python fuer alle Benutzer (C:\Program Files) installieren und Update erneut ausfuehren.' }
 
 $FinalBackup = $null
 $RollbackCode = $null
@@ -58,10 +58,15 @@ try {
     $preCfg = Read-MPConfig $OldBase
     if ($preCfg) {
         $preDb = Get-ChildItem (Join-Path $OldBase 'backups') -File -Filter 'maschinenplanung_*.sqlite3' | Sort-Object LastWriteTime -Descending | Select-Object -First 1
-        $pre = Invoke-MPPreflight $NewSource $PythonExe $preDb.FullName $preCfg $NewVersion
+        $pre = Invoke-MPPreflight $NewSource $PythonExe $preDb.FullName $preCfg $NewVersion $OldBase
         if (-not $pre.Ok) {
             Write-Host '--- Ausgabe des Vorabtests ---' -ForegroundColor Yellow
             Write-Host $pre.Log
+            if ($pre.Log -match 'MP-CFG-006') {
+                $zielHint = ''
+                if ($migrating) { $zielHint = " -Ziel '$OldBase'" }
+                throw "MP-CFG-006: Bestand ohne Firmenprofil (config\firma.json fehlt, Name/Logo nicht in den Daten). Live-System wurde NICHT veraendert. Zuerst als Administrator: .\Firma_Einrichten.ps1 -Vorlage <datei>$zielHint (oder -Neutral fuer bewusst neutral), danach UPDATE_LIVE.ps1 erneut starten."
+            }
             throw "Vorabtest fehlgeschlagen: V$NewVersion startet mit einer Kopie der Live-Daten nicht. Live-System wurde NICHT veraendert."
         }
         Write-Host "    PASS: V$NewVersion startet mit Datenkopie (Testport $($pre.Port))." -ForegroundColor Green
@@ -86,6 +91,9 @@ try {
     $RollbackCode = Join-Path $TargetBase "update_backups\pre_V$($NewVersion)_$Stamp"
     New-Item -ItemType Directory -Path $RollbackCode -Force | Out-Null
     Get-ChildItem -LiteralPath $OldBase -File | Copy-Item -Destination $RollbackCode -Force
+    if (Test-Path -LiteralPath (Join-Path $OldBase $MP_ConfigDir)) {
+        Copy-Item -LiteralPath (Join-Path $OldBase $MP_ConfigDir) -Destination (Join-Path $RollbackCode $MP_ConfigDir) -Recurse -Force
+    }
     Copy-Item -LiteralPath $FinalBackup.FullName -Destination (Join-Path $RollbackCode 'maschinenplanung_vor_update.sqlite3') -Force
     Write-Host "    Rollback-Stand: $RollbackCode" -ForegroundColor Green
 
@@ -93,6 +101,9 @@ try {
     if ($migrating) {
         foreach ($sub in @('data', 'backups')) { New-Item -ItemType Directory -Path (Join-Path $TargetBase $sub) -Force | Out-Null }
         Copy-Item -Path (Join-Path $OldBase 'backups\*') -Destination (Join-Path $TargetBase 'backups') -Force -ErrorAction SilentlyContinue
+        if (Test-Path -LiteralPath (Join-Path $OldBase $MP_ConfigDir)) {
+            Copy-Item -LiteralPath (Join-Path $OldBase $MP_ConfigDir) -Destination $TargetBase -Recurse -Force
+        }
         foreach ($f in @('LAN_CONFIG.json', 'LAN_ADRESSEN.txt', 'BACKUP_ZIEL.txt')) {
             if (Test-Path (Join-Path $OldBase $f)) { Copy-Item (Join-Path $OldBase $f) (Join-Path $TargetBase $f) -Force }
         }
@@ -110,8 +121,7 @@ try {
 
     Write-Host '7/9 Ordner sperren, Zeitzonendaten, Tasks ...'
     Protect-MPInstall $TargetBase
-    & $PythonExe -m pip install --disable-pip-version-check --quiet tzdata
-    if ($LASTEXITCODE -ne 0) { Write-Warning 'tzdata nicht installiert; Server nutzt die Windows-Zeitzone.' }
+    Install-MPTzdata $PythonExe $TargetBase
     Remove-MPLegacyTasks
     if (-not (Wait-MPTaskIdle $MP_TaskName 30)) { Write-Warning 'Alte Task-Instanz meldet noch "Running" - Start wird trotzdem versucht.' }
     Register-MPServerTask $TargetBase $PythonExe
@@ -131,6 +141,11 @@ try {
     Write-Host '9/9 Sicherheitscheck private Dateien ...'
     Assert-MPPrivatePaths $health.Config
     Write-Host '    PASS: Programm-, Daten- und Backupdateien sind nicht per HTTP abrufbar.' -ForegroundColor Green
+
+    # V12.10.2: nur die letzten 5 Update-Sicherungen behalten (enthalten je eine volle Datenbankkopie).
+    Get-ChildItem -LiteralPath (Join-Path $TargetBase 'update_backups') -Directory -Filter 'pre_V*' -ErrorAction SilentlyContinue |
+        Sort-Object LastWriteTime -Descending | Select-Object -Skip 5 |
+        ForEach-Object { Remove-Item -LiteralPath $_.FullName -Recurse -Force -ErrorAction SilentlyContinue }
 
     Write-Host ''
     Write-Host "UPDATE ERFOLGREICH - V$NewVersion" -ForegroundColor Green
@@ -152,6 +167,9 @@ catch {
     if (-not $migrating -and $RollbackCode -and (Test-Path $RollbackCode)) {
         Get-ChildItem -LiteralPath $RollbackCode -File | Where-Object { $_.Name -ne 'maschinenplanung_vor_update.sqlite3' } |
             Copy-Item -Destination $TargetBase -Force
+        if (Test-Path -LiteralPath (Join-Path $RollbackCode $MP_ConfigDir)) {
+            Copy-Item -LiteralPath (Join-Path $RollbackCode $MP_ConfigDir) -Destination $TargetBase -Recurse -Force
+        }
         foreach ($name in $MP_AppFiles) {
             if (-not (Test-Path (Join-Path $RollbackCode $name))) { Remove-Item -LiteralPath (Join-Path $TargetBase $name) -Force -ErrorAction SilentlyContinue }
         }

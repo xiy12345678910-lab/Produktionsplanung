@@ -2,19 +2,37 @@
 """Server-side feasibility checks for new CNC releases."""
 from __future__ import annotations
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 # Windows-Python bringt keine IANA-Zeitzonendatenbank mit; ohne das Paket
 # "tzdata" schlägt ZoneInfo fehl. Dann wird die Systemzeitzone des Servers
 # verwendet (astimezone() ohne Argument, inkl. Sommer-/Winterzeit).
-try:
-    LOCAL_TZ = ZoneInfo(os.environ.get("MP_TIMEZONE", "Europe/Berlin"))
-except Exception:
+def _config_timezone():
+    """V12.15.0: locale.timezone aus config/firma.json (MP_CONFIG_DIR bzw. <Programmordner>/config), sonst ''."""
     try:
-        LOCAL_TZ = ZoneInfo("Europe/Berlin")
+        import json
+        from pathlib import Path
+        d = Path(os.environ.get("MP_CONFIG_DIR") or (Path(__file__).resolve().parent / "config"))
+        tz = json.loads((d / "firma.json").read_text(encoding="utf-8-sig")).get("locale", {}).get("timezone", "")
+        return tz if isinstance(tz, str) else ""
     except Exception:
-        LOCAL_TZ = None
+        return ""
+
+
+def _pick_tz():
+    # Vorrang: Umgebung MP_TIMEZONE > Config locale.timezone > Europe/Berlin
+    for name in (os.environ.get("MP_TIMEZONE", ""), _config_timezone(), "Europe/Berlin"):
+        if not name:
+            continue
+        try:
+            return ZoneInfo(name)
+        except Exception:
+            continue
+    return None
+
+
+LOCAL_TZ = _pick_tz()
 
 def parse_dt(value):
     if not isinstance(value, str) or not value.strip():
@@ -148,6 +166,29 @@ def fixed_segments(state):
 def overlaps(a,b):
     return a["start"]<b["end"] and a["end"]>b["start"]
 
+def machine_lanes(state,mid):
+    """Parallelplätze einer Maschine/Linie (V12.8.1): wie viele Aufträge gleichzeitig laufen dürfen."""
+    try:
+        n=int(float(machine(state,mid).get("lanes") or 1))
+    except (TypeError,ValueError):
+        n=1
+    return max(1,min(20,n))
+
+def max_parallel(seg,others):
+    """Höchste Zahl gleichzeitig aktiver Segmente aus others innerhalb von seg."""
+    rel=[x for x in others if overlaps(seg,x)]
+    if not rel:
+        return 0
+    points=sorted({seg["start"],seg["end"],*[x["start"] for x in rel],*[x["end"] for x in rel]})
+    best=0
+    for i in range(len(points)-1):
+        a,z=points[i],points[i+1]
+        if z<=a or z<=seg["start"] or a>=seg["end"]:
+            continue
+        mid=a+(z-a)/2
+        best=max(best,sum(1 for x in rel if x["start"]<=mid<x["end"]))
+    return best
+
 def segment_in_calendar(state,seg):
     if seg["start"].date()!=seg["end"].date():
         return False
@@ -163,24 +204,118 @@ def hits_machine_block(state,seg):
             return True
     return False
 
+# --- Personalzuordnung wie in der Oberflaeche (index.html: personnelAssignment) ---
+# Ohne ausdrueckliche Einteilung gilt die Stammmaschine des Mitarbeiters. Vorher zaehlte der
+# Server nur ausdrueckliche Einteilungen; die Oberflaeche plante dagegen mit der Stammmaschine,
+# so dass Freigaben mit MP-PERS-033 (0/x) abgelehnt wurden, obwohl der Plan besetzt war.
+def normalize_mode(v):
+    v=str("1" if v is None else v)
+    if v=="early":
+        return "1"
+    if v=="late":
+        return "2"
+    return v if v in {"0","1","2"} else "1"
+
+def temp_available(e,dk):
+    if not isinstance(e,dict) or e.get("employmentType")!="temporary" or not e.get("tempStatus"):
+        return True
+    return (e.get("tempStatus")=="approved"
+            and (not e.get("tempFrom") or dk>=str(e.get("tempFrom")))
+            and (not e.get("tempTo") or dk<=str(e.get("tempTo"))))
+
+def is_absent(state,e,dk):
+    if not temp_available(e,dk):
+        return True
+    eid=str(e.get("id"))
+    return any(isinstance(a,dict) and str(a.get("employeeId"))==eid and str(a.get("date"))==dk
+               for a in state.get("personnelAbsences") or [])
+
+def effective_dept(state,e,day):
+    wk=(day-timedelta(days=day.weekday())).strftime("%Y-%m-%d")
+    eid=str(e.get("id"))
+    for x in state.get("weeklyEmployeeDeployments") or []:
+        if isinstance(x,dict) and str(x.get("employeeId"))==eid and str(x.get("weekStart"))==wk:
+            return str(x.get("departmentId") or e.get("departmentId") or "")
+    return str(e.get("departmentId") or "")
+
+def can_staff(state,e,mid,day):
+    if mid in {str(x) for x in (e.get("skills") or [])}:
+        return True
+    eff=effective_dept(state,e,day)
+    return eff!=str(e.get("departmentId") or "") and dept_of(state,mid)==eff
+
+def explicit_assignment(state,eid,dk):
+    return next((a for a in state.get("personnelAssignments") or []
+                 if isinstance(a,dict) and str(a.get("employeeId"))==eid and str(a.get("date"))==dk),None)
+
+def home_machine_for(state,e,day,dk):
+    hm=str(e.get("homeMachineId") or "")
+    if (not e.get("active",True) or not hm or is_absent(state,e,dk)
+            or hm not in {str(x) for x in (e.get("skills") or [])}):
+        return None
+    m=machine(state,hm)
+    if not m or effective_dept(state,e,day)!=str(m.get("departmentId") or "cnc"):
+        return None
+    return m
+
+def auto_home_shift(state,e,day,dk,m):
+    mid=str(m.get("id"))
+    req=max(1,int(float(m.get("staffRequired",0) or 0)))
+    n={"early":0,"late":0}
+    for a in state.get("personnelAssignments") or []:
+        if isinstance(a,dict) and str(a.get("date"))==dk and str(a.get("machineId"))==mid and a.get("shift") in n:
+            n[a.get("shift")]+=1
+    peers=[x for x in state.get("employees") or []
+           if isinstance(x,dict) and str(x.get("homeMachineId") or "")==mid
+           and home_machine_for(state,x,day,dk) is not None
+           and not explicit_assignment(state,str(x.get("id")),dk)]
+    for x in peers:
+        if x.get("homeShift") in n:
+            n[x.get("homeShift")]+=1
+    for x in peers:
+        if x.get("homeShift") in n:
+            continue
+        s="early" if n["early"]<req else "late" if n["late"]<req else ("late" if n["late"]<n["early"] else "early")
+        if str(x.get("id"))==str(e.get("id")):
+            return s
+        n[s]+=1
+    return "early"
+
+def home_assignment(state,e,day,dk):
+    m=home_machine_for(state,e,day,dk)
+    if not m:
+        return None
+    mode=normalize_mode(mode_for_day(state,str(m.get("id")),day))
+    if mode=="0":
+        return None
+    if mode=="1":
+        shift="single"
+    else:
+        shift=e.get("homeShift") if e.get("homeShift") in {"early","late"} else auto_home_shift(state,e,day,dk,m)
+    ts=state.get("shiftTemplates") or {}
+    t=(ts.get("fridaySingle") if day.weekday()==4 else ts.get("single")) if shift=="single" else ts.get(shift)
+    t=t or {}
+    return {"employeeId":str(e.get("id")),"date":dk,"machineId":str(m.get("id")),"shift":shift,
+            "start":str(t.get("start","")),"end":str(t.get("end","")),"breaks":t.get("breaks") or []}
+
+def personnel_assignment(state,e,day,dk):
+    return explicit_assignment(state,str(e.get("id")),dk) or home_assignment(state,e,day,dk)
+
 def personnel_cover(state,seg):
     if not state.get("personnelGate",False):
         return True,0,0
     req=max(0,int(float(machine(state,seg["machineId"]).get("staffRequired",0) or 0)))
     if req<=0:
         return True,0,0
-    dk=seg["start"].strftime("%Y-%m-%d")
-    absent={str(a.get("employeeId")) for a in state.get("personnelAbsences") or []
-            if isinstance(a,dict) and str(a.get("date"))==dk}
-    assignments={(str(a.get("employeeId")),str(a.get("date"))):a
-                 for a in state.get("personnelAssignments") or [] if isinstance(a,dict)}
+    day=seg["start"]
+    dk=day.strftime("%Y-%m-%d")
     pieces=[]
     for e in state.get("employees") or []:
-        if (not isinstance(e,dict) or not e.get("active",True) or str(e.get("id")) in absent
-            or seg["machineId"] not in {str(x) for x in (e.get("skills") or [])}):
+        if (not isinstance(e,dict) or not e.get("active",True) or is_absent(state,e,dk)
+            or not can_staff(state,e,seg["machineId"],day)):
             continue
         eid=str(e.get("id"))
-        a=assignments.get((eid,dk))
+        a=personnel_assignment(state,e,day,dk)
         if not a or str(a.get("machineId"))!=seg["machineId"] or str(a.get("shift"))!=seg["shift"]:
             continue
         x,y=on_day(seg["start"],str(a.get("start",""))),on_day(seg["start"],str(a.get("end","")))
@@ -245,11 +380,10 @@ def validate_release_feasibility(old,new):
                 return False,"MP-PLAN-056",f"Freigabe '{name}' liegt außerhalb von Schicht/Kalender oder über einer Pause."
             if hits_machine_block(new,seg):
                 return False,"MP-PLAN-057",f"Freigabe '{name}' kollidiert mit einer Maschinensperre."
-            for other in fixed:
-                if other["orderId"]==oid or other["machineId"]!=seg["machineId"]:
-                    continue
-                if overlaps(seg,other):
-                    return False,"MP-PLAN-058",f"Freigabe '{name}' kollidiert mit einer festen Maschinenbelegung."
+            # V12.8.1: Maschinen/Linien mit Parallelplätzen dürfen bis zu 'lanes' Aufträge gleichzeitig fahren.
+            same=[x for x in fixed if x["orderId"]!=oid and x["machineId"]==seg["machineId"]]
+            if max_parallel(seg,same)+1>machine_lanes(new,seg["machineId"]):
+                return False,"MP-PLAN-058",f"Freigabe '{name}' kollidiert mit einer festen Maschinenbelegung."
             ok,count,req=personnel_cover(new,seg)
             if not ok:
                 return False,"MP-PERS-033",f"Freigabe '{name}' ist personell unterdeckt ({count}/{req})."

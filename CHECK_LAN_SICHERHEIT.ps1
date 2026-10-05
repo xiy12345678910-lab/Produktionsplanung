@@ -70,8 +70,8 @@ else {
     try { $wdFull = [IO.Path]::GetFullPath([string]$action.WorkingDirectory).TrimEnd('\') } catch { $wdFull = '' }
     if ($wdFull -ieq $secureRoot) { Pass "SYSTEM-Task laeuft aus $wdFull" } else { Fail "SYSTEM-Task laeuft nicht aus $secureRoot" }
     if ([string]$action.Arguments -match '(?i)-PythonExe\s+"([^"]+)"') {
-        if (Test-MPPythonLocationSafe $Matches[1]) { Pass "Python-Pfad ausserhalb von Benutzerprofilen: $($Matches[1])" }
-        else { Fail "Python liegt in einem Benutzerprofil ($($Matches[1])) und wird als SYSTEM ausgefuehrt." }
+        if (Test-MPPythonLocationSafe $Matches[1]) { Pass "Python nur fuer Admins beschreibbar: $($Matches[1])" }
+        else { Fail "Python ($($Matches[1])) ist fuer normale Benutzer beschreibbar und wird als SYSTEM ausgefuehrt." }
     }
 }
 foreach ($legacyTask in $MP_LegacyTaskNames) { if (Get-ScheduledTask -TaskName $legacyTask) { Fail "Alter Task existiert noch: $legacyTask" } }

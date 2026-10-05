@@ -1,4 +1,4 @@
-MASCHINENPLANUNG V12.7.6 - FEHLERCODES
+MASCHINENPLANUNG V12.17.1 - FEHLERCODES
 ======================================
 
 Jeder Fehler wird dem Mitarbeiter als Klartext + Code angezeigt.
@@ -18,6 +18,7 @@ CODEGRUPPEN
 - MP-SRV-xxx: Server/Verbindung/Speichern
 - MP-SYNC-xxx: Mehrbenutzer, Revision und Versionsabgleich
 - MP-UI-xxx: Oberfläche / allgemeine UI-Fehler
+- MP-UNDO-xxx: Rückgängig / Wiederholen
 - MP-DEPT-xxx: Produktionsbereiche und Bereichsrechte
 - MP-STEP-xxx: Arbeitsgänge (FS/AB/WT, Reihenfolge, Vorgänger)
 - MP-PM-xxx: Projektmanagement / AB-Aufträge
@@ -27,6 +28,10 @@ CODEGRUPPEN
 - MP-TPL-xxx: Gespeicherte Prozessabläufe
 - MP-LOG-xxx: Änderungsprotokoll
 - MP-MIG-xxx: Datenbank-Migration beim Serverstart
+- MP-FMT-xxx: Formatplanung Tiefziehen (Grundformate, Formate, Lager)
+- MP-CHAT-xxx: Nachrichten (Gruppen, Direktnachrichten, Verweise)
+- MP-NOTIF-xxx: Benachrichtigungen (Glocke)
+- MP-MOD-xxx: Module ein/aus
 
 EINZELCODES (der genaue Klartext kann je nach Kontext zusaetzliche Details enthalten)
 
@@ -65,6 +70,7 @@ MP-DATA-010  Datenstand ist kein Objekt.
 MP-DATA-011  Mindestens eine Maschine ist erforderlich.
 MP-DATA-012  Auftragsliste fehlt.
 MP-DATA-013  Kontextbezogener Fehler; Klartext wird direkt in der Anwendung angezeigt.
+MP-DATA-014  Feld 'meta'/'ui' muss ein Objekt, 'planVersions' eine Liste von Objekten sein.
 
 [MACH - Maschinenstammdaten]
 MP-MACH-001  Maschine ohne gültige ID.
@@ -138,6 +144,9 @@ MP-PROD-030  Kontextbezogener Fehler; Klartext wird direkt in der Anwendung ange
 [REQ - HTTP-Anfrage]
 MP-REQ-002  Ungültige Anfrage.
 MP-REQ-404  Nicht gefunden.
+MP-REQ-403  Anfrage ohne Client-Kennung oder von fremder Seite (Origin) abgelehnt.
+MP-REQ-421  Unbekannter Server-Name im Host-Header (Schutz gegen DNS-Rebinding). Adresse des Admins verwenden
+             oder Namen in der Umgebungsvariable MP_ALLOWED_HOSTS eintragen.
 
 [SHIFT - Schicht-/Arbeitszeit]
 MP-SHIFT-003  Kontextbezogener Fehler; Klartext wird direkt in der Anwendung angezeigt.
@@ -157,6 +166,9 @@ MP-SYNC-004  Kontextbezogener Fehler; Klartext wird direkt in der Anwendung ange
 
 [UI - Oberfläche / allgemeine UI-Fehler]
 MP-UI-001  Kontextbezogener Fehler; Klartext wird direkt in der Anwendung angezeigt.
+MP-NOTIF-001  Benachrichtigungen: Position, Eintraege oder Meldung ungueltig (max. 50 je Meldung).
+MP-NOTIF-002  Benachrichtigungs-Einstellungen ungueltig (Ereignisart oder Ruhezeit HH:MM).
+MP-UNDO-001  Rückgängig/Wiederholen abgelehnt: derselbe Datensatz wurde inzwischen von jemand anderem geändert.
 
 
 [Zusaetzliche Server-Invarianten]
@@ -196,6 +208,9 @@ MP-PROD-019  Pausenhistorie ist ungueltig oder passt nicht zum Status Laufend/Pa
 MP-PROD-029  Ist-Produktionsstart darf nach Produktionsbeginn nicht nachtraeglich veraendert werden.
 MP-PROD-031  Geplanter/freigegebener Auftrag darf keine versteckten Live-Produktionsdaten enthalten.
 MP-PROD-032  Laufbeginn/Pausenbeginn der aktuellen Phase darf ohne echten Pause-/Fortsetzen-Uebergang nicht veraendert werden.
+MP-PROD-033  Keine Berechtigung fuer den Produktionsstart.
+MP-PROD-034  Startzeit fehlt oder liegt in der Zukunft (Popup "Produktion starten").
+MP-PROD-035  Freigabe vor dem Start konnte noch nicht auf dem Server gespeichert werden; erneut versuchen.
 
 SUPPORT-REGEL
 - Fehler nicht nur als Screenshot melden: Fehlercode mit angeben.
@@ -325,3 +340,84 @@ MP-MACH-013  Ressource hat noch offene Aufträge und kann nicht entfernt werden.
 MP-DEPT-030  Den AV-Termin legt die Arbeitsvorbereitung fest (Abteilung plant nur innerhalb).
 MP-DEPT-031  Für den Bereich ist noch keine Maschine/Linie angelegt.
 MP-AUTH-019  AV-Termin ändern nur Arbeitsvorbereitung/Admin.
+
+V12.8.0 NEU (Formatplanung Tiefziehen)
+MP-FMT-001  Grundformat ungueltig: eindeutige ID, Name, bekannter Bereich, Laenge/Breite 100–5000 mm.
+MP-FMT-002  Format ungueltig: eindeutige ID, Bereich, Status, Laenge/Breite 100–5000 mm, Ziehtiefe/Rand.
+MP-FMT-003  Formatnummer fehlt oder ist doppelt.
+MP-FMT-004  Format verweist auf ein unbekanntes Grundformat bzw. Grundformat wird noch verwendet.
+MP-FMT-005  Maschine des Formats gehoert nicht zum Bereich bzw. keine Maschine gewaehlt.
+MP-FMT-006  Werkzeugliste ungueltig: Masse 1–5000 mm, Nutzen 1–500, Menge ganzzahlig.
+MP-FMT-007  Formatbelegung (Layout) ist ungueltig.
+MP-FMT-008  Einlagern nur mit Lagerort; Lagerort nur bei eingelagerten Formaten.
+MP-FMT-009  Format-Verlauf ist ungueltig.
+MP-FMT-011  Grundformat: Maschinenauswahl ungueltig (nur Maschinen des eigenen Bereichs, mind. eine).
+MP-FMT-010  Verknuepfung Format → Auftrag ist ungueltig.
+MP-FMT-020  Einplanen: Format ist leer.
+MP-FMT-021  Einplanen: an der Maschine ist kein Takt hinterlegt.
+MP-FMT-022  Einplanen: ohne Mengen keine Takte.
+MP-FMT-023  Einplanen: Werkzeuge liegen nicht auf dem Format.
+MP-FMT-024  Einplanen: Format passt nicht auf die Maschine (max. Formatgroesse/Ziehtiefe).
+MP-FMT-025  Format-Auftrag ist bereits freigegeben/gestartet und kann nicht mehr geaendert werden.
+MP-FMT-026  Uebernommene Auftraege sind bereits freigegeben/gestartet.
+MP-MACH-014  Maschine: Taktliste (Name, 1–3600 s, max. 30) oder max. Formatgroesse/Ziehtiefe ungueltig.
+
+V12.8.1 NEU (Parallelbelegung)
+MP-MACH-015  Parallelplaetze einer Maschine/Linie muessen eine ganze Zahl von 1 bis 20 sein.
+MP-MACH-016  Parallelplaetze erst verringern, wenn auf der Ressource nichts freigegeben ist oder laeuft.
+MP-PROD-010  (geaendert) Mehr laufende/pausierte Auftraege auf einer Maschine als Parallelplaetze.
+MP-PLAN-058  (geaendert) Freigabe ueberschreitet die Parallelplaetze der Maschine/Linie (feste Belegung).
+
+V12.8.2 NEU (Bereiche anlegen, Bereichsarten)
+MP-DEPT-004  Bereichsart ungueltig bzw. Vertrieb/Entwicklung ohne Maschinen, Auftraege, Formate.
+MP-DEPT-005  Bereichsname fehlt/zu lang/doppelt oder ID fuer feste Projektbereiche reserviert.
+MP-DEPT-006  Bereich mit offenen Auftraegen kann nicht deaktiviert werden.
+MP-GF-030    (erweitert) GF legt Bereiche an (Name, Art, aktiv) und nur die erste Maschine/Linie
+             eines Bereichs; keine Loeschung von Bereichen, keine Aenderung bestehender Maschinen.
+
+V12.8.3 NEU (PM-Vorplan vs. AV vs. Ist)
+MP-PM-017    PM-Vorplan (pmPlan) eines Prozesses ist ungueltig (nur Start/Faellig/Zeitpunkt/Benutzer).
+MP-PM-031    (erweitert) PM-Vorplan sichert nur die AV, einmalig und unveraendert; danach sind die
+             PM-Termine dieses Prozesses gesperrt und der Prozess kann vom PM nicht entfernt werden.
+
+V12.9.0 NEU (Nachrichten)
+MP-CHAT-000  Nachrichten sind gerade nicht erreichbar (Server/Netzwerk pruefen).
+MP-CHAT-001  Kanal oder Position ungueltig.
+MP-CHAT-002  Unterhaltung nicht gefunden oder kein Mitglied.
+MP-CHAT-003  Mitglieder ungueltig (unbekannt/inaktiv; Direkt = genau eine Person, Gruppe = mind. eine weitere).
+MP-CHAT-004  Gruppenname fehlt oder ist zu lang (max. 60).
+MP-CHAT-005  Nachricht leer oder zu lang (max. 2000 Zeichen).
+MP-CHAT-006  Mitglieder aendert nur, wer die Gruppe angelegt hat (oder Admin); nur bei Gruppen.
+MP-CHAT-007  Nachricht zum Behalten nicht gefunden (bereits nach 30 Tagen geloescht?).
+MP-CHAT-010  Verweis existiert nicht mehr (Auftrag/Projekt/Format geloescht oder archiviert).
+
+V12.14.0 NEU (Firmen-Config config\firma.json)
+MP-CFG-001   firma.json nicht lesbar oder kein JSON. Start verweigert, Datei unveraendert. Letzte gueltige
+             Sicherung steht in der Meldung (config\firma.json.bak-<zeit>), zurueckkopieren oder Restore -MitConfig.
+MP-CFG-002   Feld in firma.json ungueltig (Meldung nennt Feld, z. B. company.color). Start verweigert.
+MP-CFG-003   schemaVersion neuer als dieses Programm (nur Warnung): Datei wird gelesen, nicht geaendert.
+             Beim Speichern im Firmenprofil: schreibgeschuetzt (409), Datei bleibt unveraendert.
+
+V12.15.0 NEU (Firmenprofil-API)
+MP-CFG-004   Firmenprofil wurde inzwischen von jemand anderem geaendert (409). Die Antwort enthaelt den aktuellen
+             Stand, die Oberflaeche laedt ihn neu; Eingabe bitte wiederholen.
+MP-CFG-005   Logo abgelehnt: nur PNG, JPG oder SVG bis 420 KB; Dateiinhalt muss zum Typ passen; SVG ohne Script,
+             eingebettete Seiten/Bilder, Animation, Event-Handler und externe Verweise.
+MP-CFG-404   Kein Logo hinterlegt (GET /api/config/logo).
+
+V12.15.1 NEU (Datenerhalt bei Updates)
+MP-CFG-006   Bestandsdatenbank ohne config\firma.json und ohne Firmenname/Logo in den Daten: Start bzw. UPDATE_LIVE.ps1
+             stoppt, damit Name und Logo nicht still verloren gehen. Abhilfe: .\Firma_Einrichten.ps1 -Vorlage <datei>
+             (oder -Neutral), danach UPDATE_LIVE.ps1 erneut. Neuinstallationen sind nicht betroffen.
+
+V12.16.0 NEU (Branchenvorlagen, Module)
+MP-MOD-001   Modul ist abgeschaltet: Schreibzugriff bzw. Endpunkt (Chat, Benachrichtigungen, Projekte, Formate, Personal)
+             wird gesperrt, die Daten bleiben erhalten. Abhilfe: Admin schaltet das Modul im Firmenprofil wieder ein.
+MP-TPL-040   Branchenvorlage nicht gefunden (POST /api/templates/apply).
+MP-DEPT-007  Bereichs-Eigenschaft formats/sharedOperators ist kein true/false.
+
+V12.17.0 (Einrichtungsassistent)
+Keine neuen Codes. Der Assistent nutzt MP-CFG-00x (Firmenprofil), MP-TPL-040 (Vorlage), MP-AUTH-010/011/017/023/024 (Benutzer, Passwort), MP-DEPT-004/005.
+
+V12.17.1 (Personal-Gate fuer Linien)
+MP-PERS-003  Unbesetzt: Auftrag nicht planbar, weil das Gate EIN ist und fuer die geforderte Personenzahl (Linie: crew) kein Personal zugeordnet ist.
