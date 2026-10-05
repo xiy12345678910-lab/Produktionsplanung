@@ -1,0 +1,3 @@
+# Einzige Fremdabhaengigkeit (nur Windows): Zeitzonendaten fuer zoneinfo. Version und Hash fest -
+# Installation mit:  python -m pip install --require-hashes -r requirements.txt
+tzdata==2026.5 --hash=sha256:b683bd1b6659ddcd810ff02ad09ba821d4bf1065072805063eb35c49617905ac

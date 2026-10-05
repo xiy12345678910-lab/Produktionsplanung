@@ -15,6 +15,7 @@ Branch: `claude/new-session-95ro2l` (Basis `claude/new-session-mpx5ch`) · Live-
 | 12.10.0 | Formate als Fenster (Wochenplan/Auftragsliste/Neuer Auftrag), nur Tiefziehen + Admin; Takte/Maße und Grundformate (mehrere Maschinen) unter System; zwei Bereichsarten; Projektfenster breit | `e2e_formats.mjs` 43/43, `e2e_departments.mjs` 26/26 |
 | 12.10.2 | Hotfix aus `docs/AUDIT.md` (V-02, V-03, V-04, V-12): Login-Sperre je Benutzer/IP, Host/Origin-Prüfung, Timeouts, 500-Hülle; beforeunload, Cache ohne Quota-Abbruch, Offline erst nach 3 Fehlern, Konfliktkopie; AV ohne Formatrechte; CSV Ortszeit/Formelschutz, Arbeitstage mit Feiertagen | `tests/test_v12102.py` 27/27, `tests/e2e_v12102.mjs` 21/21 |
 | 12.10.2 | Betrieb (V-01, V-05): Update nur aus Releases auf main mit festem Commit/SHA256 und geschütztem Staging; Backup über .tmp + Prüfung, `Restore_Datenbank.ps1`, Backup-Warnungen, `update_backups` rotiert | `tests/test_backup.py` 11/11, `tests/ps_syntax.ps1` 15/15 |
+| 12.10.2 | V-11 CI (`.github/workflows/ci.yml`), `package.json` (Playwright 1.56.1), `requirements.txt` (tzdata mit Hash), Versionsprüfung; V-07 Python-ACL-Prüfung | `tests/test_version.py` 9/9 |
 | alle | Rollen-Rundgang (8 Rollen × alle Ansichten × Desktop/Handy) | `tests/e2e_roles.mjs` 374/374 |
 | alle | Regression Rechte/Migration (künstliche DB über `tests/make_test_db.py`) | `tests/test_regression.py` 151/151 |
 | alle | Server-Regeln ohne Browser | `tests/test_v128.py` 35/35 |

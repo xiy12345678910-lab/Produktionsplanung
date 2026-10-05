@@ -43,6 +43,11 @@ UPDATE & BACKUP (Betrieb)
 - Server_Status.ps1 warnt rot bei fehlgeschlagenem Backup-Task oder Backup aelter als 26 h.
 - Stop_Server.ps1 beendet auch haengende Serverprozesse und prueft den Port.
 - update_backups\ behaelt die letzten 5 Update-Staende.
+- Python-Pruefung (Setup/Update/CHECK) wertet die Ordnerrechte aus: Python, das normale Benutzer
+  veraendern koennen (z. B. C:\Python311), wird gemeldet. tzdata nur mit fester Version + SHA256
+  (requirements.txt, --require-hashes).
+- CI (GitHub Actions): Python-Tests, Browser-E2E, PowerShell-Syntax + PSScriptAnalyzer.
+  Versionsangaben werden automatisch auf Gleichstand geprueft (tests/test_version.py).
 
 TESTS
 - Neu: tests/test_v12102.py 27/27, tests/e2e_v12102.mjs 21/21, tests/test_backup.py 11/11,

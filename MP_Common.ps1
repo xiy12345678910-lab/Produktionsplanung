@@ -25,9 +25,9 @@ $MP_AppFiles = @(
     'Backup_Datenbank.py', 'Backup_Datenbank.ps1',
     'MP_Common.ps1', 'Setup_Windows.ps1', 'INSTALLIEREN_ALS_ADMIN.ps1', 'UPDATE_LIVE.ps1',
     'Run_Server_LAN.ps1', 'Start_Server.ps1', 'Stop_Server.ps1', 'Neustart_Server.ps1',
-    'Server_Status.ps1', 'CHECK_LAN_SICHERHEIT.ps1', 'Deinstallieren.ps1', 'Restore_Datenbank.ps1',
+    'Server_Status.ps1', 'CHECK_LAN_SICHERHEIT.ps1', 'Deinstallieren.ps1',
     'README_Windows.txt', 'BENUTZER_KURZANLEITUNG.txt', 'FEHLERCODES.txt', 'RELEASE_NOTES.txt',
-    'Update_von_GitHub.ps1'
+    'Update_von_GitHub.ps1', 'Restore_Datenbank.ps1', 'requirements.txt'
 )
 
 # Veraltete Dateien frueherer Versionen, die im Live-Ordner nicht liegen bleiben duerfen
@@ -69,10 +69,24 @@ function Get-MPPython {
 }
 
 function Test-MPPythonLocationSafe([string]$PythonExe) {
-    # Der Server laeuft als SYSTEM. Liegt Python in einem Benutzerprofil, kann dieser
-    # Benutzer Python-Dateien veraendern, die dann als SYSTEM ausgefuehrt werden.
+    # Der Server laeuft als SYSTEM. Darf ein normaler Benutzer Python-Dateien veraendern
+    # (Benutzerprofil oder z. B. C:\Python311 mit Schreibrecht fuer "Authentifizierte Benutzer"),
+    # wird dessen Code als SYSTEM ausgefuehrt.
     $full = [IO.Path]::GetFullPath($PythonExe)
-    return -not ($full -like "$env:SystemDrive\Users\*")
+    if ($full -like "$env:SystemDrive\Users\*") { return $false }
+    # V12.10.2: Rechte des Python-Ordners und der Standardbibliothek pruefen, nicht nur den Pfad.
+    $dir = Split-Path -Parent $full
+    foreach ($p in @($dir, (Join-Path $dir 'Lib'))) {
+        # Besitzer ist bei Installation unter Program Files oft das installierende Admin-Konto -> nur Schreibrechte werten.
+        if ((Test-Path -LiteralPath $p) -and (Test-MPFolderAclSafe $p $false)) { return $false }
+    }
+    return $true
+}
+
+function Install-MPTzdata([string]$PythonExe, [string]$Folder) {
+    # Version und SHA256 fest in requirements.txt (keine ungeprueften Pakete als Administrator).
+    & $PythonExe -m pip install --disable-pip-version-check --quiet --require-hashes -r (Join-Path $Folder 'requirements.txt')
+    if ($LASTEXITCODE -ne 0) { Write-Warning 'tzdata nicht installiert; Server nutzt die Windows-Zeitzone.' }
 }
 
 function Get-MPLanInfo {
@@ -139,10 +153,11 @@ function Protect-MPInstall([string]$Base) {
     }
 }
 
-function Test-MPFolderAclSafe([string]$Path) {
+function Test-MPFolderAclSafe([string]$Path, [bool]$CheckOwner = $true) {
     # Liefert $null wenn sicher, sonst eine Beschreibung des Problems.
     $acl = Get-Acl -LiteralPath $Path
-    $trusted = @('S-1-5-18', 'S-1-5-32-544', 'S-1-3-0')
+    # SYSTEM, Administratoren, ERSTELLER-BESITZER, TrustedInstaller (Windows-Installer unter C:\Program Files)
+    $trusted = @('S-1-5-18', 'S-1-5-32-544', 'S-1-3-0', 'S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464')
     $writeRights = [Security.AccessControl.FileSystemRights]'Write,Modify,FullControl,CreateFiles,AppendData,WriteData,ChangePermissions,TakeOwnership,Delete'
     foreach ($ace in $acl.Access) {
         if ($ace.AccessControlType -ne 'Allow') { continue }
@@ -153,7 +168,7 @@ function Test-MPFolderAclSafe([string]$Path) {
         }
     }
     try { $owner = (New-Object Security.Principal.NTAccount($acl.Owner)).Translate([Security.Principal.SecurityIdentifier]).Value } catch { $owner = '' }
-    if ($owner -and $owner -notin @('S-1-5-18', 'S-1-5-32-544')) { return "Besitzer ist $($acl.Owner)" }
+    if ($CheckOwner -and $owner -and $owner -notin @('S-1-5-18', 'S-1-5-32-544')) { return "Besitzer ist $($acl.Owner)" }
     return $null
 }
 

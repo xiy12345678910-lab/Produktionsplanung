@@ -2,7 +2,8 @@
 
 Stand: 05.10.2026 · Branch `claude/new-session-mpx5ch` · Analyse von V12.10.1.
 
-> **Umsetzung V12.10.2** (Branch `claude/new-session-95ro2l`): V-01, V-02, V-03, V-04, V-05, V-12 und die README-Version sind erledigt.
+> **Umsetzung V12.10.2** (Branch `claude/new-session-95ro2l`): V-01, V-02, V-03, V-04, V-05, V-11, V-12 und die README-Version sind erledigt; von V-07 die ACL-Prüfung des Python-Ordners und tzdata mit Hash (O-H3).
+> Offen bei V-07: Dienstkonto statt SYSTEM (O-H2) – braucht einen Test auf dem Windows-Host.
 > Offen bei V-01: Branch-Schutz für `main` und Tag-Schutz muss ein Repo-Admin auf GitHub einschalten (siehe README_Windows.txt 2b).
 > Abweichung zu N8: `or` statt `and` hätte Altbestände blockiert (fertige Aufträge wandern in die Historie, gelöschte bleiben verknüpft).
 > Umgesetzt ist daher: Eine **neue** Verknüpfung muss auf einen vorhandenen oder fertigen Auftrag zeigen.

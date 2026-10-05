@@ -44,7 +44,7 @@ if ($running -and $running.Health -and $running.Health.version) {
 Write-Host "Updatepaket: V$NewVersion ($NewSource)" -ForegroundColor Cyan
 Write-Host "Live-Ordner: $OldBase$(if($migrating){" -> $TargetBase"})" -ForegroundColor Cyan
 Write-Host "Python:      $PythonExe" -ForegroundColor DarkGray
-if (-not (Test-MPPythonLocationSafe $PythonExe)) { Write-Warning 'Python liegt in einem Benutzerprofil. Empfehlung: Python fuer alle Benutzer installieren und Update erneut ausfuehren.' }
+if (-not (Test-MPPythonLocationSafe $PythonExe)) { Write-Warning 'Python-Ordner ist fuer normale Benutzer beschreibbar. Empfehlung: Python fuer alle Benutzer (C:\Program Files) installieren und Update erneut ausfuehren.' }
 
 $FinalBackup = $null
 $RollbackCode = $null
@@ -111,8 +111,7 @@ try {
 
     Write-Host '7/9 Ordner sperren, Zeitzonendaten, Tasks ...'
     Protect-MPInstall $TargetBase
-    & $PythonExe -m pip install --disable-pip-version-check --quiet tzdata
-    if ($LASTEXITCODE -ne 0) { Write-Warning 'tzdata nicht installiert; Server nutzt die Windows-Zeitzone.' }
+    Install-MPTzdata $PythonExe $TargetBase
     Remove-MPLegacyTasks
     if (-not (Wait-MPTaskIdle $MP_TaskName 30)) { Write-Warning 'Alte Task-Instanz meldet noch "Running" - Start wird trotzdem versucht.' }
     Register-MPServerTask $TargetBase $PythonExe

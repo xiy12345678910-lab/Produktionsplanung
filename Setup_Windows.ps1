@@ -17,12 +17,11 @@ foreach ($name in $MP_AppFiles) {
 
 $PythonExe = Get-MPPython
 if (-not (Test-MPPythonLocationSafe $PythonExe)) {
-    Write-Warning "Python liegt in einem Benutzerprofil ($PythonExe). Der Server laeuft als SYSTEM - bitte Python 'fuer alle Benutzer' (C:\Program Files) installieren."
+    Write-Warning "Python ($PythonExe) ist fuer normale Benutzer beschreibbar. Der Server laeuft als SYSTEM - bitte Python 'fuer alle Benutzer' (C:\Program Files) installieren."
     if ((Read-Host 'Trotzdem fortfahren? (j/N)') -notmatch '^[jJ]') { throw 'Abgebrochen.' }
 }
 Write-Host 'Zeitzonendaten (tzdata) installieren ...'
-& $PythonExe -m pip install --disable-pip-version-check --quiet tzdata
-if ($LASTEXITCODE -ne 0) { Write-Warning 'tzdata konnte nicht installiert werden; der Server nutzt dann die Windows-Zeitzone.' }
+Install-MPTzdata $PythonExe $SourceBase
 
 Write-Host "Programmdateien nach $Base kopieren ..."
 New-Item -ItemType Directory -Path $Base -Force | Out-Null
