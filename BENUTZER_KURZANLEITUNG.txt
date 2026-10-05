@@ -1,4 +1,4 @@
-MASCHINENPLANUNG V12.17.2 - KURZANLEITUNG FUER BENUTZER
+MASCHINENPLANUNG V12.18.0 - KURZANLEITUNG FUER BENUTZER
 ======================================================
 
 ANMELDEN
@@ -11,6 +11,10 @@ EIGENES PASSWORT AENDERN
 - Oben rechts auf das Schluessel-Symbol (🔑) klicken.
 - Aktuelles Passwort und zweimal das neue Passwort (mind. 8 Zeichen) eingeben.
 - Andere angemeldete Sitzungen dieses Kontos werden dabei abgemeldet.
+
+DAUER NACH BESETZUNG
+- System > Maschinen/Linien > Spalte Ph÷P anhaken: Sollstunden des Auftrags sind Personenstunden, mehr Personen = kuerzere Dauer
+  (40 Ph: 2 Personen 20 h, 4 Personen 10 h). Mit Personal-Gate zaehlen die zugeordneten Mitarbeiter je Schicht, sonst die Besetzung der Ressource. Max. P. begrenzt die Besetzung.
 
 RUECKGAENGIG
 - ↶ / ↷ oben rechts oder Strg+Z / Strg+Y. Geht nicht, wenn jemand anderes denselben Auftrag inzwischen geaendert hat.

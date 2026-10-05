@@ -38,6 +38,7 @@ jobs:
           python tests/test_config_api.py
           python tests/test_no_employer_data.py
           python tests/test_templates.py
+          python tests/test_effort.py
           python tests/test_setup.py
       - name: Backup/Restore
         run: python tests/test_backup.py

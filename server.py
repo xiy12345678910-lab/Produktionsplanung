@@ -28,7 +28,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 MP_DEBUG_ABORTS = os.environ.get('MP_DEBUG_ABORTS') == '1'
-APP_VERSION = "12.17.2"
+APP_VERSION = "12.18.0"
 HOST = os.environ.get("MP_HOST", "0.0.0.0")
 PORT = int(os.environ.get("MP_PORT", "8765"))
 BASE = Path(__file__).resolve().parent
@@ -878,9 +878,9 @@ def migrate_users_schema(con: sqlite3.Connection) -> None:
 
 # V12.17.0: Startbestand der Werbetechnik (bis V12.16.x fest im Seed). Nur noch für Tests (init_db(seed="werbetechnik")).
 LEGACY_MACHINES = [
-    {"id": "m1", "name": "Maschine 1", "departmentId": "cnc", "setupMinutes": 0, "start": "2026-09-07T06:30", "committedUntil": "", "defaultShiftMode": "1", "staffRequired": 1},
-    {"id": "m2", "name": "Maschine 2", "departmentId": "cnc", "setupMinutes": 0, "start": "2026-09-07T06:30", "committedUntil": "", "defaultShiftMode": "1", "staffRequired": 1},
-    {"id": "m3", "name": "Maschine 3", "departmentId": "cnc", "setupMinutes": 0, "start": "2026-09-07T06:30", "committedUntil": "", "defaultShiftMode": "1", "staffRequired": 1},
+    {"id": "m1", "name": "Maschine 1", "departmentId": "cnc", "setupMinutes": 0, "start": "2026-09-07T06:30", "committedUntil": "", "defaultShiftMode": "1", "staffRequired": 1, "effortScaling": False, "crewMax": 0, "laneStaff": {}},
+    {"id": "m2", "name": "Maschine 2", "departmentId": "cnc", "setupMinutes": 0, "start": "2026-09-07T06:30", "committedUntil": "", "defaultShiftMode": "1", "staffRequired": 1, "effortScaling": False, "crewMax": 0, "laneStaff": {}},
+    {"id": "m3", "name": "Maschine 3", "departmentId": "cnc", "setupMinutes": 0, "start": "2026-09-07T06:30", "committedUntil": "", "defaultShiftMode": "1", "staffRequired": 1, "effortScaling": False, "crewMax": 0, "laneStaff": {}},
 ]
 LEGACY_DEPARTMENTS = [
     {"id": "cnc", "name": "CNC", "planningType": "MACHINE", "active": True, "sharedOperators": True},
@@ -1014,6 +1014,7 @@ def init_db(seed: str = "neutral") -> None:
         normalize_state_v1270(con)
         migrate_state_v1280(con)
         migrate_state_v1216(con)
+        migrate_state_v1218(con)
         if not con.execute("SELECT 1 FROM chat_channels WHERE kind='all'").fetchone():
             con.execute("INSERT INTO chat_channels(kind,name,members,created_by,created_at) VALUES('all','Alle','[]','Server',?)", (now_iso(),))
         migrate_chat_v1291(con)
@@ -1038,6 +1039,28 @@ def migrate_state_v1280(con: sqlite3.Connection) -> None:
         con.execute("UPDATE state SET json=?,updated_at=?,updated_by=? WHERE id=1",
                     (json.dumps(state, ensure_ascii=False, separators=(",", ":")), now_iso(), "V12.8.0 migration"))
         print("DB-MIGRATION state: V12.8.0 Formatlisten angelegt")
+
+
+def migrate_state_v1218(con: sqlite3.Connection) -> None:
+    """V12.18.0: Dauer nach Besetzung (effortScaling, Default aus), maximale Besetzung (crewMax, 0 = keine Obergrenze) und
+    Personal je Parallelplatz (laneStaff, leer). Nur additiv und idempotent: fehlende Felder bekommen den Default,
+    vorhandene Werte bleiben. Bestehende Auftraege aendern ihre Dauer dadurch nicht (Schalter aus)."""
+    row = con.execute("SELECT json FROM state WHERE id=1").fetchone()
+    if not row:
+        return
+    state = json.loads(row["json"])
+    changed = False
+    for m in state.get("machines") or []:
+        if not isinstance(m, dict):
+            continue
+        for key, default in (("effortScaling", False), ("crewMax", 0), ("laneStaff", {})):
+            if key not in m:
+                m[key] = default
+                changed = True
+    if changed:
+        con.execute("UPDATE state SET json=?,updated_at=?,updated_by=? WHERE id=1",
+                    (json.dumps(state, ensure_ascii=False, separators=(",", ":")), now_iso(), "V12.18.0 migration"))
+        print("DB-MIGRATION state: V12.18.0 Dauer nach Besetzung (effortScaling, crewMax, laneStaff) ergaenzt")
 
 
 def migrate_state_v1216(con: sqlite3.Connection) -> None:
@@ -1337,7 +1360,7 @@ def migrate_state_v1270(con: sqlite3.Connection) -> None:
                         e["skills"] = list(dict.fromkeys([*(e.get("skills") or []), mid]))
             machines.append({"id": mid, "name": (f"Linie {d.get('name') or did}" if is_line else f"{d.get('name') or did} 1"),
                              "departmentId": did, "kind": "line" if is_line else "machine", "crew": crew,
-                             "setupMinutes": 0, "start": start_default, "committedUntil": "", "defaultShiftMode": "1", "staffRequired": 0})
+                             "setupMinutes": 0, "start": start_default, "committedUntil": "", "defaultShiftMode": "1", "staffRequired": 0, "effortScaling": False, "crewMax": 0, "laneStaff": {}})
             dept_machine[did] = mid
             created += 1
         d["planningType"] = "MACHINE"
@@ -2176,9 +2199,25 @@ def _validate_baseline(o: dict, midset: set[str]) -> tuple[bool, str]:
     frozen_crew = _finite_float(b.get("crew", 1))
     if frozen_crew is None or frozen_crew < 1 or not frozen_crew.is_integer() or frozen_crew > 99:
         return False, "Freigabeplan enthält eine ungültige eingefrorene Besetzung."
-    expected_total = None if expected_hours is None else expected_hours / frozen_crew + frozen_setup / 60.0
-    if planned_hours is None or expected_total is None or abs(planned_hours - expected_total) > 0.01:
-        return False, "Freigabeplan-Dauer stimmt nicht mit Sollstunden plus eingefrorener Umrüstzeit überein."
+    if b.get("effort") is True:
+        # V12.18.0 Dauer nach Besetzung: Sollstunden = Personenstunden = Summe(Dauer x Besetzung des Segments); Umruestsegmente tragen setup=true.
+        work_eff = setup_wall = 0.0
+        for seg in b.get("segments") or []:
+            pr = _ordered_dt_pair(seg.get("start"), seg.get("end"))
+            wall = (pr[1] - pr[0]).total_seconds() / 3600.0
+            if seg.get("setup") is True:
+                setup_wall += wall
+                continue
+            cr = _finite_float(seg.get("crew"))
+            if cr is None or cr < 1 or not cr.is_integer() or cr > 99:
+                return False, "Freigabeplan enthält ein Segment ohne gültige Besetzung."
+            work_eff += wall * cr
+        if expected_hours is None or abs(work_eff - expected_hours) > 0.01 or abs(setup_wall - frozen_setup / 60.0) > 0.01:
+            return False, "Freigabeplan-Dauer stimmt nicht mit den Personenstunden und der Besetzung je Schicht überein."
+    else:
+        expected_total = None if expected_hours is None else expected_hours / frozen_crew + frozen_setup / 60.0
+        if planned_hours is None or expected_total is None or abs(planned_hours - expected_total) > 0.01:
+            return False, "Freigabeplan-Dauer stimmt nicht mit Sollstunden plus eingefrorener Umrüstzeit überein."
     if b.get("planType") not in (None, "", _plan_type(o)):
         return False, "Freigabeplan passt nicht zur Planart des Auftrags."
     expected_anchor = o.get("requiredFinish") if o.get("direction") == "backward" else o.get("requiredStart")
@@ -2726,6 +2765,15 @@ def validate_state(old: dict, new: dict) -> tuple[bool, str, str]:
         crew = _finite_float(m.get("crew", 1))
         if crew is None or crew < 1 or not crew.is_integer() or crew > 99:
             return False, "MP-MACH-010", f"Besetzung von '{m.get('name') or mid}' muss eine ganze Zahl von 1 bis 99 sein."
+        if m.get("effortScaling") not in (None, True, False):
+            return False, "MP-MACH-017", f"'Dauer nach Besetzung' von '{m.get('name') or mid}' muss ein / aus sein."
+        if m.get("crewMax") not in (None, "") and (isinstance(m.get("crewMax"), bool) or not _num_in(m.get("crewMax"), 0, 99, True)):
+            return False, "MP-MACH-018", f"Maximale Besetzung von '{m.get('name') or mid}' muss eine ganze Zahl von 0 bis 99 sein."
+        lane_staff = m.get("laneStaff")
+        if lane_staff not in (None, ""):
+            if not isinstance(lane_staff, dict) or any(
+                    not re.fullmatch(r"[1-9]|1[0-9]|20", str(k)) or isinstance(v, bool) or not _num_in(v, 0, 9, True) for k, v in lane_staff.items()):
+                return False, "MP-MACH-019", f"Personal je Parallelplatz von '{m.get('name') or mid}' muss Platz 1-20 mit ganzen Zahlen 0-9 enthalten."
         lanes = m.get("lanes")
         if lanes not in (None, "") and not _num_in(lanes, 1, 20, True):
             return False, "MP-MACH-015", f"Parallelplätze von '{m.get('name') or mid}' müssen eine ganze Zahl von 1 bis 20 sein."
@@ -3026,7 +3074,7 @@ def validate_state(old: dict, new: dict) -> tuple[bool, str, str]:
                     return False, "MP-PLAN-055", f"Auftrag '{o.get('order') or oid}': Freigabe muss die aktuell gültige Umrüstzeit der Einsatzmaschine einfrieren."
                 frozen_crew = _finite_float(baseline.get("crew", 1))
                 current_crew = _finite_float((machine_map.get(bmid) or {}).get("crew", 1))
-                if frozen_crew is None or current_crew is None or abs(frozen_crew - current_crew) > 1e-9:
+                if baseline.get("effort") is not True and (frozen_crew is None or current_crew is None or abs(frozen_crew - current_crew) > 1e-9):
                     return False, "MP-PLAN-061", f"Auftrag '{o.get('order') or oid}': Freigabe muss die aktuell gültige Besetzung der Linie einfrieren."
 
         if status in {"running", "paused"}:
@@ -4072,7 +4120,7 @@ def template_merge(state: dict, tpl: dict) -> tuple[dict, dict]:
             summary["skipped"] += 1
             continue
         rec = {"id": mid, "name": str(m.get("name") or mid)[:60], "departmentId": str(m["departmentId"]), "setupMinutes": 0,
-               "start": f"{monday.isoformat()}T06:30", "committedUntil": "", "defaultShiftMode": "1", "staffRequired": 1}
+               "start": f"{monday.isoformat()}T06:30", "committedUntil": "", "defaultShiftMode": "1", "staffRequired": 1, "effortScaling": False, "crewMax": 0, "laneStaff": {}}
         rec.update({k: m[k] for k in TEMPLATE_MACHINE_KEYS if k in m})
         machines.append(rec)
         mids.add(mid)

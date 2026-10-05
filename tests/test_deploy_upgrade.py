@@ -327,6 +327,19 @@ def run_case(label: str, commit: str, scenario: str, keep: bool, ip: str):
                         f"[{tag}] Bestand: die sieben Projektbereiche stehen in der Config", ",".join(areas))
         ok_all &= check(len(deps) == len(stateA.get("departments", [])) and [d["id"] for d in stateA.get("departments", [])] == list(deps),
                         f"[{tag}] Bestand: Bereiche und Reihenfolge unverändert ({len(deps)})")
+        # V12.18.0: Dauer nach Besetzung ist fuer den Bestand AUS; keine Maschine/Linie und kein Auftrag aendert dabei seine Dauer.
+        new_state = st.get("data", {}) if sc == 200 else {}
+        mach = new_state.get("machines") or []
+        ok_all &= check(mach and all(m.get("effortScaling") is False and m.get("crewMax") == 0 and m.get("laneStaff") == {} for m in mach),
+                        f"[{tag}] Bestand: Dauer nach Besetzung AUS (effortScaling=false, crewMax=0, laneStaff leer) fuer {len(mach)} Ressourcen")
+        old_ws = {w["id"]: w for w in stateA.get("workSteps", [])}
+        diff_ws = [i for i, w in ((w["id"], w) for w in new_state.get("workSteps") or [])
+                   if i in old_ws and (w.get("hours") != old_ws[i].get("hours") or w.get("baselinePlan") != old_ws[i].get("baselinePlan")
+                                       or w.get("lockedSegments") != old_ws[i].get("lockedSegments") or w.get("remainingHours") != old_ws[i].get("remainingHours"))]
+        old_mach = {m["id"]: m for m in stateA.get("machines", [])}
+        diff_m = [m["id"] for m in mach if m["id"] in old_mach and any(m.get(k) != v for k, v in old_mach[m["id"]].items())]
+        ok_all &= check(not diff_ws and not diff_m, f"[{tag}] Bestand: Sollstunden, Freigabeplaene, Laufplaene und Maschinenwerte unveraendert -> Dauer aendert sich nicht",
+                        f"Auftraege {diff_ws} Maschinen {diff_m}")
         cfg_path = live / "config" / "firma.json"
         ok_all &= check(cfg_path.exists(), f"[{tag}] config\\firma.json vorhanden")
         if scenario == "ci" or template:
