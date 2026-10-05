@@ -94,6 +94,16 @@ table.tools input.n{width:70px}
 .poolItem small{display:block;color:var(--muted);font-size:11px}
 .poolItem.used{opacity:.5}
 .hint{font-size:12px;color:var(--muted);margin:6px 0 0}
+.mBg{position:fixed;inset:0;background:rgba(16,33,61,.45);display:none;align-items:center;justify-content:center;padding:16px;z-index:50}.mBg.show{display:flex}
+.mBox{background:#fff;border-radius:16px;box-shadow:var(--shadow);width:min(560px,100%);max-height:92vh;overflow:auto;padding:18px}
+.mBox h3{margin:0 0 10px}.mActions{display:flex;justify-content:flex-end;gap:8px;margin-top:14px;flex-wrap:wrap}
+.seg{display:flex;gap:4px;background:#eef3fa;border-radius:10px;padding:3px;margin-bottom:12px}.seg button{flex:1;border:0;background:transparent;border-radius:8px;padding:7px;font-weight:800;color:#4c5d73}.seg button.on{background:#fff;color:var(--text);box-shadow:0 1px 3px rgba(0,0,0,.08)}
+.found{border:1px solid var(--line);border-radius:12px;padding:10px;margin-top:8px;background:var(--panel2);font-size:13px}.found b{font-size:14px}.found .lager{margin-top:6px;padding:8px;border-radius:9px;background:var(--okbg);color:var(--ok);font-weight:700}
+.storeBanner{background:var(--okbg);border:1px solid #bce4d1;color:var(--ok);border-radius:12px;padding:9px 12px;font-size:13px;font-weight:700;margin-bottom:10px;display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap}
+.secLbl{font-size:11px;font-weight:850;color:#67758b;text-transform:uppercase;margin:12px 0 6px}
+.fmtItem.stored{background:var(--panel2)}
+.gfRow{display:grid;grid-template-columns:1fr 70px 70px 28px;gap:5px;align-items:center;margin-bottom:5px}.gfRow input{width:100%;border:1px solid var(--line);border-radius:7px;padding:4px 6px;font-size:12.5px}
+.who{display:flex;gap:6px;align-items:center;font-size:12px;color:var(--muted);margin-bottom:10px}.who select{border:1px solid var(--line);border-radius:8px;padding:4px 6px;font-size:12px}
 .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#10213d;color:#fff;padding:10px 16px;border-radius:10px;font-size:13px;font-weight:700;opacity:0;transition:opacity .2s;pointer-events:none;max-width:calc(100vw - 32px)}
 .toast.show{opacity:1}
 </style>
@@ -129,23 +139,30 @@ table.tools input.n{width:70px}
     <div class="fmtGrid">
       <div class="card">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><h3 style="margin:0">Formate</h3><button class="btn small primary" id="newFmt">+ Neues Format</button></div>
+        <div class="who">Angemeldet als <select id="who"><option value="lead">Thomsen · Abteilungsleiter</option><option value="worker">boensch · Tiefzieher</option></select></div>
+        <div class="field" style="margin-bottom:8px"><input id="fmtSearch" placeholder="Suche: WKZ-Nr., FS-Nr., Auftrag, Artikel …" style="width:100%;border:1px solid var(--line);border-radius:8px;padding:7px 9px"></div>
         <div class="fmtList" id="fmtList"></div>
-        <p class="hint">Ein Format ist auswählbar und kann für mehrere Tage/Maschinen wiederverwendet werden.</p>
+        <details style="margin-top:14px" id="gfBox"><summary style="cursor:pointer;font-weight:850">Grundformate <span class="hint" id="gfHint"></span></summary>
+          <div id="gfList" style="margin-top:8px"></div>
+        </details>
       </div>
 
       <div class="card" style="min-width:0">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px">
           <h3 style="margin:0">Format bearbeiten</h3>
-          <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn small" id="dupFmt">Duplizieren</button><button class="btn small primary" id="planFmt">In Wochenplan einplanen</button></div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn small" id="dupFmt">Duplizieren</button><button class="btn small" id="storeFmt">✓ Auftrag abgeschlossen · einlagern</button><button class="btn small primary" id="planFmt">In Wochenplan einplanen</button></div>
         </div>
+        <div id="storeBanner"></div>
         <div class="fields">
           <div class="field" style="grid-column:span 2"><label>Formatname</label><input id="fName"></div>
           <div class="field"><label>Maschine</label><select id="fMachine"></select></div>
           <div class="field"><label>Taktzeit (s)</label><input id="fCycle" type="number" min="1" title="Taktzeit auf der gewählten Maschine"></div>
+          <div class="field"><label>Grundformat</label><select id="fBase"></select></div>
           <div class="field"><label>Format Länge (mm)</label><input id="fL" type="number" min="1"></div>
           <div class="field"><label>Format Breite (mm)</label><input id="fB" type="number" min="1"></div>
           <div class="field"><label>Max. Ziehtiefe (mm)</label><input id="fH" type="number" min="1"></div>
           <div class="field"><label>Formatrand (mm)</label><input id="fRand" type="number" min="0"></div>
+          <div class="field" style="grid-column:span 3"><label>Verlauf</label><div class="hint" id="fLog" style="padding-top:6px">—</div></div>
         </div>
 
         <p class="hint" style="margin:-4px 0 12px">Abstandsregel: Formatrand ringsum (Standard 100 mm = 10 cm) · Abstand zwischen zwei Werkzeugen = ½ Werkzeughöhe (bei unterschiedlichen Höhen gilt das höhere Werkzeug).</p>
@@ -154,7 +171,7 @@ table.tools input.n{width:70px}
         <p class="hint">Jede Maschine hat für dasselbe Format eine eigene Taktzeit. Auswahl links = Maschine, auf der das Format geplant wird. Leere Taktzeit = auf dieser Maschine noch nicht gefahren.</p>
         <h3>Werkzeuge / Positionen auf dem Format</h3>
         <div class="tblScroll"><table class="tools">
-          <thead><tr><th>Position / Auftrag</th><th>L (mm)</th><th>B (mm)</th><th>H (mm)</th><th title="Wie oft ist das Werkzeug auf dem Format enthalten?">Nutzen ×</th><th class="num">Menge</th><th class="num">Takte</th><th class="num">Überprod.</th><th></th></tr></thead>
+          <thead><tr><th>Position / Auftrag</th><th>WKZ-Nr.</th><th>L (mm)</th><th>B (mm)</th><th>H (mm)</th><th title="Wie oft ist das Werkzeug auf dem Format enthalten?">Nutzen ×</th><th class="num">Menge</th><th class="num">Takte</th><th class="num">Überprod.</th><th></th></tr></thead>
           <tbody id="toolRows"></tbody>
         </table></div>
         <button class="btn small" id="addTool" style="margin-top:8px">+ Werkzeug hinzufügen</button>
@@ -180,37 +197,54 @@ table.tools input.n{width:70px}
     </div>
   </section>
 </div>
+<div class="mBg" id="modal"><div class="mBox" id="modalBox"></div></div>
 <div class="toast" id="toast"></div>
 
 <script>
 const COLORS=['#cfe0ff','#d7f2e4','#ffe6bf','#f5d5e6','#e3dbff','#d4eef4','#f9e0d2','#e6ecc8'];
 const ORDERS=[
-  {id:'A-24811/1',kunde:'Müller GmbH',art:'Schale 300',menge:1200,l:300,b:200,h:60,due:'07.10.'},
-  {id:'A-24811/2',kunde:'Müller GmbH',art:'Deckel 300',menge:1200,l:310,b:210,h:25,due:'07.10.'},
-  {id:'A-24830/1',kunde:'Hansa Pack',art:'Tray 6-fach',menge:800,l:400,b:280,h:45,due:'08.10.'},
-  {id:'A-24842/1',kunde:'Nordmed',art:'Blister klein',menge:3000,l:120,b:90,h:20,due:'09.10.'},
-  {id:'A-24850/1',kunde:'Kröger AG',art:'Abdeckhaube',menge:150,l:520,b:380,h:140,due:'09.10.'},
-  {id:'A-24851/3',kunde:'Kröger AG',art:'Einsatz',menge:600,l:180,b:140,h:35,due:'12.10.'}
+  {id:'A-24811/1',fs:'FS 467',kunde:'Müller GmbH',art:'Schale 300',menge:1200,l:300,b:200,h:60,due:'07.10.'},
+  {id:'A-24811/2',fs:'FS 468',kunde:'Müller GmbH',art:'Deckel 300',menge:1200,l:310,b:210,h:25,due:'07.10.'},
+  {id:'A-24830/1',fs:'FS 471',kunde:'Hansa Pack',art:'Tray 6-fach',menge:800,l:400,b:280,h:45,due:'08.10.'},
+  {id:'A-24842/1',fs:'FS 474',kunde:'Nordmed',art:'Blister klein',menge:3000,l:120,b:90,h:20,due:'09.10.'},
+  {id:'A-24850/1',fs:'FS 480',kunde:'Kröger AG',art:'Abdeckhaube',menge:150,l:520,b:380,h:140,due:'09.10.'},
+  {id:'A-24851/3',fs:'FS 482',kunde:'Kröger AG',art:'Einsatz',menge:600,l:180,b:140,h:35,due:'12.10.'}
 ];
 const MACHINES=[
   {name:'TZ 1 – Illig',maxL:1500,maxB:1000,maxH:200},
   {name:'TZ 2 – Geiss',maxL:1000,maxB:700,maxH:250},
   {name:'TZ 3 – Kiefel',maxL:1800,maxB:1200,maxH:300}
 ];
+// Grundformate (Plattengrößen): pflegt der Abteilungsleiter
+let GRUND=[
+  {id:'g500x333',name:'Klein',L:500,B:333},{id:'g750x500',name:'Halb',L:750,B:500},
+  {id:'g1000x333',name:'Streifen',L:1000,B:333},{id:'g1000x700',name:'Mittel',L:1000,B:700},
+  {id:'g1500x1000',name:'Groß',L:1500,B:1000},{id:'g1800x1200',name:'Maxi',L:1800,B:1200}];
+// abgeschlossene Aufträge (für eingelagerte Formate)
+const OLD_ORDERS=[
+  {id:'A-23990/1',fs:'FS 395',kunde:'Müller GmbH',art:'Schale 250',menge:2000,l:250,b:150,h:50,due:'12.09.'},
+  {id:'A-24102/2',fs:'FS 412',kunde:'Nordmed',art:'Blister mittel',menge:5000,l:140,b:100,h:22,due:'19.09.'},
+  {id:'A-24120/1',fs:'FS 418',kunde:'Hansa Pack',art:'Tray 4-fach',menge:900,l:300,b:220,h:40,due:'25.09.'}];
+const LAGERORTE=['Regal A-01','Regal A-02','Regal B-12, Fach 3','Regal B-14','Hochregal 2 / Ebene 3','Werkzeuglager Halle 2'];
 let formats=[
-  {id:'F-101',name:'F-101 Müller Schale+Deckel',machine:'TZ 1 – Illig',cycles:{'TZ 1 – Illig':38,'TZ 3 – Kiefel':46},L:1500,B:1000,H:180,rand:100,layout:null,tools:[
-    {order:'A-24811/1',l:300,b:200,h:60,n:4},
-    {order:'A-24811/2',l:310,b:210,h:25,n:4}]},
-  {id:'F-102',name:'F-102 Mischformat Hansa/Nordmed',machine:'TZ 1 – Illig',cycles:{'TZ 1 – Illig':32,'TZ 2 – Geiss':29,'TZ 3 – Kiefel':40},L:1500,B:1000,H:180,rand:100,layout:null,tools:[
-    {order:'A-24830/1',l:400,b:280,h:45,n:2},
-    {order:'A-24842/1',l:120,b:90,h:20,n:8}]},
-  {id:'F-103',name:'F-103 Kröger Haube',machine:'TZ 2 – Geiss',cycles:{'TZ 2 – Geiss':55,'TZ 3 – Kiefel':62},L:1000,B:700,H:200,rand:100,layout:null,tools:[
-    {order:'A-24850/1',l:520,b:380,h:140,n:1}]}
+  {id:'F-087',name:'F-087 Müller Schale 250',status:'stored',base:'g1000x333',lager:{ort:'Regal B-12, Fach 3',by:'boensch',at:'28.09.2026 14:12'},log:['28.09.2026 boensch: eingelagert · Regal B-12, Fach 3'],machine:'TZ 2 – Geiss',cycles:{'TZ 2 – Geiss':30,'TZ 1 – Illig':33},L:1000,B:333,H:180,rand:100,layout:null,tools:[
+    {order:'A-23990/1',wkz:'WKZ-1043',l:250,b:150,h:50,n:3}]},
+  {id:'F-092',name:'F-092 Nordmed/Hansa Mix',status:'stored',base:'g750x500',lager:{ort:'Hochregal 2 / Ebene 3',by:'Thomsen',at:'30.09.2026 09:40'},log:['30.09.2026 Thomsen: eingelagert · Hochregal 2 / Ebene 3'],machine:'TZ 1 – Illig',cycles:{'TZ 1 – Illig':28},L:750,B:500,H:180,rand:100,layout:null,tools:[
+    {order:'A-24102/2',wkz:'WKZ-0877',l:140,b:100,h:22,n:4},{order:'A-24120/1',wkz:'WKZ-1102',l:300,b:220,h:40,n:1}]},
+
+  {id:'F-101',name:'F-101 Müller Schale+Deckel',status:'active',base:'g1500x1000',log:[],machine:'TZ 1 – Illig',cycles:{'TZ 1 – Illig':38,'TZ 3 – Kiefel':46},L:1500,B:1000,H:180,rand:100,layout:null,tools:[
+    {wkz:'WKZ-1201',order:'A-24811/1',l:300,b:200,h:60,n:4},
+    {wkz:'WKZ-1202',order:'A-24811/2',l:310,b:210,h:25,n:4}]},
+  {id:'F-102',name:'F-102 Mischformat Hansa/Nordmed',status:'active',base:'g1500x1000',log:[],machine:'TZ 1 – Illig',cycles:{'TZ 1 – Illig':32,'TZ 2 – Geiss':29,'TZ 3 – Kiefel':40},L:1500,B:1000,H:180,rand:100,layout:null,tools:[
+    {wkz:'WKZ-0954',order:'A-24830/1',l:400,b:280,h:45,n:2},
+    {wkz:'WKZ-0877',order:'A-24842/1',l:120,b:90,h:20,n:8}]},
+  {id:'F-103',name:'F-103 Kröger Haube',status:'active',base:'g1000x700',log:[],machine:'TZ 2 – Geiss',cycles:{'TZ 2 – Geiss':55,'TZ 3 – Kiefel':62},L:1000,B:700,H:200,rand:100,layout:null,tools:[
+    {wkz:'WKZ-1310',order:'A-24850/1',l:520,b:380,h:140,n:1}]}
 ];
 let cur='F-101',uidSeq=1,selKey=null;
 formats.forEach(f=>f.tools.forEach(t=>t.uid=uidSeq++));
 const $=id=>document.getElementById(id);
-const ord=id=>ORDERS.find(o=>o.id===id);
+const ord=id=>ORDERS.find(o=>o.id===id)||OLD_ORDERS.find(o=>o.id===id);
 const fmtById=id=>formats.find(f=>f.id===id);
 const colorOf=id=>COLORS[Math.max(0,ORDERS.findIndex(o=>o.id===id))%COLORS.length];
 const nf=n=>Number(n).toLocaleString('de-DE');
@@ -283,33 +317,48 @@ function keepLayout(f){ // vor Aenderungen: manuelle Positionen fuer noch vorhan
 }
 
 /* ---------- Formatplanung rendern ---------- */
+const who=()=>$('who').value==='lead'?{name:'Thomsen',lead:true}:{name:'boensch',lead:false};
+const nowTxt=()=>{const d=new Date();return d.toLocaleDateString('de-DE')+' '+d.toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'})};
+const baseById=id=>GRUND.find(g=>g.id===id);
+function fmtText(f){return [f.id,f.name,...f.tools.flatMap(t=>{const o=ord(t.order);return [t.wkz,t.order,o?.fs,o?.art,o?.kunde]})].filter(Boolean).join(' ').toLowerCase()}
+function fmtItemHtml(f){const c=calc(f),bs=baseById(f.base);return`<button class="fmtItem${f.id===cur?' active':''}${f.status==='stored'?' stored':''}" data-id="${f.id}"><b>${esc(f.name)}</b><small>${f.status==='stored'?'📦 '+esc(f.lager.ort):esc(f.machine)} · ${bs?esc(bs.name)+' ':''}${f.L}×${f.B} mm</small><div style="margin-top:6px;display:flex;gap:4px;flex-wrap:wrap">${f.tools.map(t=>`<span class="badge" style="background:${colorOf(t.order)}" title="${esc(ord(t.order)?.fs||'')}">${esc(t.wkz||t.order)} ×${t.n}</span>`).join('')}</div>${f.status==='stored'?`<small style="display:block;margin-top:5px">eingelagert von ${esc(f.lager.by)} · ${esc(f.lager.at)}</small>`:`<small style="display:block;margin-top:5px">${nf(c.takte)} Takte · ${c.hours.toFixed(1).replace('.',',')} h</small>`}</button>`}
 function renderList(){
-  $('fmtList').innerHTML=formats.map(f=>{const c=calc(f);return`<button class="fmtItem${f.id===cur?' active':''}" data-id="${f.id}"><b>${esc(f.name)}</b><small>${esc(f.machine)} · ${f.L}×${f.B} mm · ${f.tools.length} Position(en)</small><div style="margin-top:6px;display:flex;gap:4px;flex-wrap:wrap">${f.tools.map(t=>`<span class="badge" style="background:${colorOf(t.order)}">${esc(t.order)} ×${t.n}</span>`).join('')}</div><small style="display:block;margin-top:5px">${nf(c.takte)} Takte · ${c.hours.toFixed(1).replace('.',',')} h</small></button>`}).join('');
+  const q=($('fmtSearch').value||'').trim().toLowerCase(),hit=f=>!q||fmtText(f).includes(q);
+  const act=formats.filter(f=>f.status!=='stored'&&hit(f)),sto=formats.filter(f=>f.status==='stored'&&hit(f));
+  $('fmtList').innerHTML=`<div class="secLbl">In Arbeit (${act.length})</div>${act.map(fmtItemHtml).join('')||'<div class="hint">—</div>'}<div class="secLbl">Eingelagert (${sto.length})</div>${sto.map(fmtItemHtml).join('')||'<div class="hint">keine Treffer</div>'}`;
   document.querySelectorAll('.fmtItem').forEach(b=>b.onclick=()=>{cur=b.dataset.id;renderFormat()});
+  renderGrund();
+}
+function renderGrund(){
+  const lead=who().lead;$('gfHint').textContent=lead?'· anpassbar':'· nur Abteilungsleiter ändert';
+  $('gfList').innerHTML=`<div class="gfRow hint" style="font-weight:800"><span>Name</span><span>L mm</span><span>B mm</span><span></span></div>`+GRUND.map(g=>`<div class="gfRow"><input data-g="${g.id}" data-k="name" value="${esc(g.name)}" ${lead?'':'disabled'}><input type="number" min="100" data-g="${g.id}" data-k="L" value="${g.L}" ${lead?'':'disabled'}><input type="number" min="100" data-g="${g.id}" data-k="B" value="${g.B}" ${lead?'':'disabled'}>${lead?`<button class="btn small ghost" data-gdel="${g.id}" title="Entfernen">✕</button>`:'<span></span>'}</div>`).join('')+(lead?`<div class="gfRow"><input id="gNewName" placeholder="z. B. Streifen lang"><input id="gNewL" type="number" placeholder="L"><input id="gNewB" type="number" placeholder="B"><button class="btn small primary" id="gAdd" title="Hinzufügen">+</button></div>`:'');
+  $('gfList').querySelectorAll('[data-g]').forEach(el=>el.onchange=()=>{const g=baseById(el.dataset.g);if(!g)return;const k=el.dataset.k;g[k]=k==='name'?el.value.trim()||g.name:Math.max(100,+el.value||g[k]);formats.filter(f=>f.base===g.id&&f.status!=='stored').forEach(f=>{f.L=g.L;f.B=g.B;f.layout=null});toast(`Grundformat ${g.name} geändert – offene Formate damit angepasst.`);renderFormat()});
+  $('gfList').querySelectorAll('[data-gdel]').forEach(b=>b.onclick=()=>{const used=formats.filter(f=>f.base===b.dataset.gdel);if(used.length)return toast(`Wird noch von ${used.map(f=>f.id).join(', ')} verwendet.`);GRUND=GRUND.filter(g=>g.id!==b.dataset.gdel);renderList();renderFormat()});
+  $('gAdd')?.addEventListener('click',()=>{const L=+$('gNewL').value,B=+$('gNewB').value;if(!(L>=100&&B>=100))return toast('Länge und Breite in mm angeben (mind. 100).');const id='g'+L+'x'+B+'_'+GRUND.length;GRUND.push({id,name:$('gNewName').value.trim()||`${L}×${B}`,L,B});toast(`Grundformat ${L}×${B} angelegt.`);renderList();renderFormat()});
 }
 function renderFormat(){
   const f=fmtById(cur);if(!f)return;
-  $('fName').value=f.name;$('fMachine').innerHTML=MACHINES.map(M=>`<option>${esc(M.name)}</option>`).join('');$('fMachine').value=f.machine;$('fCycle').value=cycleOf(f)||'';$('fL').value=f.L;$('fB').value=f.B;$('fH').value=f.H;$('fRand').value=f.rand;selKey=null;
+  $('fName').value=f.name;$('fMachine').innerHTML=MACHINES.map(M=>`<option>${esc(M.name)}</option>`).join('');$('fMachine').value=f.machine;$('fCycle').value=cycleOf(f)||'';$('fBase').innerHTML=GRUND.map(g=>`<option value="${g.id}">${esc(g.name)} · ${g.L}×${g.B}</option>`).join('')+'<option value="">Individuell …</option>';$('fBase').value=f.base&&baseById(f.base)?f.base:'';$('fL').value=f.L;$('fB').value=f.B;$('fL').disabled=$('fB').disabled=!!$('fBase').value;$('fLog').innerHTML=(f.log||[]).length?f.log.map(esc).join('<br>'):'—';$('storeBanner').innerHTML=f.status==='stored'?`<div class="storeBanner"><span>📦 Eingelagert: ${esc(f.lager.ort)} · von ${esc(f.lager.by)} am ${esc(f.lager.at)}</span><button class="btn small" id="unstore">Auslagern &amp; wieder verwenden</button></div>`:'';$('storeFmt').style.display=f.status==='stored'?'none':'';$('unstore')?.addEventListener('click',()=>unstore(f));$('fH').value=f.H;$('fRand').value=f.rand;selKey=null;
   renderTools();renderList();
 }
 function renderTools(){
   const f=fmtById(cur),c=calc(f);
   $('toolRows').innerHTML=c.rows.map((r,i)=>{
-    const o=ord(r.order),opts=ORDERS.map(x=>`<option value="${x.id}"${x.id===r.order?' selected':''}>${x.id} · ${esc(x.art)}</option>`).join('');
+    const o=ord(r.order),opts=[...ORDERS,...OLD_ORDERS.filter(x=>x.id===r.order)].map(x=>`<option value="${x.id}"${x.id===r.order?' selected':''}>${esc(x.fs||'')} · ${x.id} · ${esc(x.art)}</option>`).join('');
     const longest=r.takte===c.takte&&c.rows.length>1;
     return`<tr>
-      <td><span class="sw" style="background:${colorOf(r.order)}"></span><select data-i="${i}" data-k="order" style="width:calc(100% - 22px)">${opts}</select>${o?`<div style="font-size:11px;color:var(--muted);margin-top:2px">${esc(o.kunde)} · Termin ${o.due}</div>`:''}</td>
-      <td><input class="n" type="number" min="1" data-i="${i}" data-k="l" value="${r.l}"></td>
+      <td><span class="sw" style="background:${colorOf(r.order)}"></span><select data-i="${i}" data-k="order" style="width:calc(100% - 22px)">${opts}</select>${o?`<div style="font-size:11px;color:var(--muted);margin-top:2px">${esc(o.fs||'')} · ${esc(o.kunde)} · Termin ${o.due}</div>`:''}</td>
+      <td><input data-i="${i}" data-k="wkz" value="${esc(r.wkz||'')}" placeholder="WKZ-…" style="width:96px"></td><td><input class="n" type="number" min="1" data-i="${i}" data-k="l" value="${r.l}"></td>
       <td><input class="n" type="number" min="1" data-i="${i}" data-k="b" value="${r.b}"></td>
       <td><input class="n" type="number" min="1" data-i="${i}" data-k="h" value="${r.h}"${r.h>f.H?' style="border-color:var(--danger);background:var(--dangerbg)"':''}></td>
       <td><input class="n" type="number" min="1" data-i="${i}" data-k="n" value="${r.n}"></td>
       <td class="num">${nf(r.menge)}</td>
       <td class="num">${nf(r.takte)}${longest?' <span class="badge vio" title="bestimmt die Laufzeit">max</span>':''}</td>
       <td class="num">${r.over>0?`<span class="badge warn">+${nf(r.over)}</span>`:'<span class="badge ok">0</span>'}</td>
-      <td><button class="btn small ghost" data-del="${i}" title="Entfernen">✕</button></td></tr>`}).join('')||'<tr><td colspan="9" style="color:var(--muted);padding:12px">Noch keine Werkzeuge – Position rechts „Auf Format“ setzen oder „+ Werkzeug hinzufügen“.</td></tr>';
+      <td><button class="btn small ghost" data-del="${i}" title="Entfernen">✕</button></td></tr>`}).join('')||'<tr><td colspan="10" style="color:var(--muted);padding:12px">Noch keine Werkzeuge – Position rechts „Auf Format“ setzen oder „+ Werkzeug hinzufügen“.</td></tr>';
   $('toolRows').querySelectorAll('input,select').forEach(el=>el.onchange=()=>{
     const t=f.tools[+el.dataset.i],k=el.dataset.k;
-    if(k==='order'){t.order=el.value;const o=ord(el.value);if(o){t.l=o.l;t.b=o.b;t.h=o.h}}else t[k]=Math.max(1,+el.value||1);
+    if(k==='order'){t.order=el.value;const o=ord(el.value);if(o){t.l=o.l;t.b=o.b;t.h=o.h}}else if(k==='wkz')t.wkz=el.value.trim().toUpperCase();else t[k]=Math.max(1,+el.value||1);
     keepLayout(f);renderTools();renderList();
   });
   $('toolRows').querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>{f.tools.splice(+b.dataset.del,1);keepLayout(f);renderTools();renderList()});
@@ -394,17 +443,49 @@ $('recLayout').onclick=()=>{const f=fmtById(cur);f.layout=null;renderTools();ren
 function renderPool(){
   const f=fmtById(cur),usedAny=new Set(formats.flatMap(x=>x.tools.map(t=>t.order))),inCur=new Set(f.tools.map(t=>t.order));
   $('pool').innerHTML=ORDERS.map(o=>`<div class="poolItem${inCur.has(o.id)?' used':''}"><div><span class="sw" style="background:${colorOf(o.id)}"></span><b>${o.id}</b> · ${esc(o.art)}<small>${esc(o.kunde)} · ${nf(o.menge)} Stk · Werkzeug ${o.l}×${o.b}×${o.h} · Termin ${o.due}${usedAny.has(o.id)&&!inCur.has(o.id)?' · <b>in anderem Format</b>':''}</small></div>${inCur.has(o.id)?'<span class="badge ok">drauf</span>':`<button class="btn small" data-add="${o.id}">Auf Format</button>`}</div>`).join('');
-  $('pool').querySelectorAll('[data-add]').forEach(b=>b.onclick=()=>{const o=ord(b.dataset.add);f.tools.push({uid:uidSeq++,order:o.id,l:o.l,b:o.b,h:o.h,n:1});renderTools();renderList()});
+  $('pool').querySelectorAll('[data-add]').forEach(b=>b.onclick=()=>{const o=ord(b.dataset.add);f.tools.push({uid:uidSeq++,wkz:'',order:o.id,l:o.l,b:o.b,h:o.h,n:1});renderTools();renderList()});
 }
+$('fBase').onchange=()=>{const f=fmtById(cur),g=baseById($('fBase').value);f.base=g?g.id:'';if(g){f.L=g.L;f.B=g.B;f.layout=null}renderFormat();renderBoard()};
+$('fmtSearch').oninput=renderList;$('who').onchange=()=>{renderList();renderFormat()};
 ['fName','fMachine','fCycle','fL','fB','fH','fRand'].forEach(id=>$(id).onchange=()=>{
   const f=fmtById(cur),v=$(id).value;
   ({fName:()=>f.name=v,fMachine:()=>{f.machine=v;$('fCycle').value=cycleOf(f)||''},fCycle:()=>{f.cycles={...(f.cycles||{}),[f.machine]:Math.max(1,+v||1)}},fL:()=>f.L=Math.max(1,+v||1),fB:()=>f.B=Math.max(1,+v||1),fH:()=>f.H=Math.max(1,+v||1),fRand:()=>f.rand=Math.max(0,+v||0)})[id]();
   renderTools();renderList();renderBoard();
 });
-$('addTool').onclick=()=>{const f=fmtById(cur),o=ORDERS[0];f.tools.push({uid:uidSeq++,order:o.id,l:o.l,b:o.b,h:o.h,n:1});renderTools();renderList()};
-$('newFmt').onclick=()=>{const id='F-'+(100+formats.length+1);formats.push({id,name:id+' Neues Format',machine:'TZ 1 – Illig',cycles:{},L:1500,B:1000,H:180,rand:100,layout:null,tools:[]});cur=id;renderFormat()};
-$('dupFmt').onclick=()=>{const f=fmtById(cur),id='F-'+(100+formats.length+1);const cp=JSON.parse(JSON.stringify(f)),map={};cp.tools.forEach(t=>{const nu=uidSeq++;map[t.uid]=nu;t.uid=nu});if(cp.layout){const nl={};for(const k in cp.layout){const [u,i]=k.split('-');nl[map[u]+'-'+i]=cp.layout[k]}cp.layout=nl}formats.push({...cp,id,name:id+' Kopie von '+f.id});cur=id;renderFormat()};
-$('planFmt').onclick=()=>{const f=fmtById(cur),c=calc(f);toast(`${f.name}: ${c.hours.toFixed(1).replace('.',',')} h auf ${f.machine} – würde im echten System per Drag & Drop in den Wochenplan gesetzt.`)};
+$('addTool').onclick=()=>{const f=fmtById(cur),o=ORDERS[0];f.tools.push({uid:uidSeq++,wkz:'',order:o.id,l:o.l,b:o.b,h:o.h,n:1});renderTools();renderList()};
+// ---------- Dialoge
+function modal(html){$('modalBox').innerHTML=html;$('modal').classList.add('show')}
+function closeModal(){$('modal').classList.remove('show')}
+$('modal').addEventListener('click',e=>{if(e.target.id==='modal')closeModal()});
+document.addEventListener('keydown',e=>{if(e.key==='Escape')closeModal()});
+function nextId(){return 'F-'+(Math.max(...formats.map(f=>+f.id.slice(2)||0))+1)}
+$('newFmt').onclick=()=>openNew('new');
+function openNew(tab){
+  modal(`<h3>Neues Format</h3><div class="seg"><button data-tab="new" class="${tab==='new'?'on':''}">Neu anlegen</button><button data-tab="old" class="${tab==='old'?'on':''}">Aus altem Auftrag (WKZ / FS)</button></div>
+  ${tab==='new'?`<div class="fields" style="grid-template-columns:1fr 1fr"><div class="field"><label>Grundformat</label><select id="nBase">${GRUND.map(g=>`<option value="${g.id}">${esc(g.name)} · ${g.L}×${g.B}</option>`).join('')}</select></div><div class="field"><label>Maschine</label><select id="nMach">${MACHINES.map(M=>`<option>${esc(M.name)}</option>`).join('')}</select></div></div><p class="hint">Fehlt ein Grundformat (z. B. 500×333 oder 1000×333)? Der Abteilungsleiter legt es links unter „Grundformate“ an.</p><div class="mActions"><button class="btn" data-x>Abbrechen</button><button class="btn primary" id="nCreate">Anlegen</button></div>`
+  :`<div class="field"><label>WKZ-Nummer, FS-Nummer oder Auftrag</label><input id="oQ" placeholder="z. B. WKZ-1043 oder FS 395" autocomplete="off" style="width:100%"></div><div id="oRes"><p class="hint">Tipp: WKZ-1043 · FS 395 · WKZ-0877 · Blister</p></div><div class="mActions"><button class="btn" data-x>Schließen</button></div>`}`);
+  $('modalBox').querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>openNew(b.dataset.tab));
+  $('modalBox').querySelectorAll('[data-x]').forEach(b=>b.onclick=closeModal);
+  $('nCreate')?.addEventListener('click',()=>{const g=baseById($('nBase').value),id=nextId();formats.push({id,name:id+' Neues Format',status:'active',base:g.id,log:[`${nowTxt()} ${who().name}: angelegt`],machine:$('nMach').value,cycles:{},L:g.L,B:g.B,H:180,rand:100,layout:null,tools:[]});cur=id;closeModal();renderFormat()});
+  const q=$('oQ');if(q){q.focus();q.oninput=()=>findOld(q.value)}
+}
+function findOld(raw){
+  const q=raw.trim().toLowerCase().replace(/\s+/g,' ');if(q.length<2){$('oRes').innerHTML='<p class="hint">Mindestens 2 Zeichen.</p>';return}
+  const hits=formats.filter(f=>fmtText(f).replace(/\s+/g,' ').includes(q)).sort((a,b)=>(a.status==='stored'?0:1)-(b.status==='stored'?0:1));
+  $('oRes').innerHTML=hits.length?hits.map(f=>{const tl=f.tools.map(t=>{const o=ord(t.order);return `${esc(t.wkz||'—')} · ${esc(o?.fs||'')} · ${esc(o?.art||t.order)} ×${t.n}`}).join('<br>');return `<div class="found"><b>${esc(f.name)}</b> · ${f.L}×${f.B} mm<div class="hint" style="margin-top:4px">${tl}</div>${f.status==='stored'?`<div class="lager">📦 ${esc(f.lager.by)} hat das Format hier abgelegt: <u>${esc(f.lager.ort)}</u> · ${esc(f.lager.at)}</div><div class="mActions" style="margin-top:8px"><button class="btn primary small" data-use="${f.id}">Auslagern &amp; wieder verwenden</button><button class="btn small" data-copy="${f.id}">Als Vorlage kopieren</button></div>`:`<div class="hint" style="margin-top:6px">Format ist nicht eingelagert – aktuell in Arbeit an ${esc(f.machine)}.</div><div class="mActions" style="margin-top:8px"><button class="btn small" data-open="${f.id}">Öffnen</button></div>`}</div>`}).join(''):'<div class="found">Kein Format zu dieser WKZ-/FS-Nummer gefunden. → „Neu anlegen“.</div>';
+  $('oRes').querySelectorAll('[data-use]').forEach(b=>b.onclick=()=>{unstore(fmtById(b.dataset.use));closeModal()});
+  $('oRes').querySelectorAll('[data-open]').forEach(b=>b.onclick=()=>{cur=b.dataset.open;closeModal();renderFormat()});
+  $('oRes').querySelectorAll('[data-copy]').forEach(b=>b.onclick=()=>{copyFormat(fmtById(b.dataset.copy),'Vorlage');closeModal()});
+}
+function unstore(f){f.log=[...(f.log||[]),`${nowTxt()} ${who().name}: ausgelagert aus ${f.lager.ort}`];f.status='active';f.lager=null;cur=f.id;toast(`${f.id} ausgelagert – liegt jetzt nicht mehr im Lager.`);renderFormat();renderBoard()}
+function copyFormat(f,label){const id=nextId(),cp=JSON.parse(JSON.stringify(f)),map={};cp.tools.forEach(t=>{const nu=uidSeq++;map[t.uid]=nu;t.uid=nu});if(cp.layout){const nl={};for(const k in cp.layout){const [u,i]=k.split('-');nl[map[u]+'-'+i]=cp.layout[k]}cp.layout=nl}formats.push({...cp,id,name:id+' '+label+' von '+f.id,status:'active',lager:null,log:[`${nowTxt()} ${who().name}: kopiert von ${f.id}`]});cur=id;renderFormat()}
+$('storeFmt').onclick=()=>{const f=fmtById(cur);
+  modal(`<h3>Auftrag abgeschlossen?</h3><p style="margin:0 0 10px">${esc(f.name)} · ${f.tools.map(t=>esc(t.wkz||t.order)).join(', ')}</p><div class="field"><label>Wo lagert ihr das Format?</label><input id="lOrt" list="lOrte" placeholder="z. B. Regal B-12, Fach 3" style="width:100%"><datalist id="lOrte">${LAGERORTE.map(x=>`<option value="${esc(x)}">`).join('')}</datalist></div><p class="hint">Abgelegt von <b>${esc(who().name)}</b> · ${nowTxt()}. Wird später über WKZ- oder FS-Nummer wiedergefunden.</p><div class="mActions"><button class="btn" data-x>Abbrechen</button><button class="btn primary" id="lSave">Einlagern</button></div>`);
+  $('modalBox').querySelector('[data-x]').onclick=closeModal;$('lOrt').focus();
+  $('lSave').onclick=()=>{const ort=$('lOrt').value.trim();if(!ort)return toast('Bitte Lagerort angeben.');if(!LAGERORTE.includes(ort))LAGERORTE.push(ort);f.status='stored';f.lager={ort,by:who().name,at:nowTxt()};f.log=[...(f.log||[]),`${f.lager.at} ${f.lager.by}: eingelagert · ${ort}`];closeModal();toast(`${f.id} eingelagert: ${ort}`);renderFormat();renderBoard()};
+};
+$('dupFmt').onclick=()=>copyFormat(fmtById(cur),'Kopie');
+$('planFmt').onclick=()=>{const f=fmtById(cur),c=calc(f);if(f.status==='stored')return toast(`${f.id} liegt im Lager (${f.lager.ort}) – zuerst auslagern.`);toast(`${f.name}: ${c.hours.toFixed(1).replace('.',',')} h auf ${f.machine} – würde im echten System per Drag & Drop in den Wochenplan gesetzt.`)};
 
 /* ---------- Wochenplan ---------- */
 const DAYS=['Mo 05.10.','Di 06.10.','Mi 07.10.','Do 08.10.','Fr 09.10.'];
