@@ -1,4 +1,4 @@
-MASCHINENPLANUNG V12.10.2 - KURZANLEITUNG FUER BENUTZER
+MASCHINENPLANUNG V12.11.0 - KURZANLEITUNG FUER BENUTZER
 ======================================================
 
 ANMELDEN
@@ -11,6 +11,10 @@ EIGENES PASSWORT AENDERN
 - Oben rechts auf das Schluessel-Symbol (🔑) klicken.
 - Aktuelles Passwort und zweimal das neue Passwort (mind. 8 Zeichen) eingeben.
 - Andere angemeldete Sitzungen dieses Kontos werden dabei abgemeldet.
+
+DARSTELLUNG
+- Oben rechts ☀ / ☾ / ▣ klicken: Hell -> Dunkel -> Halle (gross, hoher Kontrast). Gilt nur fuer diesen PC.
+- Hallenbildschirm fest einstellen: Adresse mit ?theme=hall&view=overview (Wochenplan) aufrufen.
 
 ABMELDEN
 - Oben rechts auf ↪ klicken. Beim Abmelden werden die im Browser zwischengespeicherten
