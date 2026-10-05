@@ -7,17 +7,26 @@
 | 1 | 5 | Hallenmodus (Hell/Dunkel/Halle) | erledigt V12.11.0 (Kiosk-Schalter optional, nicht umgesetzt) |
 | 2 | 3 | Undo/Redo | erledigt V12.12.0 |
 | 3 | 4 | Browser-Benachrichtigungen | erledigt V12.13.0 (Glocke; Browser-Meldung nur bei https, Erklärtext bewusst weggelassen) |
-| 4 | 17 | Qualifikationsmatrix | offen |
-| 5 | 16 | Personalbedarf je Parallelplatz | offen |
-| 6 | 14 | Automatische Nachkalkulation | offen |
-| 7 | 7 | KPI-Dashboard GF | offen |
-| 8 | 12 | Liefertermin-Vorschlag Vertrieb | offen |
-| 9 | 11 | Was-wäre-wenn-Szenarien | offen |
+| 4 | A | Firmen-Config `config\firma.json` außerhalb des Pakets (docs/PRODUKT_MULTI_FIRMA.md) | offen |
+| 5 | B | Branchenvorlagen, Module | offen |
+| 6 | C1 | Einrichtungsassistent | offen |
+| 7 | 17 | Qualifikationsmatrix | offen |
+| 8 | 16 | Personalbedarf je Parallelplatz | offen |
+| 9 | 14 | Automatische Nachkalkulation | offen |
+| 10 | 7 | KPI-Dashboard GF | offen |
+| 11 | 12 | Liefertermin-Vorschlag Vertrieb | offen |
+| 12 | – | **Stopp: Windows-Installation beim Arbeitgeber** (Erstinstallation/Update live, danach weiter) | offen |
+| 13 | E | Installer-Branding, signierte Updates | offen |
+| 14 | G | Vorbereitung gehosteter Betrieb | offen |
+| 15 | 11 | Was-wäre-wenn-Szenarien | offen |
+| 16 | C2 | Demo-Daten, Feiertage je Bundesland | niedrige Prio |
+| 17 | D | Lizenz (erst nach Klärung der Code-Rechte) | niedrige Prio |
+| 18 | F | Mehrsprachigkeit | niedrige Prio |
 
 Voraussetzung erledigt: Hotfix V12.10.2 (docs/AUDIT.md V-02, V-03, V-04, V-12), u. a. `workDaysBetween` mit Feiertagen (für Prompt 12).
 
 Jeder Prompt ist eigenständig: Er wird in eine neue Claude-Code-Session kopiert, und zwar **zusammen mit dem gemeinsamen Vorspann**.
-Reihenfolge wie empfohlen: 5 → 3 → 4 → 17 → 16 → 14 → 7 → 12 → 11.
+Reihenfolge: 5 → 3 → 4 → A → B → C1 → 17 → 16 → 14 → 7 → 12 → **Windows-Installation** → E → G → 11 → C2 → D → F.
 
 ---
 
