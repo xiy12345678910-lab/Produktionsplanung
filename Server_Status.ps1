@@ -10,7 +10,7 @@ foreach ($name in @($MP_TaskName, $MP_BackupTaskName)) {
         # 0 = ok, 2 = lokales Backup ok / Zweitkopie fehlgeschlagen, 267009/267011 = laeuft / noch nie gelaufen
         $res = [int64]$info.LastTaskResult
         $color = if ($res -in @(0, 267009, 267011)) { 'Gray' } elseif ($res -eq 2) { 'Yellow' } else { 'Red' }
-        Write-Host "$name : $($task.State) | letzter Lauf $($info.LastRunTime) (Ergebnis $res)" -ForegroundColor $color
+        Write-Host "$name : $($task.State) | letzter Lauf $($info.LastRunTime) ($(Get-MPTaskResultText $res))" -ForegroundColor $color
         if ($name -eq $MP_BackupTaskName -and $res -notin @(0, 267009, 267011)) {
             Write-Host "  WARNUNG: letztes automatisches Backup fehlgeschlagen$(if ($res -eq 2) { ' (nur Zweitkopie)' })." -ForegroundColor $color
         }

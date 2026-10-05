@@ -26,15 +26,15 @@ $c = Read-MPConfig $Base
 if (-not $c) { Fail 'LAN_CONFIG.json nicht lesbar (gesperrt oder unvollstaendig) - in einigen Sekunden erneut pruefen.'; Write-Host 'ERGEBNIS: NICHT FREIGEGEBEN' -ForegroundColor Red; exit 1 }
 
 # --- Netzwerk ---------------------------------------------------------------------------
-$currentProfile = Get-NetConnectionProfile -InterfaceAlias $c.interface
+$currentProfile = Get-NetConnectionProfile -InterfaceAlias $c.interface -ErrorAction SilentlyContinue
 if ($currentProfile -and $currentProfile.NetworkCategory -in @('Private', 'DomainAuthenticated')) { Pass "Netzprofil $($currentProfile.NetworkCategory)" }
 else { Fail "Aktuelles Netzprofil ist nicht Privat/Domaene (Interface: $($c.interface))." }
 
-$listen = @(Get-NetTCPConnection -State Listen -LocalPort $c.port)
+$listen = @(Get-NetTCPConnection -State Listen -LocalPort $c.port -ErrorAction SilentlyContinue)
 if (@($listen | Where-Object { $_.LocalAddress -eq $c.lan_ip }).Count -gt 0 -and @($listen | Where-Object { $_.LocalAddress -ne $c.lan_ip }).Count -eq 0) { Pass "Server bindet ausschliesslich $($c.lan_ip):$($c.port)" }
 else { Fail "Listener ist nicht strikt auf $($c.lan_ip):$($c.port) begrenzt." }
 
-$allow = Get-NetFirewallRule -DisplayName $MP_FwAllow
+$allow = Get-NetFirewallRule -DisplayName $MP_FwAllow -ErrorAction SilentlyContinue
 if (-not $allow) { Fail 'LAN-Allow-Regel fehlt.' }
 else {
     $af = $allow | Get-NetFirewallAddressFilter; $pf = $allow | Get-NetFirewallPortFilter
@@ -44,13 +44,13 @@ else {
         Pass "Firewall erlaubt nur $($c.subnet) -> $($c.lan_ip):$($c.port)"
     } else { Fail "LAN-Allow-Regel ist nicht eng genug. Local=$($af.LocalAddress -join ',') Remote=$($af.RemoteAddress -join ',')" }
 }
-foreach ($legacy in $MP_LegacyFirewallRules) { if (Get-NetFirewallRule -DisplayName $legacy) { Fail "Alte Firewallregel existiert noch: $legacy" } }
-$pub = Get-NetFirewallRule -DisplayName $MP_FwBlockPublic
+foreach ($legacy in $MP_LegacyFirewallRules) { if (Get-NetFirewallRule -DisplayName $legacy -ErrorAction SilentlyContinue) { Fail "Alte Firewallregel existiert noch: $legacy" } }
+$pub = Get-NetFirewallRule -DisplayName $MP_FwBlockPublic -ErrorAction SilentlyContinue
 if ($pub -and $pub.Enabled -eq 'True' -and $pub.Action -eq 'Block' -and (HasProfile $pub 'Public')) { Pass 'Public-Profil explizit blockiert.' } else { Fail 'Public-Blockregel fehlt oder ist falsch.' }
-$inet = Get-NetFirewallRule -DisplayName $MP_FwBlockInternet
+$inet = Get-NetFirewallRule -DisplayName $MP_FwBlockInternet -ErrorAction SilentlyContinue
 if ($inet -and $inet.Enabled -eq 'True' -and $inet.Action -eq 'Block') { Pass 'Internet-Zugriff explizit blockiert.' } else { Warn 'Internet-Blockregel fehlt (LAN-Allow + Subnetzpruefung bleiben aktiv).' }
 
-$adapter = Get-NetAdapter -Name $c.interface
+$adapter = Get-NetAdapter -Name $c.interface -ErrorAction SilentlyContinue
 $hardwareOk = $adapter -and $adapter.Status -eq 'Up' -and ((-not ($adapter.PSObject.Properties.Name -contains 'HardwareInterface')) -or [bool]$adapter.HardwareInterface) -and ("$($adapter.Name) $($adapter.InterfaceDescription)" -notmatch '(?i)Tailscale|WireGuard|VPN|Hyper-V|vEthernet|VirtualBox|VMware|WSL|Docker|Loopback|ZeroTier|Hamachi')
 if ($hardwareOk) { Pass "Physischer LAN-Adapter: $($adapter.Name)" } else { Fail 'Konfigurierter Adapter ist nicht als physischer LAN-Adapter verifiziert.' }
 
@@ -62,7 +62,7 @@ else { Fail 'Server ist ueber die konfigurierte LAN-IP nicht erreichbar.' }
 try { Assert-MPPrivatePaths $c; Pass 'Programm-, Daten- und Backupdateien sind nicht per HTTP abrufbar.' } catch { Fail $_.Exception.Message }
 
 # --- Windows: Task, Ordnerrechte, Python ------------------------------------------------
-$task = Get-ScheduledTask -TaskName $MP_TaskName
+$task = Get-ScheduledTask -TaskName $MP_TaskName -ErrorAction SilentlyContinue
 if (-not $task) { Fail "Scheduled Task '$MP_TaskName' fehlt." }
 else {
     $action = @($task.Actions)[0]
@@ -74,9 +74,9 @@ else {
         else { Fail "Python ($($Matches[1])) ist fuer normale Benutzer beschreibbar und wird als SYSTEM ausgefuehrt." }
     }
 }
-foreach ($legacyTask in $MP_LegacyTaskNames) { if (Get-ScheduledTask -TaskName $legacyTask) { Fail "Alter Task existiert noch: $legacyTask" } }
+foreach ($legacyTask in $MP_LegacyTaskNames) { if (Get-ScheduledTask -TaskName $legacyTask -ErrorAction SilentlyContinue) { Fail "Alter Task existiert noch: $legacyTask" } }
 $aclIssues = @()
-foreach ($p in @($MP_InstallBase) + @(Get-ChildItem -LiteralPath $MP_InstallBase -Recurse -Force | Select-Object -ExpandProperty FullName)) {
+foreach ($p in @($MP_InstallBase) + @(Get-ChildItem -LiteralPath $MP_InstallBase -Recurse -Force -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName)) {
     $issue = Test-MPFolderAclSafe $p
     if ($issue) { $aclIssues += "$p : $issue" }
 }
@@ -85,8 +85,8 @@ else { Fail "Live-Ordner ist fuer Nicht-Admins beschreibbar ($($aclIssues.Count)
 foreach ($name in $MP_ObsoleteFiles) { if (Test-Path (Join-Path $MP_InstallBase $name)) { Fail "Veraltete Datei im Live-Ordner: $name" } }
 
 # --- Backups ----------------------------------------------------------------------------
-if (Get-ScheduledTask -TaskName $MP_BackupTaskName) { Pass "Backup-Task '$MP_BackupTaskName' eingerichtet." } else { Fail 'Automatischer Backup-Task fehlt.' }
-$last = Get-ChildItem (Join-Path $MP_InstallBase 'backups') -Filter 'maschinenplanung_*.sqlite3' | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+if (Get-ScheduledTask -TaskName $MP_BackupTaskName -ErrorAction SilentlyContinue) { Pass "Backup-Task '$MP_BackupTaskName' eingerichtet." } else { Fail 'Automatischer Backup-Task fehlt.' }
+$last = Get-ChildItem (Join-Path $MP_InstallBase 'backups') -Filter 'maschinenplanung_*.sqlite3' -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
 if ($last -and $last.LastWriteTime -gt (Get-Date).AddHours(-26)) { Pass "Letztes Backup: $($last.Name)" }
 elseif ($last) { Fail "Letztes Backup ist aelter als 26 h: $($last.Name)" } else { Fail 'Kein Backup vorhanden.' }
 if (-not (Test-Path (Join-Path $MP_InstallBase 'BACKUP_ZIEL.txt'))) { Warn 'Kein Zweitziel fuer Backups (BACKUP_ZIEL.txt). Backups liegen nur auf diesem PC.' }

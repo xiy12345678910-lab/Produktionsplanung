@@ -1,3 +1,50 @@
+MASCHINENPLANUNG V12.18.0 - RELEASE NOTES
+=========================================
+Datum: 05.10.2026 · Basis: V12.17.2 · Update mit UPDATE_LIVE.ps1, Daten bleiben erhalten
+
+NEU: DAUER NACH BESETZUNG (Prompt 18) UND PERSONAL JE PARALLELPLATZ (Prompt 16, Teil)
+- Nutzerwunsch: "40 Stunden bei 2 Mitarbeitern nur 20 h, bei 4 nur 10 h" und "Konfektion 8 h mit 1 Mitarbeiter, mit 2 Mitarbeitern 4 h auf derselben Linie".
+- Schalter je Maschine/Linie (System > Maschinen/Linien, Spalte Ph÷P, Symbol mit Tooltip). Default AUS: Bestand und alle bestehenden
+  Auftraege behalten ihre Dauer (Datenerhalt-Test belegt es). Bei AN sind die Sollstunden des Arbeitsschritts Personenstunden.
+- Dauer = Personenstunden / Besetzung der jeweiligen Schicht (mindestens 1, hoechstens "Max. P.", 0 = keine Obergrenze).
+  Personal-Gate EIN: Es zaehlen die tatsaechlich zugeordneten Mitarbeiter je Schicht (auch wechselnd: Montag 2, Dienstag 4; die Restarbeit
+  wird schichtweise abgearbeitet). Unter der Mindestbesetzung (staffRequired, bei Linien max(staffRequired, crew)) bleibt der Auftrag unbesetzt (MP-PERS-003).
+  Personal-Gate AUS: Es zaehlt die geplante Besetzung (crew) der Ressource. Das Feld crew ist mit dem Schalter auch fuer Maschinen bedienbar.
+- Aenderung der Personalzuordnung plant sofort neu; Kennzahlen, Auslastung und Konfliktliste folgen dem neuen Plan.
+- Anzeige am Auftrag knapp: "40 Ph · 2 Pers. → 20 h" (bei wechselnder Besetzung "2–4 Pers."), Tooltip mit Besetzung je Tag.
+- Umruestzeit bleibt Wandzeit und zaehlt nicht als Personenstunden.
+- Freigabe friert Plan samt Besetzung je Segment ein (Server prueft: Summe Dauer x Besetzung = Personenstunden, MP-PLAN-047).
+  Laufende Produktion behaelt den beim Start berechneten Laufplan; Reststunden (Rest h) sind Wandstunden.
+- Nachkalkulation/Auswertung: Fertigmeldung speichert die Ist-Personenstunden (actualPersonHours = Produktionszeit x mittlere Plan-Besetzung);
+  ohne diesen Wert rechnet die Auswertung wie bisher (Laufzeit x crew).
+- Personal je Parallelplatz: Feld Pers./Platz (z. B. 1,2). Bedarf einer Schicht = Summe der belegten Plaetze (Platz 1 allein = Bedarf Platz 1);
+  ohne Eintrag gilt wie bisher der Bedarf je Ressource.
+- Bewusst nicht Teil dieser Version: Zuordnung eines Mitarbeiters auf einen bestimmten Platz (laneIndex), Linien-Personenstunden je Platz in
+  Nachkalkulation/Auswertung, GF-Cockpit und Abwesenheitswirkung je Platz, Unterbesetzungs-Markierung je Platz auf der Karte; Dauer nach Besetzung
+  gilt nur fuer Ressourcen mit einem Platz (Schalter bei Parallelplaetzen gesperrt), weil die Besetzung sonst nicht eindeutig auf die Plaetze verteilt ist.
+- Datenmodell (additiv, Migration migrate_state_v1218 idempotent): machines[].effortScaling (false), crewMax (0), laneStaff ({}).
+  Neue Codes MP-MACH-017/018/019. Tests: tests/e2e_effort.mjs, tests/test_effort.py, test_deploy_upgrade.py (Bestand unveraendert).
+
+MASCHINENPLANUNG V12.17.2 - RELEASE NOTES
+=========================================
+Datum: 05.10.2026 · Basis: V12.17.1 · Update mit UPDATE_LIVE.ps1, Daten bleiben erhalten
+
+HOTFIX NACH ECHTER WINDOWS-INSTALLATION
+- Falscher Alarm "Live-Ordner/Python ist fuer Nicht-Admins beschreibbar": Die Schreibrechte-Maske enthielt ueber FullControl/Modify
+  auch alle Lese-Bits, daher galt jede reine Lese-Berechtigung (Benutzer: ReadAndExecute, Synchronize) als Schreibrecht.
+  Neu: Test-MPRightsWritable prueft nur echte Schreib-Bits (WriteData, AppendData, WriteExtendedAttributes, WriteAttributes,
+  DeleteSubdirectoriesAndFiles, Delete, ChangePermissions, TakeOwnership) und die rohen generischen Rechte
+  GENERIC_WRITE 0x40000000 / GENERIC_ALL 0x10000000. GENERIC_READ/GENERIC_EXECUTE (GR/GE) schlagen nicht an.
+  Betrifft CHECK_LAN_SICHERHEIT.ps1, UPDATE_LIVE.ps1 und Setup_Windows.ps1 (Test-MPPythonLocationSafe). Echte Schreibrechte
+  (z. B. Benutzer Modify, Authentifizierte Benutzer Write) werden weiter erkannt.
+- CHECK_LAN_SICHERHEIT.ps1: keine roten Fehlermeldungen mehr, wenn Alt-Firewallregel/Alt-Task (zu Recht) fehlen.
+- Firma_Einrichten.ps1: Abschlusszeile nennt wieder den Config-Pfad.
+- Server_Status.ps1: Task-Ergebnis 267009 wird als "laeuft" angezeigt (weitere bekannte Codes in Klartext).
+- Server: Verbindungsabbruch durch den Browser (Tab neu geladen/geschlossen waehrend Long-Poll /api/revision; WinError 10053/10054,
+  EPIPE) ist kein Serverfehler mehr: keine 500-Antwort, kein MP-SRV-500 im Log. Mehrzeilige Fehlermeldungen stehen einzeilig im Log.
+- Run_Server_LAN.ps1: Python-stderr landet 1:1 im Log (kein "System.Management.Automation.RemoteException" mehr, keine zerrissenen Zeilen).
+- Tests: tests/test_client_abort.py; tests/ps_acl.ps1 (Bitpruefung mit Rohwerten, unter Windows zusaetzlich echte ACLs per icacls), im CI-Job powershell.
+
 MASCHINENPLANUNG V12.17.1 - RELEASE NOTES
 =========================================
 Datum: 05.10.2026 · Basis: V12.17.0 · Update mit UPDATE_LIVE.ps1, Daten bleiben erhalten

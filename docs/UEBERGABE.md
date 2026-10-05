@@ -1,6 +1,6 @@
 # Übergabe – Produktionsplanung (Stand 05.10.2026)
 
-Branch: `claude/new-session-95ro2l` (Basis `claude/new-session-mpx5ch`) · Live-fähiger Stand: **V12.17.1** (getestet, Abnahme siehe unten)
+Branch: `claude/new-session-95ro2l` (Basis `claude/new-session-mpx5ch`) · Live-fähiger Stand: **V12.18.0** (getestet, Abnahme siehe unten)
 
 ## 1. Fertig und getestet (per `UPDATE_LIVE.ps1` einspielbar)
 
@@ -26,6 +26,8 @@ Branch: `claude/new-session-95ro2l` (Basis `claude/new-session-mpx5ch`) · Live-
 | 12.16.0 | Paket B: Branchenvorlagen (`vorlage_*.json`, Anwenden nur ergänzend, Vorschau), Module ein/aus (Client ausgeblendet, Server sperrt mit MP-MOD-001, Daten bleiben), Bereichs-Eigenschaften `formats`/`sharedOperators` statt Bereichs-IDs, Begriffe/Rollenbezeichnungen aus der Config | `tests/test_templates.py` 67/67, `tests/e2e_templates.mjs` 42/42, `test_deploy_upgrade.py` 257/257 |
 | 12.17.1 | Fix: Personal-Gate gilt auch für Linien (Besetzung = max(staffRequired, crew)); unbesetzte Aufträge werden markiert (👤⚠, MP-PERS-003) statt eingeplant; Fehler bestand schon in 12.10.1 | `tests/e2e_gate_lines.mjs` 12/12 |
 | 12.17.0 | Paket C1: Einrichtungsassistent beim ersten Admin-Login (5 Schritte, überspringbar, später erneut aufrufbar), neutraler Seed für Neuinstallationen, `setupDone` in `firma.json` (Bestand nie), Projektbereiche aus der Config | `tests/test_setup.py` N1, `tests/e2e_setup.mjs` N2, `test_deploy_upgrade.py` N3 |
+| 12.17.2 | Hotfix Windows: ACL-Prüfung wertet nur echte Schreib-Bits (`Test-MPRightsWritable`, kein Fehlalarm bei Benutzer RX); CHECK_LAN ohne Fehlerrauschen; Firma_Einrichten zeigt Pfad; Server_Status: Task-Ergebnis 267009 = „läuft“. Client-Abbruch (10053/10054/EPIPE) kein MP-SRV-500; Run_Server_LAN loggt stderr 1:1. Tests `tests/ps_acl.ps1`, `tests/test_client_abort.py` |
+| 12.18.0 | Dauer nach Besetzung (P18): Schalter je Ressource (Default aus), Sollstunden = Personenstunden, Dauer = Ph ÷ Besetzung je Schicht (Gate EIN: zugeordnete Mitarbeiter, AUS: crew), `crewMax`; Personal je Parallelplatz (P16, Teil: `laneStaff`, Bedarf = Summe belegter Plätze); Freigabeplan mit Besetzung je Segment; Ist-Personenstunden in der Historie | `tests/e2e_effort.mjs` 36/36, `tests/test_effort.py` 22/22 |
 | alle | Rollen-Rundgang (8 Rollen × alle Ansichten × Desktop/Handy) | `tests/e2e_roles.mjs` 374/374 |
 | alle | Regression Rechte/Migration (künstliche DB über `tests/make_test_db.py`) | `tests/test_regression.py` 151/151 |
 | alle | Server-Regeln ohne Browser | `tests/test_v128.py` 35/35 |
@@ -38,7 +40,7 @@ Testhinweis: E2E-Tests setzen die Browser-Zeitzone auf Europe/Berlin (wie `relea
 ## 2. Bekannte Grenzen
 
 - Format mit Positionen aus mehreren Projekten: Format-Auftrag ohne Projektverknüpfung.
-- Parallelplätze: Personalbedarf/Linienbesetzung gelten je Ressource, nicht je Platz.
+- Parallelplätze: Personalbedarf je Platz nur als Summe (`laneStaff`, V12.18.0); Zuordnung auf einen Platz (laneIndex), Auswertung/GF-Cockpit/Board je Platz und Dauer nach Besetzung bei mehreren Plätzen sind offen (Prompt 16/18).
 - Projektfenster zeichnet sich erst nach Verlassen eines Eingabefelds neu (bewusst, Fokus bleibt).
 
 ## 3. Ideen für danach

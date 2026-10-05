@@ -10,10 +10,12 @@
 | 4 | A | Firmen-Config `config\firma.json` außerhalb des Pakets (docs/PRODUKT_MULTI_FIRMA.md) | erledigt V12.14.0 (Datei, Migration, Validierung, Update/Rollback/Umzug/Vorabtest/Backup), Korrektur Long-Poll V12.14.1, Rest V12.15.0 (API, Firmenprofil-UI, Arbeitgeberdaten aus dem Paket; Export/Import-ZIP bewusst offen), Datenerhalt-Test + Windows-Deploy in CI V12.15.1 |
 | 5 | B | Branchenvorlagen, Module | erledigt V12.16.0 (Vorlagen als Paketdateien vorlage_*.json, Anwenden nur ergaenzend, Module ein/aus mit Server-Sperre MP-MOD-001, Bereichs-Eigenschaften, Begriffe/Rollenbezeichnungen; offen: Modul export; Projektbereiche aus Config mit V12.17.0 erledigt) |
 | 6 | C1 | Einrichtungsassistent | erledigt V12.17.0 (5 Schritte, neutraler Seed, setupDone, Projektbereiche aus Config; offen: Demo-Daten und Feiertage je Bundesland = C2) |
+| 7b | – | Hotfix V12.17.2: ACL-Fehlalarm, Fehlerrauschen, Firma_Einrichten-Pfad, Task-Ergebnis | erledigt V12.17.2 |
 | 7a | – | Fix V12.17.1: Personal-Gate für Linien (crew) | erledigt V12.17.1 |
 | 7 | – | **Windows-Installation beim Arbeitgeber (Prio 2, jetzt)**: Update 12.10.1 → 12.17.0 nach `docs/INSTALL_ARBEITGEBER.md`; danach Pause, bis der Nutzer getestet hat | jetzt |
 | 8 | 17 | Qualifikationsmatrix | offen |
-| 9 | 16 | Personalbedarf je Parallelplatz | offen |
+| 8a | 18 | Dauer nach Besetzung (Issue #9, mit Prompt 16) | erledigt V12.18.0 (Schalter je Ressource, Default aus; Gate EIN/AUS; crewMax; Freigabeplan mit Besetzung je Segment; Ist-Personenstunden) |
+| 9 | 16 | Personalbedarf je Parallelplatz | teilweise erledigt V12.18.0 (laneStaff, Bedarf = Summe belegter Plätze, Gate); offen: laneIndex-Zuordnung, Auswertung/GF/Board je Platz |
 | 10 | 14 | Automatische Nachkalkulation | offen |
 | 11 | 7 | KPI-Dashboard GF | offen |
 | 12 | 12 | Liefertermin-Vorschlag Vertrieb | offen |
@@ -294,6 +296,41 @@ Umfang:
 Abnahme: Server-Tests (Validierung, Migration idempotent); tests/e2e_parallel.mjs erweitern:
 2 Plätze, nur 1 belegt → Bedarf = Bedarf Platz 1; Platz 2 mit abweichender Besetzung; Doppelzuordnung
 abgelehnt; GF-Bedarf stimmt.
+```
+
+---
+
+## Prompt 18 – Dauer nach Besetzung (Mehr Mitarbeiter, kürzere Dauer)
+
+```
+Feature: Die Dauer eines Arbeitsschritts folgt der Besetzung. Nutzerwunsch (wörtlich): „Mitarbeiter logik konfektion muss
+funktionieren mehr arbeiter schneller fertig 40 bei 2 mitarbeiter nur 20h. 40 bei 4 10h“ und „Konfektion Auftrag 8 h 1 Mitarbeiter,
+8 h 2 Mitarbeiter selbe Line 4 stunden“.
+
+Bestand: Linien teilen die Sollstunden (Personenstunden) bereits durch die feste Besetzung crew (effHours); Maschinen haben feste
+Dauer. Personal-Gate (V12.17.1): staffReq = max(staffRequired, crew bei Linien), unbesetzte Aufträge werden markiert (MP-PERS-003).
+Freigabeplan (baselinePlan) friert Dauer und Besetzung ein, der Server prüft sie (MP-PLAN-047).
+
+Umfang:
+1. Schalter je Maschine/Linie (machines[].effortScaling, Default aus). Gewählt wurde die Ressource statt des Bereichs, weil crew,
+   staffRequired, Parallelplätze und Schichtmodell ebenfalls je Ressource gelten und eine Konfektion mit anderen Bereichs-Ressourcen
+   gemischt sein kann. Bestand und Default: aus, bestehende Aufträge ändern ihre Dauer beim Update nicht (Deploy-Test).
+2. Bei „an“ sind die Sollstunden Personenstunden. Dauer = Personenstunden / wirksame Besetzung je Schicht (Zeitabschnitt):
+   - Besetzung ≥ 1, gedeckelt durch crewMax (0 = keine Obergrenze).
+   - Personal-Gate EIN: zugeordnete Mitarbeiter je Schicht (kann je Tag wechseln, Restarbeit wird schichtweise abgearbeitet);
+     unter der Mindestbesetzung bleibt der Auftrag unbesetzt.
+   - Personal-Gate AUS: geplante crew der Ressource (mit Schalter auch bei Maschinen bedienbar).
+   - Umrüstzeit ist Wandzeit, keine Personenstunden.
+3. Anzeige am Auftrag „40 Ph · 2 Pers. → 20 h“ mit Tooltip (Besetzung je Tag). Schalter als Symbol mit Tooltip, ohne Erklärtext.
+   Änderung der Zuordnung plant sofort neu.
+4. Freigabe friert den Plan mit Besetzung je Segment ein (baselinePlan.effort, segments[].crew/setup); Server prüft Summe Dauer x Besetzung.
+   Laufende Aufträge behalten den beim Start berechneten Laufplan.
+5. Nachkalkulation: Historie speichert actualPersonHours; Auswertung nutzt sie, sonst wie bisher Laufzeit x crew.
+6. Zusammenspiel mit Prompt 16: Personal je Parallelplatz (laneStaff, Bedarf = Summe belegter Plätze) ist umgesetzt; Dauer nach Besetzung gilt
+   nur bei einem Platz, weil die Besetzung sonst nicht eindeutig auf die Plätze verteilt ist. Offen: laneIndex-Zuordnung je Platz.
+
+Abnahme: tests/e2e_effort.mjs (40 Ph: 1/2/4 MA = 40/20/10 h; 8 Ph: 1/2 MA = 8/4 h; wechselnde Besetzung; Gate AUS mit crew; Schalter aus = feste
+Dauer; Mindestbesetzung; Freigabe; Plätze), tests/test_effort.py (Validierung, Migration, Freigabeplan), tests/test_deploy_upgrade.py (Bestand unverändert).
 ```
 
 ---
