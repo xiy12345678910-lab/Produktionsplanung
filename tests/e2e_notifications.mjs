@@ -183,6 +183,18 @@ try {
   await insecure.click('#notifBtn'); await insecure.click('#notifCfgBtn');
   check(await insecure.locator('#nBrowser').count() === 0 && await insecure.locator('#notifCfg input[data-nk]').count() === 5, 'Unsicherer Kontext: kein Browser-Schalter, Glocke und Einstellungen funktionieren');
 
+  // V12.14.1: schlägt der Abruf der Liste fehl, entsteht keine Poll-Schleife (Signatur wird übernommen, Backoff)
+  const loopy = await open('theo');
+  await loopy.route('**/api/notifications?since=0', r => r.fulfill({ status: 500, contentType: 'application/json', body: '{"error":"x"}' }));
+  let revReq = 0;
+  loopy.on('request', rq => { if (new URL(rq.url()).pathname === '/api/revision') revReq++; });
+  await loopy.waitForTimeout(500);
+  await api(tom, '/api/chat/messages', 'POST', { channel: 1, text: 'Schleife? ⟦u:theo⟧' });
+  revReq = 0;
+  await loopy.waitForTimeout(3000);
+  check(revReq <= 4, `notifRefresh schlägt fehl: keine Poll-Schleife (${revReq} /api/revision in 3 s)`);
+  await loopy.unroute('**/api/notifications?since=0');
+
   // Handy: Liste passt in den Bildschirm, kein seitlicher Scroll
   const phone = await open('lena', { viewport: { width: 390, height: 780 } });
   await phone.click('#notifBtn');

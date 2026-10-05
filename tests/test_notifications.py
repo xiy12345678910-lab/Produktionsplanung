@@ -185,6 +185,76 @@ with server.db_session() as con:
         server.notif_add(con, "view1", "viewer", "mention", "chat", "1", f"t{i}")
     check(con.execute("SELECT COUNT(*) FROM notifications WHERE username='view1'").fetchone()[0] == server.NOTIF_MAX_PER_USER, "Höchstens 500 Einträge je Benutzer")
 
+# --- V12.14.1: Long-Poll wacht nur bei echter Änderung auf (kein Thundering Herd bei No-op-POSTs)
+import http.client  # noqa: E402
+import json  # noqa: E402
+import threading  # noqa: E402
+import time  # noqa: E402
+
+server.PBKDF2_ITERS = 1000
+server.ALLOWED_NETWORK = server.ipaddress.ip_network("127.0.0.0/8")
+with server.db_session() as con:
+    salt, digest = server.hash_password("Test-Passwort-1")
+    con.execute("INSERT INTO users(username,salt,password_hash,role,department_id,active,created_at,updated_at) VALUES('lp1','%s','%s','project_management','',1,?,?)" % (salt, digest),
+                (server.now_iso(), server.now_iso()))
+httpd = server.MPHTTPServer(("127.0.0.1", 0), server.Handler)
+server.Handler.log_message = lambda *a, **k: None
+PORT = httpd.server_address[1]
+threading.Thread(target=httpd.serve_forever, daemon=True).start()
+
+
+def req(method, path, body=None, cookie=None):
+    c = http.client.HTTPConnection("127.0.0.1", PORT, timeout=20)
+    h = {"Content-Type": "application/json", "X-MP-Client-Version": server.APP_VERSION}
+    if cookie:
+        h["Cookie"] = cookie
+    c.request(method, path, json.dumps(body).encode() if body is not None else None, h)
+    r = c.getresponse()
+    txt = r.read()
+    out = (r.status, json.loads(txt or b"{}"), (r.getheader("Set-Cookie") or "").split(";")[0])
+    c.close()
+    return out
+
+
+_, _, ck = req("POST", "/api/login", {"username": "lp1", "password": "Test-Passwort-1"})
+_, rv, _ = req("GET", "/api/revision", cookie=ck)
+rev, nsig = rv["revision"], rv["notif"]["sig"]
+
+
+def longpoll(query, box):
+    t0 = time.monotonic()
+    box["r"] = req("GET", "/api/revision?" + query, cookie=ck)
+    box["dt"] = time.monotonic() - t0
+
+
+def poll_during(action, query):
+    box: dict = {}
+    th = threading.Thread(target=longpoll, args=(query, box))
+    th.start()
+    time.sleep(0.4)
+    action()
+    th.join(10)
+    return box
+
+
+q = f"since={rev}&wait=2500&nsig={nsig}"
+box = poll_during(lambda: req("POST", "/api/notifications/read", {"all": True}, ck), q)
+check(box["dt"] >= 2.2, f"No-op read (nichts ungelesen) weckt den Long-Poll nicht ({box['dt']:.1f}s)")
+box = poll_during(lambda: req("POST", "/api/notifications/derived", {"items": []}, ck), q)
+check(box["dt"] >= 2.2, f"No-op derived (made=0) weckt den Long-Poll nicht ({box['dt']:.1f}s)")
+with server.db_session() as con:
+    server.notif_add(con, "lp1", "project_management", "mention", "chat", "1", "neu")
+    ids = [x["id"] for x in st(con, "lp1")]
+_, rv, _ = req("GET", "/api/revision", cookie=ck)
+nsig2 = rv["notif"]["sig"]
+box = poll_during(lambda: req("POST", "/api/notifications/read", {"ids": [999999]}, ck), f"since={rev}&wait=2500&nsig={nsig2}")
+check(box["dt"] >= 2.2, f"read ohne getroffene Zeile weckt nicht ({box['dt']:.1f}s)")
+box = poll_during(lambda: req("POST", "/api/notifications/read", {"ids": ids}, ck), f"since={rev}&wait=8000&nsig={nsig2}")
+check(box["dt"] < 3 and box["r"][1]["notif"]["unread"] == 0, f"Echte Änderung (gelesen) weckt sofort ({box['dt']:.1f}s)")
+box = {}
+longpoll(f"since={rev}&wait=8000&nsig=kaputt", box)
+check(box["dt"] >= 7.5 and box["r"][0] == 200, "Ungültige nsig wird ignoriert: Poll wartet normal")
+
 failed = [l for ok, l in RESULTS if not ok]
 print(f"\n{len(RESULTS) - len(failed)}/{len(RESULTS)} bestanden")
 sys.exit(1 if failed else 0)

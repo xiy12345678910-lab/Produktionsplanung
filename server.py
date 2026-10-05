@@ -27,7 +27,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-APP_VERSION = "12.14.0"
+APP_VERSION = "12.14.1"
 HOST = os.environ.get("MP_HOST", "0.0.0.0")
 PORT = int(os.environ.get("MP_PORT", "8765"))
 BASE = Path(__file__).resolve().parent
@@ -3728,6 +3728,8 @@ class Handler(BaseHTTPRequestHandler):
             # V12.13.0: Benachrichtigungen im selben Long-Poll. Der Client nennt den zuletzt gesehenen Stand
             # (nsig); ändert er sich (neu/gelesen), endet die Wartezeit sofort.
             nsig = qs.get("nsig", [""])[0]
+            if not re.fullmatch(r"\d{1,18}:\d{1,18}", nsig):
+                nsig = ""   # V12.14.1: ungültige Signatur ignorieren, sonst käme der Poll nie zur Ruhe
             deadline = time.monotonic() + wait_ms / 1000.0
             with REVISION_CONDITION:
                 while True:
@@ -3809,10 +3811,13 @@ class Handler(BaseHTTPRequestHandler):
                 return
             state = None
             with DB_LOCK, db_session() as con:
+                sig_before = notif_sig(con, user["username"])["sig"]
                 if path.endswith("/derived"):
                     state = json.loads(con.execute("SELECT json FROM state WHERE id=1").fetchone()["json"])
                 status, payload = notif_post(con, user, path, body if isinstance(body, dict) else {}, state)
-            if status == 200:
+                changed = status == 200 and notif_sig(con, user["username"])["sig"] != sig_before
+            # V12.14.1: nur wecken, wenn sich der Stand wirklich geändert hat (kein Thundering Herd bei No-op-POSTs).
+            if changed:
                 with REVISION_CONDITION:
                     REVISION_CONDITION.notify_all()
             return self.json_response(status, payload)

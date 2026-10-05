@@ -1,6 +1,17 @@
-MASCHINENPLANUNG V12.14.0 - RELEASE NOTES
+MASCHINENPLANUNG V12.14.1 - RELEASE NOTES
 =========================================
-Datum: 05.10.2026 · Basis: V12.13.0 · Update mit UPDATE_LIVE.ps1, Daten bleiben erhalten
+Datum: 05.10.2026 · Basis: V12.14.0 · Update mit UPDATE_LIVE.ps1, Daten bleiben erhalten
+
+BENACHRICHTIGUNGEN: LONG-POLL ENTLASTET (Korrektur zu V12.13.0)
+- Server: POST /api/notifications/* weckt wartende Long-Polls nur noch, wenn sich der Stand wirklich geaendert hat
+  (neue Eintraege bzw. gelesen). Leere Meldungen und Treffer ohne Zeile loesen keinen Thundering Herd mehr aus.
+- Client: Nach einer Poll-Antwort wird die Server-Signatur uebernommen, auch wenn der Listenabruf fehlschlaegt;
+  dann gibt es keine Dauerschleife mehr. Schlaegt der Abruf fehl, folgt zusaetzlich 5 s Pause.
+- Server ignoriert eine ungueltig geformte nsig (wartet normal). Keine neuen Fehlercodes, keine Datenaenderung.
+- Tests: tests/test_notifications.py 59/59 (Long-Poll ueber echtes HTTP), tests/e2e_notifications.mjs 32/32.
+
+V12.14.0
+--------
 
 FIRMEN-CONFIG AUSSERHALB DES PAKETS
 - Firmenstand (Name, Logo, Farben, Schrift, Begriffe, Module, Feiertagsregion, Zeitzone u. a.) liegt in
