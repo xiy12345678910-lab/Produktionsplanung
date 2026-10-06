@@ -32,6 +32,7 @@ $MP_AppFiles = @(
     'Server_Status.ps1', 'CHECK_LAN_SICHERHEIT.ps1', 'Deinstallieren.ps1',
     'README_Windows.txt', 'BENUTZER_KURZANLEITUNG.txt', 'FEHLERCODES.txt', 'RELEASE_NOTES.txt',
     'Update_von_GitHub.ps1', 'Restore_Datenbank.ps1', 'Firma_Einrichten.ps1', 'requirements.txt',
+    'Umzug_Export.ps1', 'Umzug_Import.ps1',
     'vorlage_werbetechnik.json', 'vorlage_metall_cnc.json', 'vorlage_leer.json', 'vorlage_demo.json'
 )
 
@@ -51,6 +52,28 @@ function Test-MPAdmin {
 
 function Assert-MPAdmin([string]$Script) {
     if (-not (Test-MPAdmin)) { throw "$Script muss als Administrator gestartet werden." }
+}
+
+# V12.19.0: Unterstuetzte Windows-Versionen: Windows Server 2019 (Build 17763) bis zur neuesten Version
+# (2022 = 20348, 2025 = 26100) sowie Windows 10 1809 / Windows 11. Nur Warnung, kein Abbruch.
+$MP_MinWindowsBuild = 17763
+function Get-MPOSInfo {
+    try {
+        $os = Get-CimInstance -ClassName Win32_OperatingSystem -ErrorAction Stop
+        return [pscustomobject]@{ Caption = [string]$os.Caption; Build = [int]$os.BuildNumber; IsServer = ([int]$os.ProductType -ne 1) }
+    } catch {
+        return [pscustomobject]@{ Caption = 'unbekannt'; Build = 0; IsServer = $false }
+    }
+}
+function Test-MPSupportedOS {
+    $info = Get-MPOSInfo
+    if ($info.Build -eq 0) { Write-Warning 'Windows-Version konnte nicht ermittelt werden.'; return $true }
+    if ($info.Build -lt $MP_MinWindowsBuild) {
+        Write-Warning "$($info.Caption) (Build $($info.Build)) ist aelter als Windows Server 2019 / Windows 10 1809 (Build $MP_MinWindowsBuild) und wird nicht unterstuetzt."
+        return $false
+    }
+    Write-Host "Betriebssystem: $($info.Caption) (Build $($info.Build)) - unterstuetzt." -ForegroundColor DarkGray
+    return $true
 }
 
 function Get-MPPackageVersion([string]$Folder) {

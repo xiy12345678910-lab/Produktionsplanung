@@ -8,6 +8,7 @@ $ErrorActionPreference = 'Stop'
 $NewSource = Split-Path -Parent $MyInvocation.MyCommand.Path
 . (Join-Path $NewSource 'MP_Common.ps1')
 Assert-MPAdmin 'UPDATE_LIVE.ps1'
+Test-MPSupportedOS | Out-Null
 
 $NewVersion = Get-MPPackageVersion $NewSource
 if (-not $NewVersion) { throw 'server.py im Updatepaket fehlt oder enthaelt keine APP_VERSION.' }

@@ -2,12 +2,13 @@
 #
 #   .\Restore_Datenbank.ps1                 Auswahl aus den letzten 10 Sicherungen (Enter = neueste)
 #   .\Restore_Datenbank.ps1 -Datei <pfad>   bestimmte Sicherung
+#   .\Restore_Datenbank.ps1 -Ja            ohne Rueckfrage (fuer Umzug_Import.ps1)
 #   .\Restore_Datenbank.ps1 -MitConfig      zusaetzlich config\ aus dem passenden firma_*.zip (aktuelle Datei vorher als .bak)
 #
 # Ablauf: Sicherung pruefen -> Server stoppen (mit Nachfassen) -> aktuellen Stand sichern (*_vor_restore)
 #         -> zurueckspielen (-wal/-shm entfernt, integrity_check) -> Server starten -> Health-Check.
 # Startet der Server danach nicht, wird der Stand vor dem Restore automatisch zurueckgespielt.
-param([string]$Datei, [switch]$MitConfig)
+param([string]$Datei, [switch]$MitConfig, [switch]$Ja)
 $ErrorActionPreference = 'Stop'
 $Base = Split-Path -Parent $MyInvocation.MyCommand.Path
 . (Join-Path $Base 'MP_Common.ps1')
@@ -30,7 +31,7 @@ if (-not $Datei) {
 }
 $Datei = (Resolve-Path -LiteralPath $Datei).Path
 Write-Host "Sicherung: $Datei" -ForegroundColor Cyan
-if ((Read-Host 'Live-Daten werden ersetzt. Fortfahren? (j/N)') -notmatch '^[jJyY]') { Write-Host 'Abgebrochen.'; return }
+if (-not $Ja -and (Read-Host 'Live-Daten werden ersetzt. Fortfahren? (j/N)') -notmatch '^[jJyY]') { Write-Host 'Abgebrochen.'; return }
 
 $pre = $null
 $start = Get-Date

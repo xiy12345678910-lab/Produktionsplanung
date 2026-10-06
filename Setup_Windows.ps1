@@ -5,6 +5,7 @@ $ErrorActionPreference = 'Stop'
 $SourceBase = Split-Path -Parent $MyInvocation.MyCommand.Path
 . (Join-Path $SourceBase 'MP_Common.ps1')
 Assert-MPAdmin 'Setup_Windows.ps1'
+Test-MPSupportedOS | Out-Null
 
 $Version = Get-MPPackageVersion $SourceBase
 $Base = $MP_InstallBase

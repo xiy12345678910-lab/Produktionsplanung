@@ -122,10 +122,14 @@ try {
   const staffed = await sched();
   check(staffed.start && staffed.segs > 0 && !staffed.unstaffed && !staffed.conflict, `Mit zugeordnetem Mitarbeiter wird eingeplant (${staffed.segs} Segmente)`);
 
-  // Crew 2 braucht zwei Personen
+  // V12.19.0: Besetzung der Linie (crew) ist die MAXIMALE Besetzung; weniger Personen reichen
   await ev(page, () => { machine('kf1').crew = 2; });
   const crew2 = await sched();
-  check(!crew2.start && crew2.unstaffed, 'Crew 2 mit nur 1 Mitarbeiter: unbesetzt');
+  check(crew2.start && !crew2.unstaffed, 'Crew 2 (Maximum) mit nur 1 Mitarbeiter: wird eingeplant');
+  await ev(page, () => { machine('kf1').staffRequired = 2; });
+  const min2 = await sched();
+  check(!min2.start && min2.unstaffed, 'Mindestpersonal 2 mit nur 1 Mitarbeiter: unbesetzt');
+  await ev(page, () => { machine('kf1').staffRequired = 0; });
   await ev(page, () => { data.personnelGate = false; });
   const off2 = await sched();
   check(off2.start, 'Gate AUS: weiterhin nur Planung');
