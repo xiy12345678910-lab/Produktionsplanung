@@ -1,0 +1,649 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Produktionsplanung – Installation & Einrichtung | Prototype by Jonas Bönsch</title>
+<style>
+:root{
+  --nav:#0f2747;--nav2:#173d6d;--blue:#2764ff;--bg:#eef3f8;--panel:#fff;
+  --line:#d8e2ee;--text:#12243d;--muted:#68788f;--ok:#0b8f66;--warn:#b97700;--bad:#c43b3b;
+  --soft:#f7fafe;--shadow:0 18px 55px rgba(15,39,70,.13)
+}
+*{box-sizing:border-box}
+body{margin:0;font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",Arial,sans-serif;background:var(--bg);color:var(--text)}
+button,input,select{font:inherit}button{cursor:pointer}
+.app{min-height:100vh;display:grid;grid-template-columns:290px 1fr}
+.sidebar{background:linear-gradient(180deg,var(--nav),#0a1c35);color:#d7e4f3;padding:20px 16px;position:sticky;top:0;height:100vh}
+.brand{display:flex;gap:12px;align-items:center;padding:0 5px 18px;border-bottom:1px solid #294968}
+.logo{width:44px;height:44px;border-radius:12px;background:#fff;color:var(--nav);display:grid;place-items:center;font-size:11px;font-weight:950}
+.brand b{display:block;color:#fff}.brand small{color:#a6bbd2}
+.steps{margin-top:18px;display:flex;flex-direction:column;gap:6px}
+.step{display:grid;grid-template-columns:32px 1fr;gap:10px;align-items:center;padding:10px;border-radius:11px;cursor:pointer}
+.step .n{width:30px;height:30px;border-radius:50%;display:grid;place-items:center;background:#173a67;font-weight:900}
+.step.active{background:#173a67;color:#fff}.step.active .n{background:#fff;color:var(--blue)}
+.step.done .n{background:var(--ok);color:#fff}
+.owner{position:absolute;bottom:17px;left:16px;right:16px;padding-top:13px;border-top:1px solid #294968;font-size:11px;line-height:1.5;color:#9fb4ca}.owner b{color:#fff}
+.main{padding:24px 28px 42px}.topbar{display:flex;justify-content:space-between;align-items:flex-start;gap:18px}
+.topbar h1{margin:0;font-size:27px}.topbar p{margin:5px 0 0;color:var(--muted)}
+.badge{background:#fff;border:1px solid var(--line);border-radius:999px;padding:9px 12px;font-size:12px;font-weight:850}
+.progress{height:8px;background:#dfe7f0;border-radius:999px;margin:18px 0;overflow:hidden}.progress div{height:100%;background:linear-gradient(90deg,var(--blue),#5b8cff);transition:.25s}
+.card{background:#fff;border:1px solid var(--line);border-radius:18px;box-shadow:var(--shadow);padding:22px}
+.screen{display:none}.screen.active{display:block}
+.screenhead{display:flex;justify-content:space-between;align-items:center;gap:14px;margin-bottom:18px}.screenhead h2{margin:0;font-size:22px}.screenhead p{margin:4px 0 0;color:var(--muted)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+.section{border:1px solid #e1e9f3;background:#f9fbfe;border-radius:14px;padding:15px}.section h3{margin:0 0 10px;font-size:15px}
+.field{margin-bottom:14px}.field label{display:block;font-size:12px;font-weight:850;margin-bottom:6px;color:#44566e}.req{color:var(--blue)}
+input,select{width:100%;height:44px;border:1px solid #cbd8e6;border-radius:10px;padding:0 11px;background:#fff;color:var(--text);outline:none}
+input:focus,select:focus{border-color:#7fa2ef;box-shadow:0 0 0 3px rgba(39,100,255,.08)}
+.help{font-size:11px;color:var(--muted);margin-top:5px}.err{font-size:11px;color:var(--bad);margin-top:5px;display:none}.field.invalid input,.field.invalid select{border-color:#dc7474}.field.invalid .err{display:block}
+.installrow,.listrow{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center;padding:11px 12px;border-bottom:1px solid #edf2f7}.installrow:last-child,.listrow:last-child{border-bottom:0}
+.status{padding:5px 8px;border-radius:999px;font-size:11px;font-weight:850;background:#edf3fb;color:#50627a}.status.ok{background:#ddf5ed;color:#087653}.status.warn{background:#fff0d4;color:#8c5800}
+.check{display:flex;gap:9px;align-items:center;margin:9px 0}.check i{width:22px;height:22px;border-radius:50%;display:grid;place-items:center;background:#dff5ed;color:#087653;font-style:normal;font-weight:900}
+.btn{height:44px;border-radius:10px;border:1px solid #cbd8e6;background:#fff;padding:0 16px;font-weight:850;color:#21364f}.btn.primary{background:linear-gradient(180deg,#2f6cff,#1f58e8);border-color:#2f6cff;color:#fff}.btn.danger{color:#a83232;background:#fff9f9;border-color:#e8c5c5}
+.actions{display:flex;justify-content:space-between;gap:10px;margin-top:18px}
+.tabs{display:flex;gap:7px;margin-bottom:14px;flex-wrap:wrap}.tab{border:1px solid var(--line);background:#fff;border-radius:9px;padding:8px 11px;font-weight:800;font-size:12px}.tab.active{background:#edf4ff;border-color:#a8c1f6;color:#1f56c8}
+.modulegrid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.module{border:1px solid var(--line);border-radius:12px;padding:12px;background:#fff}.module label{display:flex;gap:8px;align-items:flex-start;font-weight:800}.module input{width:auto;height:auto;margin-top:2px}
+.naming{display:grid;grid-template-columns:1.2fr 1fr 1fr;gap:10px;align-items:end;margin-bottom:10px}.naming .preview{height:44px;border:1px solid var(--line);border-radius:10px;background:#f4f7fb;padding:0 11px;display:flex;align-items:center;font-weight:800;color:#32445d}
+.previewbox{border:1px dashed #b8c8dc;background:#f8fbff;border-radius:14px;padding:14px}.previewbox h4{margin:0 0 10px}.sample{display:grid;grid-template-columns:150px 1fr;gap:7px;font-size:13px}.sample b{color:#4c5e76}
+.table{border:1px solid var(--line);border-radius:12px;overflow:hidden;background:#fff}.table .th,.table .tr{display:grid;grid-template-columns:1.35fr 1fr 1fr 70px;gap:8px;align-items:center;padding:9px 10px}.table .th{background:#f4f7fb;font-size:11px;font-weight:900}.table .tr{border-top:1px solid #edf2f7}.table input,.table select{height:38px}
+.userrow{display:grid;grid-template-columns:1fr 1fr 1fr 42px;gap:8px;align-items:center;margin-bottom:8px}.iconbtn{height:38px;width:38px;border:1px solid var(--line);border-radius:9px;background:#fff;font-weight:900}
+.summary{display:grid;grid-template-columns:1fr 1fr;gap:14px}.summary .section{background:#fff}
+.systemcheck{display:flex;flex-direction:column;gap:8px}.checkrow{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center;border:1px solid var(--line);border-radius:11px;padding:10px 12px;background:#fff}
+.final{margin-top:14px;background:linear-gradient(135deg,#102a4b,#184477);color:#fff;border-radius:16px;padding:20px}.final h2{margin:0 0 7px}.final p{margin:0;color:#d8e5f3}
+.notice{font-size:11px;color:#766000;background:#fff7d9;border:1px solid #ead38b;border-radius:11px;padding:10px 12px;margin-top:12px}
+.hidden{display:none!important}
+@media(max-width:1050px){.app{grid-template-columns:1fr}.sidebar{position:static;height:auto}.owner{position:static;margin-top:18px}.grid2,.grid3,.summary{grid-template-columns:1fr}.modulegrid{grid-template-columns:1fr 1fr}.naming{grid-template-columns:1fr}.table .th,.table .tr{grid-template-columns:1fr}.main{padding:18px}}
+
+
+
+
+
+
+
+
+
+
+
+
+</style>
+</head>
+<body>
+<div class="app">
+<aside class="sidebar">
+  <div class="brand"><div class="logo">JB</div><div><b>Produktionsplanung</b><small>Installation & Einrichtung</small></div></div>
+  <div id="steps" class="steps"></div>
+  <div class="owner"><b>Prototype by Jonas Bönsch</b><br>Concept, UI and prototype software owned by Jonas Bönsch.<br>Prototype / demonstrator only.</div>
+</aside>
+
+<main class="main">
+  <div class="topbar">
+    <div><h1 id="pageTitle">Installation</h1><p id="pageSub">Produktionsplanung auf diesem Server einrichten.</p></div>
+    <div class="badge">Prototype · Jonas Bönsch</div>
+  </div>
+  <div class="progress"><div id="progress"></div></div>
+
+  <section class="screen active" data-step="0">
+    <div class="card">
+      <div class="screenhead"><div><h2>Installation</h2><p>Pflichtprüfungen vor der Einrichtung.</p></div><span class="status" id="installState">nicht installiert</span></div>
+      <div class="grid2">
+        <div class="section">
+          <h3>Serverprüfung</h3>
+          <div class="installrow"><span>Windows Server 2019+</span><span class="status ok">erkannt</span></div>
+          <div class="installrow"><span>Architektur</span><span class="status ok">x64</span></div>
+          <div class="installrow"><span>Port 8443</span><span class="status ok">frei</span></div>
+          <div class="installrow"><span>Speicher</span><span class="status ok">128 GB frei</span></div>
+          <div class="installrow"><span>Dienstkonto</span><span class="status warn">wird erstellt</span></div>
+        </div>
+        <div class="section">
+          <h3>Installationspfade</h3>
+          <div class="field"><label>Programmverzeichnis <span class="req">*</span></label><input id="installPath" value="C:\Program Files\Produktionsplanung"></div>
+          <div class="field"><label>Datenverzeichnis <span class="req">*</span></label><input id="dataPath" value="C:\ProgramData\Produktionsplanung\data"></div>
+          <div class="field"><label>Backup-Verzeichnis <span class="req">*</span></label><input id="backupPath" value="D:\Produktionsplanung\Backups"></div>
+          <div class="field"><label>HTTPS-Port <span class="req">*</span></label><input id="port" type="number" value="8443"></div>
+          <button class="btn primary" id="installBtn" style="width:100%">Installieren</button>
+          <div class="help" id="installMsg">Noch nicht ausgeführt.</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="screen" data-step="1">
+    <div class="card">
+      <div class="screenhead"><div><h2>Firma</h2><p>Pflichtdaten des neuen Unternehmens.</p></div></div>
+      <div class="grid2">
+        <div>
+          <div class="field" data-required><label>Firmenname <span class="req">*</span></label><input id="companyName"><div class="err">Pflichtfeld</div></div>
+          <div class="field" data-required><label>Straße / Hausnummer <span class="req">*</span></label><input id="street"><div class="err">Pflichtfeld</div></div>
+          <div class="grid2">
+            <div class="field" data-required><label>PLZ <span class="req">*</span></label><input id="zip"><div class="err">Pflichtfeld</div></div>
+            <div class="field" data-required><label>Ort <span class="req">*</span></label><input id="city"><div class="err">Pflichtfeld</div></div>
+          </div>
+          <div class="field"><label>Land</label><select id="country"><option>Deutschland</option><option>Österreich</option><option>Schweiz</option></select></div>
+        </div>
+        <div>
+          <div class="field"><label>Zeitzone</label><select id="timezone"><option>Europe/Berlin</option></select></div>
+          <div class="field"><label>Sprache</label><select id="language"><option>Deutsch</option></select></div>
+          <div class="field"><label>Akzentfarbe</label><input id="accent" type="color" value="#2764ff"></div>
+          <div class="field"><label>Logo</label><input id="logoFile" type="file" accept="image/*"></div>
+          <div class="previewbox"><h4>Vorschau</h4><div id="companyPreview">Firmenname noch nicht gesetzt</div></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="screen" data-step="2">
+    <div class="card">
+      <div class="screenhead"><div><h2>Begriffe & Nummern</h2><p>Feldbezeichnungen und Nummernkreise an das Unternehmen anpassen.</p></div></div>
+
+      <div class="tabs">
+        <button class="tab active" data-tab="labels">Bezeichnungen</button>
+        <button class="tab" data-tab="numbers">Nummernkreise</button>
+        <button class="tab" data-tab="roles">Rollennamen</button>
+      </div>
+
+      <div id="labelsTab">
+        <div class="naming">
+          <div class="field"><label>Produktionsobjekt</label><select id="labelFA"><option>FA</option><option>Fertigungsauftrag</option><option>Produktionsauftrag</option><option>Arbeitsauftrag</option></select></div>
+          <div class="field"><label>Projekt</label><select id="labelProject"><option>Projekt</option><option>Kundenprojekt</option><option>Auftrag</option></select></div>
+          <div class="preview" id="previewFA">FA-000001</div>
+        </div>
+        <div class="naming">
+          <div class="field"><label>Projektnummer-Feld</label><input id="labelProjectNo" value="Projektnummer"></div>
+          <div class="field"><label>Auftragsnummer-Feld</label><input id="labelOrderNo" value="AB-Nummer"></div>
+          <div class="preview" id="previewProject">PRJ-000001</div>
+        </div>
+        <div class="naming">
+          <div class="field"><label>Bereich / Abteilung</label><select id="labelDept"><option>Abteilung</option><option>Bereich</option><option>Produktionsbereich</option></select></div>
+          <div class="field"><label>Maschine / Linie</label><select id="labelMachine"><option>Maschine / Linie</option><option>Ressource</option><option>Anlage</option></select></div>
+          <div class="preview">z. B. Konfektion</div>
+        </div>
+        <div class="naming">
+          <div class="field"><label>Rahmenauftrag</label><input id="labelFrame" value="Rahmenauftrag"></div>
+          <div class="field"><label>Abruf</label><input id="labelCalloff" value="Abruf"></div>
+          <div class="preview">RA-000001 / ABR-001</div>
+        </div>
+        <div class="naming">
+          <div class="field"><label>MHD</label><input id="labelMhd" value="MHD"></div>
+          <div class="field"><label>Charge</label><input id="labelBatch" value="Charge"></div>
+          <div class="preview">MHD 31.12.2027 · Charge CH-000001</div>
+        </div>
+        <div class="previewbox">
+          <h4>Live-Vorschau</h4>
+          <div class="sample" id="labelPreview"></div>
+        </div>
+      </div>
+
+      <div id="numbersTab" class="hidden">
+        <div class="table">
+          <div class="th"><div>Objekt</div><div>Präfix</div><div>Startnummer</div><div>Stellen</div></div>
+          <div class="tr"><div id="nFaTitle">FA</div><input id="faPrefix" value="FA-"><input id="faStart" type="number" value="1"><input id="faDigits" type="number" value="6" min="3" max="10"></div>
+          <div class="tr"><div id="nProjectTitle">Projekt</div><input id="projectPrefix" value="PRJ-"><input id="projectStart" type="number" value="1"><input id="projectDigits" type="number" value="6" min="3" max="10"></div>
+          <div class="tr"><div>AB / Auftrag</div><input id="orderPrefix" value="AB-"><input id="orderStart" type="number" value="1"><input id="orderDigits" type="number" value="6" min="3" max="10"></div>
+          <div class="tr"><div>Rahmenauftrag</div><input id="framePrefix" value="RA-"><input id="frameStart" type="number" value="1"><input id="frameDigits" type="number" value="6" min="3" max="10"></div>
+        </div>
+        <div class="grid2" style="margin-top:14px">
+          <div class="field"><label>Nummern jährlich zurücksetzen?</label><select id="yearReset"><option value="no">Nein</option><option value="yes">Ja</option></select></div>
+          <div class="field"><label>Jahr im Präfix</label><select id="yearInPrefix"><option value="no">Nein</option><option value="yes">Ja, z. B. FA-2026-000001</option></select></div>
+        </div>
+        <div class="previewbox">
+          <h4>Nummern-Vorschau</h4>
+          <div class="sample" id="numberPreview"></div>
+        </div>
+      </div>
+
+      <div id="rolesTab" class="hidden">
+        <div class="section">
+          <h3>Rollennamen anpassen</h3>
+          <div class="help" style="margin-bottom:12px">
+            Die interne Berechtigung bleibt fest. Nur der sichtbare Rollenname wird an das Unternehmen angepasst.
+          </div>
+
+          <div class="table" id="roleNameTable">
+            <div class="th"><div>Interne Rolle</div><div>Anzeigename</div><div>Beispiel</div><div></div><div></div></div>
+            <div class="tr"><div>ADMIN</div><input id="roleAdmin" value="Admin"><div class="preview">Admin</div><div></div><div></div></div>
+            <div class="tr"><div>GF</div><input id="roleGF" value="Geschäftsführung"><div class="preview">Geschäftsführung</div><div></div><div></div></div>
+            <div class="tr"><div>AV</div><input id="roleAV" value="Arbeitsvorbereitung"><div class="preview">Arbeitsvorbereitung</div><div></div><div></div></div>
+            <div class="tr"><div>CALCULATION</div><input id="roleCalc" value="Kalkulation"><div class="preview">Kalkulation</div><div></div><div></div></div>
+            <div class="tr"><div>DEPARTMENT_LEAD</div><input id="roleDeptLead" value="Abteilungsleiter"><div class="preview">Abteilungsleiter</div><div></div><div></div></div>
+            <div class="tr"><div>PRODUCTION</div><input id="roleProduction" value="Produktion"><div class="preview">Produktion</div><div></div><div></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="screen" data-step="3">
+    <div class="card">
+      <div class="screenhead"><div><h2>Lizenz & Module</h2><p>Funktionsumfang dieser Installation.</p></div></div>
+      <div class="grid2">
+        <div class="section">
+          <h3>Lizenz</h3>
+          <div class="field" data-required><label>Lizenz-ID <span class="req">*</span></label><input id="licenseId" placeholder="z. B. LIC-2026-0001"><div class="err">Pflichtfeld</div></div>
+          <div class="field"><label>Paket</label><select id="licensePackage"><option>Professional</option><option>Basic</option><option>Enterprise</option></select></div>
+          <div class="field"><label>Max. Benutzer</label><input id="maxUsers" type="number" value="25"></div>
+          <div class="field"><label>Gültig bis</label><input id="validUntil" type="date" value="2027-12-31"></div>
+        </div>
+        <div class="section">
+          <h3>Module</h3>
+          <div class="modulegrid">
+            <div class="module"><label><input type="checkbox" checked data-module="projects"> Projekte</label></div>
+            <div class="module"><label><input type="checkbox" checked data-module="planning"> Planung</label></div>
+            <div class="module"><label><input type="checkbox" checked data-module="personnel"> Personal</label></div>
+            <div class="module"><label><input type="checkbox" checked data-module="framework"> Rahmenaufträge</label></div>
+            <div class="module"><label><input type="checkbox" checked data-module="stock"> Bestand</label></div>
+            <div class="module"><label><input type="checkbox" checked data-module="purchasing"> Einkauf</label></div>
+            <div class="module"><label><input type="checkbox" data-module="chat"> Chat</label></div>
+            <div class="module"><label><input type="checkbox" data-module="kpi"> KPI</label></div>
+            <div class="module"><label><input type="checkbox" data-module="postcalc"> Nachkalkulation</label></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="screen" data-step="4">
+    <div class="card">
+      <div class="screenhead">
+        <div>
+          <h2>Bereiche</h2>
+          <p>Abteilungen und ihr Planungsmodell.</p>
+        </div>
+        <button class="btn" id="addDept">+ Abteilung</button>
+      </div>
+
+      <div class="table" id="deptTable">
+        <div class="th">
+          <div>Abteilung</div>
+          <div>Planungsmodell</div>
+          <div>Fachfunktion</div>
+          <div></div>
+        </div>
+      </div>
+
+      <div class="help" style="margin-top:12px">
+        <b>Zeitplanung:</b> Dauer wird direkt geplant. &nbsp;·&nbsp;
+        <b>Taktplanung:</b> Dauer ergibt sich aus Menge und Leistung/Takt. &nbsp;·&nbsp;
+        <b>Zeit + Takt:</b> beide Modelle sind möglich. &nbsp;·&nbsp;
+        <b>Tiefziehen:</b> Fachfunktion „Formatplanung“ innerhalb der Abteilung, kein eigenes Modul.
+      </div>
+    </div>
+  </section>
+
+  <section class="screen" data-step="5">
+    <div class="card">
+      <div class="screenhead"><div><h2>Benutzer</h2><p>Mindestens ein Administrator ist Pflicht.</p></div><button class="btn" id="addUser">+ Benutzer</button></div>
+      <div id="userList"></div>
+      <div class="help">Rollen: Admin, GF, AV, Kalkulation, Abteilungsleiter, Produktion.</div>
+    </div>
+  </section>
+
+  <section class="screen" data-step="6">
+    <div class="card">
+      <div class="screenhead"><div><h2>Datensicherung</h2><p>Lokales Backup und zweites Sicherungsziel.</p></div></div>
+      <div class="grid2">
+        <div>
+          <div class="field" data-required><label>Lokales Backup <span class="req">*</span></label><input id="backupLocal" value="D:\Produktionsplanung\Backups"><div class="err">Pflichtfeld</div></div>
+          <div class="field"><label>Zweites Backupziel</label><input id="backupSecond" placeholder="\\NAS\Produktionsplanung\Backups"></div>
+          <div class="field"><label>Aufbewahrung</label><select id="retention"><option>30 Tage</option><option>60 Tage</option><option>90 Tage</option></select></div>
+        </div>
+        <div class="section">
+          <h3>Backup-Test</h3>
+          <button class="btn primary" id="testBackup" style="width:100%">Testbackup ausführen</button>
+          <div id="backupResult" class="help" style="margin-top:10px">Noch nicht getestet.</div>
+          <button class="btn" id="testRestore" style="width:100%;margin-top:8px">Testrückspielung prüfen</button>
+          <div id="restoreResult" class="help" style="margin-top:10px">Noch nicht getestet.</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="screen" data-step="7">
+    <div class="card">
+      <div class="screenhead"><div><h2>Systemcheck</h2><p>Abschlussprüfung vor dem produktiven Start.</p></div><button class="btn primary" id="runCheck">Systemcheck starten</button></div>
+      <div class="systemcheck" id="checks"></div>
+      <div class="final hidden" id="readyBox">
+        <h2>System betriebsbereit</h2>
+        <p id="readyText"></p>
+      </div>
+      <div class="notice"><b>Prototype notice:</b> Concept, UI and prototype software owned by Jonas Bönsch. Demonstrator only.</div>
+    </div>
+  </section>
+
+  <div class="actions">
+    <button class="btn" id="back">← Zurück</button>
+    <button class="btn primary" id="next">Weiter →</button>
+  </div>
+</main>
+</div>
+
+<script>
+const meta=[
+  ["Installation","Server & Pfade"],
+  ["Firma","Unternehmensdaten"],
+  ["Begriffe & Nummern","FA / Projekt / Nummern"],
+  ["Lizenz & Module","Funktionsumfang"],
+  ["Bereiche","Abteilungen & Planungsmodell"],
+  ["Benutzer","Rollen & Zugriff"],
+  ["Datensicherung","Backup & Restore"],
+  ["Systemcheck","Betriebsbereit"]
+];
+let step=0, installed=false, backupOK=false, restoreOK=false;
+let departments=[
+  {name:"Konfektion",type:"TIME",formatPlanning:false},
+  {name:"Tiefziehen",type:"TIME_CYCLE",formatPlanning:true}
+];
+let users=[{name:"Admin",login:"admin",role:"Admin",dept:"Alle"}];
+
+const $=s=>document.querySelector(s);
+const $$=s=>Array.from(document.querySelectorAll(s));
+
+function save(){
+  const data={
+    step,installed,backupOK,restoreOK,departments,users,
+    company:{
+      name:$("#companyName").value,street:$("#street").value,zip:$("#zip").value,city:$("#city").value,
+      country:$("#country").value,timezone:$("#timezone").value,language:$("#language").value,accent:$("#accent").value
+    },
+    labels:{
+      fa:$("#labelFA").value,project:$("#labelProject").value,projectNo:$("#labelProjectNo").value,orderNo:$("#labelOrderNo").value,
+      dept:$("#labelDept").value,machine:$("#labelMachine").value,frame:$("#labelFrame").value,calloff:$("#labelCalloff").value,
+      mhd:$("#labelMhd").value,batch:$("#labelBatch").value
+    },
+    numbers:{
+      faPrefix:$("#faPrefix").value,faStart:$("#faStart").value,faDigits:$("#faDigits").value,
+      projectPrefix:$("#projectPrefix").value,projectStart:$("#projectStart").value,projectDigits:$("#projectDigits").value,
+      orderPrefix:$("#orderPrefix").value,orderStart:$("#orderStart").value,orderDigits:$("#orderDigits").value,
+      framePrefix:$("#framePrefix").value,frameStart:$("#frameStart").value,frameDigits:$("#frameDigits").value,
+      yearReset:$("#yearReset").value,yearInPrefix:$("#yearInPrefix").value
+    },
+    roleLabels:{
+      Admin:$("#roleAdmin").value,
+      GF:$("#roleGF").value,
+      AV:$("#roleAV").value,
+      Kalkulation:$("#roleCalc").value,
+      Abteilungsleiter:$("#roleDeptLead").value,
+      Produktion:$("#roleProduction").value
+    }
+  };
+  localStorage.setItem("ppSetupPrototypeV2",JSON.stringify(data));
+}
+function load(){
+  const raw=localStorage.getItem("ppSetupPrototypeV2"); if(!raw)return;
+  try{
+    const d=JSON.parse(raw);
+    installed=!!d.installed; backupOK=!!d.backupOK; restoreOK=!!d.restoreOK;
+    departments=(d.departments||departments).map(x=>({
+      name:x.name==="Format" ? "Tiefziehen" : x.name,
+      type:({LABOR_HOURS:"TIME",BATCH_PROCESS:"TIME",FORMAT:"TIME_CYCLE"}[x.type] || x.type || "TIME"),
+      formatPlanning: typeof x.formatPlanning==="boolean" ? x.formatPlanning : (x.name==="Tiefziehen" || x.name==="Format" || x.type==="FORMAT")
+    }));
+    users=d.users||users;
+    if(d.company){
+      for(const [k,v] of Object.entries(d.company)){
+        const map={name:"companyName",street:"street",zip:"zip",city:"city",country:"country",timezone:"timezone",language:"language",accent:"accent"};
+        if(map[k] && $("#"+map[k])) $("#"+map[k]).value=v;
+      }
+    }
+    if(d.labels){
+      const map={fa:"labelFA",project:"labelProject",projectNo:"labelProjectNo",orderNo:"labelOrderNo",dept:"labelDept",machine:"labelMachine",frame:"labelFrame",calloff:"labelCalloff",mhd:"labelMhd",batch:"labelBatch"};
+      for(const [k,v] of Object.entries(d.labels)) if(map[k] && $("#"+map[k])) $("#"+map[k]).value=v;
+    }
+    if(d.numbers){
+      for(const [k,v] of Object.entries(d.numbers)) if($("#"+k)) $("#"+k).value=v;
+    }
+    if(d.roleLabels){
+      const roleMap={Admin:"roleAdmin",GF:"roleGF",AV:"roleAV",Kalkulation:"roleCalc",Abteilungsleiter:"roleDeptLead",Produktion:"roleProduction"};
+      for(const [k,v] of Object.entries(d.roleLabels)){
+        if(roleMap[k] && $("#"+roleMap[k])) $("#"+roleMap[k]).value=v;
+      }
+    }
+  }catch(e){}
+}
+function renderSteps(){
+  $("#steps").innerHTML="";
+  meta.forEach((m,i)=>{
+    const d=document.createElement("div");
+    d.className="step"+(i===step?" active":"")+(i<step?" done":"");
+    d.innerHTML=`<div class="n">${i<step?"✓":i+1}</div><div><b>${m[0]}</b><div style="font-size:11px;opacity:.75">${m[1]}</div></div>`;
+    d.onclick=()=>{ if(i<=step){step=i;update()} };
+    $("#steps").appendChild(d);
+  });
+}
+function update(){
+  $$(".screen").forEach((s,i)=>s.classList.toggle("active",i===step));
+  renderSteps();
+  $("#pageTitle").textContent=meta[step][0];
+  $("#pageSub").textContent=meta[step][1];
+  $("#progress").style.width=((step+1)/meta.length*100)+"%";
+  $("#back").disabled=step===0;
+  $("#next").textContent=step===meta.length-1?"Einrichtung abschließen":"Weiter →";
+  updateCompanyPreview(); updateNamingPreview(); renderDepartments(); renderUsers();
+  save();
+}
+function validateScreen(index){
+  let ok=true;
+  const screen=$$(".screen")[index];
+  screen.querySelectorAll("[data-required]").forEach(w=>{
+    const input=w.querySelector("input,select");
+    const valid=!!String(input.value||"").trim();
+    w.classList.toggle("invalid",!valid); if(!valid)ok=false;
+  });
+  if(index===0 && !installed){$("#installMsg").textContent="Installation muss zuerst erfolgreich abgeschlossen werden.";ok=false}
+  if(index===5 && !users.some(u=>u.role==="Admin")){alert("Mindestens ein Administrator ist Pflicht.");ok=false}
+  if(index===6 && !backupOK){alert("Bitte Testbackup erfolgreich ausführen.");ok=false}
+  return ok;
+}
+
+$("#installBtn").onclick=()=>{
+  const vals=[$("#installPath").value,$("#dataPath").value,$("#backupPath").value,$("#port").value];
+  if(vals.some(v=>!String(v).trim())){ $("#installMsg").textContent="Pflichtdaten fehlen."; return; }
+  installed=true; $("#installState").textContent="installiert"; $("#installState").className="status ok";
+  $("#installBtn").textContent="Installiert ✓";
+  $("#installMsg").textContent="Dienst erstellt · Datenbank initialisiert · HTTPS-Port vorbereitet · Healthcheck OK.";
+  save();
+};
+
+function updateCompanyPreview(){
+  const n=$("#companyName").value.trim()||"Firmenname noch nicht gesetzt";
+  $("#companyPreview").innerHTML=`<b>${n}</b><br><span class="help">${$("#street").value||""} ${$("#zip").value||""} ${$("#city").value||""}</span>`;
+}
+["companyName","street","zip","city"].forEach(id=>$("#"+id).addEventListener("input",updateCompanyPreview));
+
+function pad(n,d){return String(n||1).padStart(Number(d)||6,"0")}
+function numberValue(prefix,start,digits){
+  const year=$("#yearInPrefix").value==="yes" ? new Date().getFullYear()+"-" : "";
+  return `${prefix}${year}${pad(start,digits)}`;
+}
+function updateNamingPreview(){
+  $("#previewFA").textContent=numberValue($("#faPrefix").value,$("#faStart").value,$("#faDigits").value);
+  $("#previewProject").textContent=numberValue($("#projectPrefix").value,$("#projectStart").value,$("#projectDigits").value);
+  $("#nFaTitle").textContent=$("#labelFA").value;
+  $("#nProjectTitle").textContent=$("#labelProject").value;
+  $("#labelPreview").innerHTML=`
+    <b>${$("#labelFA").value}</b><span>${numberValue($("#faPrefix").value,$("#faStart").value,$("#faDigits").value)}</span>
+    <b>${$("#labelProjectNo").value}</b><span>${numberValue($("#projectPrefix").value,$("#projectStart").value,$("#projectDigits").value)}</span>
+    <b>${$("#labelOrderNo").value}</b><span>${numberValue($("#orderPrefix").value,$("#orderStart").value,$("#orderDigits").value)}</span>
+    <b>${$("#labelDept").value}</b><span>Konfektion</span>
+    <b>${$("#labelMachine").value}</b><span>Linie 1</span>
+    <b>${$("#labelFrame").value}</b><span>${numberValue($("#framePrefix").value,$("#frameStart").value,$("#frameDigits").value)}</span>
+    <b>${$("#labelCalloff").value}</b><span>001</span>
+    <b>${$("#labelMhd").value}</b><span>31.12.2027</span>
+    <b>${$("#labelBatch").value}</b><span>CH-000001</span>`;
+  $("#numberPreview").innerHTML=`
+    <b>${$("#labelFA").value}</b><span>${numberValue($("#faPrefix").value,$("#faStart").value,$("#faDigits").value)}</span>
+    <b>${$("#labelProject").value}</b><span>${numberValue($("#projectPrefix").value,$("#projectStart").value,$("#projectDigits").value)}</span>
+    <b>Auftrag</b><span>${numberValue($("#orderPrefix").value,$("#orderStart").value,$("#orderDigits").value)}</span>
+    <b>${$("#labelFrame").value}</b><span>${numberValue($("#framePrefix").value,$("#frameStart").value,$("#frameDigits").value)}</span>`;
+  save();
+}
+["labelFA","labelProject","labelProjectNo","labelOrderNo","labelDept","labelMachine","labelFrame","labelCalloff","labelMhd","labelBatch",
+"faPrefix","faStart","faDigits","projectPrefix","projectStart","projectDigits","orderPrefix","orderStart","orderDigits",
+"framePrefix","frameStart","frameDigits","yearInPrefix","yearReset"].forEach(id=>$("#"+id).addEventListener("input",updateNamingPreview));
+$$(".tab").forEach(t=>t.onclick=()=>{
+  $$(".tab").forEach(x=>x.classList.remove("active"));t.classList.add("active");
+  $("#labelsTab").classList.toggle("hidden",t.dataset.tab!=="labels");
+  $("#numbersTab").classList.toggle("hidden",t.dataset.tab!=="numbers");
+  $("#rolesTab").classList.toggle("hidden",t.dataset.tab!=="roles");
+});
+
+function planningLabel(type){
+  return ({
+    TIME:"Zeitplanung",
+    CYCLE:"Taktplanung",
+    TIME_CYCLE:"Zeit + Takt"
+  })[type] || type;
+}
+
+function renderDepartments(){
+  const table=$("#deptTable");
+  table.querySelectorAll(".tr").forEach(x=>x.remove());
+
+  departments.forEach((d,i)=>{
+    const r=document.createElement("div");
+    r.className="tr";
+    r.innerHTML=`
+      <input value="${d.name}" data-i="${i}" class="deptName">
+
+      <select data-i="${i}" class="deptType">
+        <option value="TIME" ${d.type==="TIME"?"selected":""}>Zeitplanung</option>
+        <option value="CYCLE" ${d.type==="CYCLE"?"selected":""}>Taktplanung</option>
+        <option value="TIME_CYCLE" ${d.type==="TIME_CYCLE"?"selected":""}>Zeit + Takt</option>
+      </select>
+
+      <select data-i="${i}" class="deptFunction">
+        <option value="STANDARD" ${!d.formatPlanning?"selected":""}>Standard</option>
+        <option value="FORMAT" ${d.formatPlanning?"selected":""}>Tiefziehen · Formatplanung</option>
+      </select>
+
+      <button class="iconbtn deptDel" data-i="${i}" title="Abteilung entfernen">×</button>`;
+
+    table.appendChild(r);
+  });
+
+  $$(".deptName").forEach(x=>x.oninput=e=>{
+    departments[e.target.dataset.i].name=e.target.value;
+    save();
+  });
+
+  $$(".deptType").forEach(x=>x.onchange=e=>{
+    departments[e.target.dataset.i].type=e.target.value;
+    save();
+  });
+
+  $$(".deptFunction").forEach(x=>x.onchange=e=>{
+    const d=departments[e.target.dataset.i];
+    d.formatPlanning=e.target.value==="FORMAT";
+    save();
+  });
+
+  $$(".deptDel").forEach(x=>x.onclick=e=>{
+    if(departments.length>1){
+      departments.splice(Number(e.target.dataset.i),1);
+      renderDepartments();
+      save();
+    }
+  });
+}
+
+$("#addDept").onclick=()=>{
+  departments.push({name:"Neue Abteilung",type:"TIME",formatPlanning:false});
+  renderDepartments();
+  save();
+};
+
+
+function roleLabel(role){
+  const map={
+    Admin:$("#roleAdmin")?.value||"Admin",
+    GF:$("#roleGF")?.value||"Geschäftsführung",
+    AV:$("#roleAV")?.value||"Arbeitsvorbereitung",
+    Kalkulation:$("#roleCalc")?.value||"Kalkulation",
+    Abteilungsleiter:$("#roleDeptLead")?.value||"Abteilungsleiter",
+    Produktion:$("#roleProduction")?.value||"Produktion"
+  };
+  return map[role] || role;
+}
+
+function roleOptions(selected){
+  const roles=["Admin","GF","AV","Kalkulation","Abteilungsleiter","Produktion"];
+  return roles.map(r=>`<option value="${r}" ${selected===r?"selected":""}>${roleLabel(r)}</option>`).join("");
+}
+
+function renderUsers(){
+  $("#userList").innerHTML="";
+  users.forEach((u,i)=>{
+    const r=document.createElement("div");
+    r.className="userrow";
+    r.innerHTML=`
+      <input class="uName" data-i="${i}" value="${u.name}">
+      <input class="uLogin" data-i="${i}" value="${u.login}">
+      <select class="uRole" data-i="${i}">${roleOptions(u.role)}</select>
+      <button class="iconbtn uDel" data-i="${i}">×</button>`;
+    $("#userList").appendChild(r);
+  });
+
+  $$(".uName").forEach(x=>x.oninput=e=>{users[e.target.dataset.i].name=e.target.value;save()});
+  $$(".uLogin").forEach(x=>x.oninput=e=>{users[e.target.dataset.i].login=e.target.value;save()});
+  $$(".uRole").forEach(x=>x.onchange=e=>{users[e.target.dataset.i].role=e.target.value;save()});
+  $$(".uDel").forEach(x=>x.onclick=e=>{users.splice(Number(e.target.dataset.i),1);renderUsers();save()});
+}
+
+$("#addUser").onclick=()=>{
+  users.push({name:"Neuer Benutzer",login:"user"+(users.length+1),role:"Produktion",dept:""});
+  renderUsers();
+  save();
+};
+
+
+
+
+["roleAdmin","roleGF","roleAV","roleCalc","roleDeptLead","roleProduction"].forEach(id=>{
+  $("#"+id).addEventListener("input",()=>{
+    const input=$("#"+id);
+    const preview=input.closest(".tr")?.querySelector(".preview");
+    if(preview) preview.textContent=input.value || "—";
+    renderUsers();
+    save();
+  });
+});
+
+$("#testBackup").onclick=()=>{backupOK=true;$("#backupResult").textContent="PASS · Testbackup erstellt und Prüfsumme verifiziert.";$("#backupResult").style.color="var(--ok)";save()};
+$("#testRestore").onclick=()=>{if(!backupOK){$("#restoreResult").textContent="Zuerst Testbackup ausführen.";return}restoreOK=true;$("#restoreResult").textContent="PASS · Testrückspielung erfolgreich.";$("#restoreResult").style.color="var(--ok)";save()};
+
+$("#runCheck").onclick=()=>{
+  const rows=[
+    ["Installation",installed],
+    ["Firmendaten",!!$("#companyName").value.trim() && !!$("#city").value.trim()],
+    ["Begriffe / Nummern",!!$("#faPrefix").value && !!$("#projectPrefix").value],
+    ["Lizenz",!!$("#licenseId").value.trim()],
+    ["Mindestens eine Abteilung",departments.length>0],
+    ["Mindestens ein Admin",users.some(u=>u.role==="Admin")],
+    ["Lokales Backup",backupOK],
+    ["Restore-Test",restoreOK],
+    ["HTTPS-Port",!!$("#port").value],
+    ["Updatekanal","Professional"=== $("#licensePackage").value || true]
+  ];
+  $("#checks").innerHTML="";
+  rows.forEach(([name,ok])=>{
+    const d=document.createElement("div");d.className="checkrow";
+    d.innerHTML=`<span>${name}</span><span class="status ${ok?"ok":"warn"}">${ok?"PASS":"OFFEN"}</span>`;
+    $("#checks").appendChild(d);
+  });
+  const all=rows.every(x=>x[1]);
+  $("#readyBox").classList.toggle("hidden",!all);
+  if(all)$("#readyText").textContent=`${$("#companyName").value} kann jetzt mit ${departments.length} Abteilung(en) und ${users.length} Benutzer(n) produktiv eingerichtet werden.`;
+};
+
+$("#next").onclick=()=>{
+  if(step===meta.length-1){$("#runCheck").click();return}
+  if(!validateScreen(step))return;
+  step++;update();
+};
+$("#back").onclick=()=>{if(step>0){step--;update()}};
+
+load();
+renderDepartments();renderUsers();updateNamingPreview();updateCompanyPreview();update();
+</script>
+</body>
+</html>
