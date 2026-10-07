@@ -9,30 +9,9 @@
        winget install -e --id Python.Python.3.13 --scope machine
    - Empfohlen: feste IP bzw. DHCP-Reservierung fuer den Host.
 
-2. BESTEHENDE INSTALLATION AKTUALISIEREN (Normalfall)
-   1) Paket lokal entpacken (nicht OneDrive/Netzlaufwerk).
-   2) PowerShell ALS ADMINISTRATOR oeffnen, in den entpackten Ordner wechseln:
-        Set-ExecutionPolicy -Scope Process Bypass
-        .\UPDATE_LIVE.ps1
-   3) Der Updater:
-        - erstellt ein Online-Backup, stoppt den Server, erstellt ein finales Backup,
-        - sichert den bisherigen Programmstand nach update_backups\pre_V<version>_<zeit>\
-          (inkl. Datenbank vor dem Update),
-        - kopiert die neuen Dateien und entfernt veraltete (z. B. alte V11-Updater),
-        - sperrt den Live-Ordner (nur SYSTEM/Administratoren duerfen schreiben),
-        - richtet den Servertask und den Backup-Task ein, startet und prueft Version + HTTP.
-      Bei einem Fehler werden alter Programmstand UND Datenbank automatisch zurueckgespielt.
-      Ein aelteres Paket laesst sich nicht ueber ein neueres installieren (Downgrade-Schutz).
-   4) Danach:  .\CHECK_LAN_SICHERHEIT.ps1  (aus C:\ProgramData\Maschinenplanung)
-   5) Alle Browser einmal mit Strg+F5 neu laden.
-   6) V12.7: Beim ersten Start werden Konfektion, Siebdruck und Tiefziehen auf Maschinen/Linien
-      umgestellt (je Konfektion eine Linie, Siebdruck/Tiefziehen je eine Maschine, falls keine da).
-      Offene Arbeitsgaenge landen im Wochenplan, erledigte in der Historie. Danach unter
-      System -> Maschinen & Linien Namen, weitere Maschinen und die Besetzung der Linien pruefen.
-   7) Ab V12.4.5/V12.6 wird beim ersten Start die Benutzertabelle um neue Rollen (Arbeitsvorbereitung,
-      Vertrieb) erweitert. Dabei werden alle Sitzungen beendet: jeder meldet sich einmal neu an.
 
-2b. UPDATE DIREKT VON GITHUB (Windows-Benutzer, z. B. <Benutzername>) - ab V12.10.2 nur aus Releases
+
+2a. UPDATE DIREKT VON GITHUB (Windows-Benutzer, z. B. <Benutzername>) - ab V12.10.2 nur aus Releases
    Normale PowerShell (kein Administrator):
         powershell -ExecutionPolicy Bypass -File C:\ProgramData\Maschinenplanung\Update_von_GitHub.ps1
    - Nimmt das neueste GitHub-Release; dessen Commit muss in "main" liegen. Bestimmte Version: -Tag v12.10.2
