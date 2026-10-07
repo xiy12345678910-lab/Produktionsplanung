@@ -40,7 +40,7 @@ server.create_or_reset_admin("admin", ${JSON.stringify(PASS)})
 with server.DB_LOCK, server.db_session() as con:
     old = json.loads(con.execute("SELECT json FROM state WHERE id=1").fetchone()["json"])
     new = json.loads(json.dumps(old))
-    new["workSteps"].append({"id": "ws_c1", "sequence": 10, "planningType": "MACHINE", "pos": 10, "departmentId": "cnc", "projectId": "", "predecessorIds": [], "fs": "FS 4711", "ab": "", "wt": "", "machineId": "m1", "altMachineId": "", "allowAlternative": False, "order": "FS 4711", "articleNo": "", "description": "Deckel fräsen", "targetQty": 10, "dueDate": "", "baselinePlan": None, "hours": 3, "goodQty": 0, "scrapQty": 0, "status": "planned", "direction": "forward", "anchorMode": "none", "requiredStart": "", "requiredFinish": "", "createdAt": "2026-10-01T08:00:00Z", "lockedStart": "", "lockedSegments": [], "actualStartedAt": "", "runningSince": "", "pausedAt": "", "pauseIntervals": [], "remainingHours": None, "lastStatusCheckAt": ""})
+    new["workSteps"].append({"id": "ws_c1", "sequence": 10, "planningType": "MACHINE", "pos": 10, "departmentId": "cnc", "projectId": "", "predecessorIds": [], "fa": "FA 4711", "ab": "", "wt": "", "machineId": "m1", "altMachineId": "", "allowAlternative": False, "order": "FA 4711", "articleNo": "", "description": "Deckel fräsen", "targetQty": 10, "dueDate": "", "baselinePlan": None, "hours": 3, "goodQty": 0, "scrapQty": 0, "status": "planned", "direction": "forward", "anchorMode": "none", "requiredStart": "", "requiredFinish": "", "createdAt": "2026-10-01T08:00:00Z", "lockedStart": "", "lockedSegments": [], "actualStartedAt": "", "runningSince": "", "pausedAt": "", "pauseIntervals": [], "remainingHours": None, "lastStatusCheckAt": ""})
     ok, code, reason = server.validate_state(old, new)
     if not ok:
         print("SEED-FEHLER", code, reason, flush=True); sys.exit(1)
@@ -103,21 +103,25 @@ try {
 
   // /-Verweis + @-Erwähnung
   await lena.click('#chatInput');
+  await lena.fill('#chatInput','/FS4711');
+  await lena.waitForTimeout(200);
+  check((await lena.textContent('#chatSug')).includes('FA 4711'),'Alter /FS-Verweis findet den kanonischen FA');
+  await lena.fill('#chatInput','');
   await lena.keyboard.type('Bitte /4711');
   await lena.waitForTimeout(200);
-  check(await lena.locator('#chatSug.on [data-sug]').count() >= 1 && (await lena.textContent('#chatSug')).includes('FS 4711'), '„/“ schlägt Auftrag FS 4711 vor');
+  check(await lena.locator('#chatSug.on [data-sug]').count() >= 1 && (await lena.textContent('#chatSug')).includes('FA 4711'), '„/“ schlägt Auftrag FA 4711 vor');
   await lena.keyboard.press('Enter');
   await lena.keyboard.type('vorziehen @to');
   await lena.waitForTimeout(200);
   check((await lena.textContent('#chatSug')).includes('@tom'), '„@“ schlägt Person vor');
   await lena.keyboard.press('Enter');
-  check((await lena.inputValue('#chatInput')) === 'Bitte /FS 4711 vorziehen @tom ', `Eingabe zeigt lesbare Verweise (${await lena.inputValue('#chatInput')})`);
+  check((await lena.inputValue('#chatInput')) === 'Bitte /FA 4711 vorziehen @tom ', `Eingabe zeigt lesbare Verweise (${await lena.inputValue('#chatInput')})`);
   await lena.keyboard.press('Enter');
   await lena.waitForTimeout(500);
   check(await lena.locator('.chatMsg.me .chatRef').count() === 1, 'Gesendete Nachricht enthält Auftrags-Link');
   await shot(lena, '1_klein');
   const stored = await lena.evaluate(async () => { const c = (await (await fetch('/api/chat/channels')).json()).channels.find(x => x.name === 'CNC Frühschicht'); return (await (await fetch('/api/chat/messages?channel=' + c.id)).json()).messages[0].text; });
-  check(stored === 'Bitte ⟦o:ws_c1|FS 4711⟧ vorziehen ⟦u:tom⟧', `Server speichert Token (${stored})`);
+  check(stored === 'Bitte ⟦o:ws_c1|FA 4711⟧ vorziehen ⟦u:tom⟧', `Server speichert Token (${stored})`);
 
   // Groß/Klein
   await lena.click('#chatSize');
@@ -143,7 +147,7 @@ try {
   check(!(await tom.locator('#chatBadge').isVisible()), 'Nach dem Lesen kein Zähler mehr');
   await tom.locator('.chatRef').first().click();
   await tom.waitForTimeout(500);
-  check(await tom.evaluate(() => document.querySelector('.view.active')?.id) === 'orders' && (await tom.inputValue('#searchOrders')) === 'FS 4711', 'Link öffnet die Auftragsliste mit FS 4711');
+  check(await tom.evaluate(() => document.querySelector('.view.active')?.id) === 'orders' && (await tom.inputValue('#searchOrders')) === 'FA 4711', 'Link öffnet die Auftragsliste mit FA 4711');
   // Antwort live bei lena
   if (!(await tom.locator('#chatPanel.open').count())) await tom.click('#chatFab');
   await tom.waitForTimeout(300);

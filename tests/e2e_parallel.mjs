@@ -38,8 +38,8 @@ with server.DB_LOCK, server.db_session() as con:
     new = json.loads(json.dumps(old))
     new["machines"].append({"id": "k1", "name": "Linie K1", "departmentId": "konf1", "kind": "line", "crew": 1, "lanes": 2, "setupMinutes": 0, "start": "2026-09-07T06:30", "committedUntil": "", "defaultShiftMode": "1", "staffRequired": 0})
     def step(i):
-        fs = f"FS 800{i}"
-        return {"id": f"ws_k{i}", "sequence": i * 10, "planningType": "MACHINE", "pos": i * 10, "departmentId": "konf1", "projectId": "", "predecessorIds": [], "fs": fs, "ab": "", "wt": "", "machineId": "k1", "altMachineId": "", "allowAlternative": False, "order": fs, "articleNo": "", "description": "", "targetQty": 0, "dueDate": "", "baselinePlan": None, "hours": 4, "goodQty": 0, "scrapQty": 0, "status": "planned", "direction": "forward", "anchorMode": "none", "requiredStart": "", "requiredFinish": "", "createdAt": "2026-10-01T08:00:00Z", "lockedStart": "", "lockedSegments": [], "actualStartedAt": "", "runningSince": "", "pausedAt": "", "pauseIntervals": [], "remainingHours": None, "lastStatusCheckAt": ""}
+        fs = f"FA 800{i}"
+        return {"id": f"ws_k{i}", "sequence": i * 10, "planningType": "MACHINE", "pos": i * 10, "departmentId": "konf1", "projectId": "", "predecessorIds": [], "fa": fs, "ab": "", "wt": "", "machineId": "k1", "altMachineId": "", "allowAlternative": False, "order": fs, "articleNo": "", "description": "", "targetQty": 0, "dueDate": "", "baselinePlan": None, "hours": 4, "goodQty": 0, "scrapQty": 0, "status": "planned", "direction": "forward", "anchorMode": "none", "requiredStart": "", "requiredFinish": "", "createdAt": "2026-10-01T08:00:00Z", "lockedStart": "", "lockedSegments": [], "actualStartedAt": "", "runningSince": "", "pausedAt": "", "pauseIntervals": [], "remainingHours": None, "lastStatusCheckAt": ""}
     new["workSteps"] += [step(1), step(2), step(3)]
     ok, code, reason = server.validate_state(old, new)
     if not ok:
@@ -82,9 +82,9 @@ try {
     return page.evaluate(() => Object.fromEntries([...document.querySelectorAll('#ordersBody tr[data-id]')].map(tr => [tr.querySelector('strong').textContent, { start: tr.querySelector('.planWhen').textContent, end: tr.querySelector('.planWhen + .reqDate').textContent, conflict: tr.querySelector('.conflictText')?.textContent || '' }])));
   };
   let p = await plan();
-  check(p['FS 8001'] && p['FS 8001'].start !== '—', `FS 8001 geplant (${p['FS 8001']?.start})`);
-  check(p['FS 8001']?.start === p['FS 8002']?.start, `2 Parallelplätze: FS 8001 und FS 8002 starten gleichzeitig (${p['FS 8001']?.start} / ${p['FS 8002']?.start})`);
-  check(p['FS 8003']?.start !== p['FS 8001']?.start && p['FS 8003']?.start === p['FS 8001']?.end.replace(/^bis /, ''), `FS 8003 folgt, sobald ein Platz frei wird (${p['FS 8003']?.start})`);
+  check(p['FA 8001'] && p['FA 8001'].start !== '—', `FA 8001 geplant (${p['FA 8001']?.start})`);
+  check(p['FA 8001']?.start === p['FA 8002']?.start, `2 Parallelplätze: FA 8001 und FA 8002 starten gleichzeitig (${p['FA 8001']?.start} / ${p['FA 8002']?.start})`);
+  check(p['FA 8003']?.start !== p['FA 8001']?.start && p['FA 8003']?.start === p['FA 8001']?.end.replace(/^bis /, ''), `FA 8003 folgt, sobald ein Platz frei wird (${p['FA 8003']?.start})`);
 
   // Parallelplätze in den Einstellungen auf 1 → alles nacheinander
   await page.click('#navSystem');
@@ -97,7 +97,7 @@ try {
   let st = await serverState(page);
   check(!('lanes' in st.machines.find(m => m.id === 'k1')), 'Parallel = 1 gespeichert (Feld entfällt)');
   p = await plan();
-  check(new Set([p['FS 8001']?.start, p['FS 8002']?.start, p['FS 8003']?.start]).size === 3, 'Ohne Parallelplätze: drei Aufträge nacheinander');
+  check(new Set([p['FA 8001']?.start, p['FA 8002']?.start, p['FA 8003']?.start]).size === 3, 'Ohne Parallelplätze: drei Aufträge nacheinander');
 
   await page.click('#navSystem');
   await page.waitForTimeout(300);
@@ -110,7 +110,7 @@ try {
 
   // Zwei Aufträge freigeben: Server prüft MP-PLAN-058 spurfähig
   p = await plan();
-  for (const fs of ['FS 8001', 'FS 8002']) {
+  for (const fs of ['FA 8001', 'FA 8002']) {
     await page.locator(`#ordersBody tr:has(strong:text-is("${fs}")) [data-act="prodstart"]`).click();
     await page.waitForSelector('#prodStartModal.show, .modal.show #psReleaseOnly', { timeout: 5000 }).catch(() => {});
     await page.click('#psReleaseOnly');
@@ -120,17 +120,17 @@ try {
     await page.waitForTimeout(900);
   }
   st = await serverState(page);
-  const rel = st.workSteps.filter(o => o.status === 'released').map(o => o.fs).sort();
-  check(rel.join(',') === 'FS 8001,FS 8002', `Zwei gleichzeitige Freigaben auf einer Linie mit 2 Plätzen akzeptiert (${rel.join(', ')})`);
+  const rel = st.workSteps.filter(o => o.status === 'released').map(o => o.fa).sort();
+  check(rel.join(',') === 'FA 8001,FA 8002', `Zwei gleichzeitige Freigaben auf einer Linie mit 2 Plätzen akzeptiert (${rel.join(', ')})`);
   const errShown = await page.evaluate(() => document.getElementById('errorModal')?.classList.contains('show') ? document.getElementById('errorModal').innerText.replace(/\s+/g, ' ') : '');
   check(!errShown, 'Keine Fehlermeldung bei paralleler Freigabe ' + errShown.slice(0, 160));
-  const s1 = st.workSteps.find(o => o.fs === 'FS 8001').baselinePlan.segments[0], s2 = st.workSteps.find(o => o.fs === 'FS 8002').baselinePlan.segments[0];
+  const s1 = st.workSteps.find(o => o.fa === 'FA 8001').baselinePlan.segments[0], s2 = st.workSteps.find(o => o.fa === 'FA 8002').baselinePlan.segments[0];
   check(new Date(s1.start) < new Date(s2.end) && new Date(s2.start) < new Date(s1.end), `Freigegebene Planstände überlappen (${s1.start} / ${s2.start})`);
 
-  // Server: dritte überlappende Freigabe wird abgelehnt (Kopie von FS 8002 mit gleichem Planstand)
+  // Server: dritte überlappende Freigabe wird abgelehnt (Kopie von FA 8002 mit gleichem Planstand)
   const denied = await page.evaluate(async () => {
     const r = await (await fetch('/api/state', { cache: 'no-store' })).json();
-    const a = r.data.workSteps.find(o => o.fs === 'FS 8002'), c = r.data.workSteps.find(o => o.fs === 'FS 8003');
+    const a = r.data.workSteps.find(o => o.fa === 'FA 8002'), c = r.data.workSteps.find(o => o.fa === 'FA 8003');
     c.status = 'released';
     c.baselinePlan = JSON.parse(JSON.stringify(a.baselinePlan));
     c.baselinePlan.segments = c.baselinePlan.segments.map(s => ({ ...s, orderId: c.id }));

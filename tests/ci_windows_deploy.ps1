@@ -1,4 +1,4 @@
-# Echtes Windows-Deploy in CI (windows-latest, Administrator): alten Stand mit seinem eigenen Setup_Windows.ps1 installieren,
+﻿# Echtes Windows-Deploy in CI (windows-latest, Administrator): alten Stand mit seinem eigenen Setup_Windows.ps1 installieren,
 # Testdaten per API anlegen, mit dem aktuellen UPDATE_LIVE.ps1 aktualisieren, Health + Datenvergleich (tests/deploy_lib.py).
 # Aufruf:  ./tests/ci_windows_deploy.ps1 -OldCommit dac0860 -Scenario ci|noci
 #
@@ -155,6 +155,50 @@ Check ($code -ne 0) 'defektes Paket: UPDATE_LIVE bricht im Vorabtest ab'
 Check ((Health $Url) -eq $newVer) 'defektes Paket: Live-Server laeuft unveraendert'
 Check (Py fingerprint --url $Url --seed (Join-Path $Work 'seed.json') --out (Join-Path $Work 'fp_3.json')) 'Fingerabdruck nach dem Abbruch'
 Check (Py same --a (Join-Path $Work 'fp_2.json') --b (Join-Path $Work 'fp_3.json')) 'defektes Paket: Daten unveraendert'
+
+# ---------------- 7. Generic admin-update installation N -> N+1 -> N+2 ----------------
+# Real Windows tasks/restart/backup/rollback; trusted download/hash checks run in test_updates.py.
+function Future-Package([int]$Increment, [bool]$BreakMigration = $false) {
+    $dir = Join-Path $Work ("future_$Increment" + $(if ($BreakMigration) { '_broken' } else { '' }))
+    New-Item -ItemType Directory -Path $dir -Force | Out-Null
+    foreach ($name in $MP_AppFiles) { Copy-Item -LiteralPath (Join-Path $new $name) -Destination $dir }
+    $v = [version]$newVer
+    $next = "$($v.Major).$($v.Minor).$($v.Build + $Increment)"
+    foreach ($name in @('server.py', 'index.html')) {
+        $f = Join-Path $dir $name
+        $content = [IO.File]::ReadAllText($f).Replace($newVer, $next)
+        if ($BreakMigration -and $name -eq 'server.py') {
+            # Preflight copy passes; the live migration fails after a deliberate DB change.
+            $inject = "    init_db()`n    if BASE.name == 'Maschinenplanung':`n        with db_session() as con:`n            con.execute('UPDATE state SET revision=revision+99 WHERE id=1')`n        raise SystemExit(9)"
+            $content = $content.Replace('    init_db()', $inject)
+        }
+        [IO.File]::WriteAllText($f, $content, (New-Object Text.UTF8Encoding($false)))
+    }
+    return [PSCustomObject]@{ Path = $dir; Version = $next }
+}
+$jobPath = Join-Path $Base 'updates\status.json'
+New-Item -ItemType Directory -Path (Split-Path -Parent $jobPath) -Force | Out-Null
+foreach ($increment in @(1, 2)) {
+    $future = Future-Package $increment
+    Utf8Bom $jobPath (@{ jobId = '0123456789abcdef01234567'; stage = 'preflight'; actor = 'admin'; version = $future.Version } | ConvertTo-Json)
+    Check (Py fingerprint --url $Url --seed (Join-Path $Work 'seed.json') --out (Join-Path $Work "before_generic_$increment.json")) 'Fingerabdruck vor generischem Update'
+    $code = Run-PS (Join-Path $future.Path 'UPDATE_LIVE.ps1') @('-UpdateJobPath', $jobPath) (Join-Path $Work "generic_$increment.log")
+    Check ($code -eq 0 -and (Health $Url) -eq $future.Version) "Generisches Update auf $($future.Version) mit echtem Task-Neustart"
+    $jobState = Get-Content -LiteralPath $jobPath -Raw | ConvertFrom-Json
+    Check ($jobState.stage -eq 'complete' -and -not (Test-Path (Join-Path $Base 'updates\installing'))) 'Update abgeschlossen, Wartungssperre entfernt'
+    Check (Py fingerprint --url $Url --seed (Join-Path $Work 'seed.json') --out (Join-Path $Work "after_generic_$increment.json")) 'Fingerabdruck nach generischem Update'
+    Check (Py same --a (Join-Path $Work "before_generic_$increment.json") --b (Join-Path $Work "after_generic_$increment.json")) 'Generisches Update erhaelt Daten und Konfiguration'
+}
+$beforeFailure = Health $Url
+Check (Py fingerprint --url $Url --seed (Join-Path $Work 'seed.json') --out (Join-Path $Work 'before_rollback.json')) 'Fingerabdruck vor Migrationsfehler'
+$future = Future-Package 3 $true
+Utf8Bom $jobPath (@{ jobId = '0123456789abcdef01234567'; stage = 'preflight'; actor = 'admin'; version = $future.Version } | ConvertTo-Json)
+$code = Run-PS (Join-Path $future.Path 'UPDATE_LIVE.ps1') @('-UpdateJobPath', $jobPath) (Join-Path $Work 'generic_rollback.log')
+Check ($code -ne 0 -and (Health $Url) -eq $beforeFailure) 'Migrationsfehler stellt vorherige laufende Version wieder her'
+$jobState = Get-Content -LiteralPath $jobPath -Raw | ConvertFrom-Json
+Check ($jobState.stage -eq 'failed' -and $jobState.rolledBack) 'Rollback-Healthcheck erfolgreich und Fehlerstatus gespeichert'
+Check (Py fingerprint --url $Url --seed (Join-Path $Work 'seed.json') --out (Join-Path $Work 'after_rollback.json')) 'Fingerabdruck nach Rollback'
+Check (Py same --a (Join-Path $Work 'before_rollback.json') --b (Join-Path $Work 'after_rollback.json')) 'Migrationsfehler verliert keine Daten/Revision/History/Config'
 
 if ($Fail -gt 0) { Write-Host "$Fail Pruefung(en) fehlgeschlagen" -ForegroundColor Red; exit 1 }
 Write-Host 'Alle Pruefungen bestanden' -ForegroundColor Green

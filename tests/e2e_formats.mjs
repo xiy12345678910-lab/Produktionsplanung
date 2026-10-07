@@ -42,8 +42,8 @@ with server.DB_LOCK, server.db_session() as con:
     new = json.loads(json.dumps(old))
     new["machines"].append({"id": "tz1", "name": "TZ 1", "departmentId": "thermoforming", "setupMinutes": 0, "start": "2026-09-07T06:30", "committedUntil": "", "defaultShiftMode": "1", "staffRequired": 1, "crew": 1})
     def step(i, fs, qty):
-        return {"id": f"ws_tz{i}", "sequence": i * 10, "planningType": "MACHINE", "pos": i * 10, "departmentId": "thermoforming", "projectId": "", "predecessorIds": [], "fs": fs, "ab": "", "wt": "", "machineId": "tz1", "altMachineId": "", "allowAlternative": False, "order": fs, "articleNo": "", "description": f"Schale {i}", "targetQty": qty, "dueDate": "", "baselinePlan": None, "hours": 2, "goodQty": 0, "scrapQty": 0, "status": "planned", "direction": "forward", "anchorMode": "none", "requiredStart": "", "requiredFinish": "", "createdAt": "2026-10-01T08:00:00Z", "lockedStart": "", "lockedSegments": [], "actualStartedAt": "", "runningSince": "", "pausedAt": "", "pauseIntervals": [], "remainingHours": None, "lastStatusCheckAt": ""}
-    new["workSteps"] += [step(1, "FS 7001", 100), step(2, "FS 7002", 60)]
+        return {"id": f"ws_tz{i}", "sequence": i * 10, "planningType": "MACHINE", "pos": i * 10, "departmentId": "thermoforming", "projectId": "", "predecessorIds": [], "fa": fs, "ab": "", "wt": "", "machineId": "tz1", "altMachineId": "", "allowAlternative": False, "order": fs, "articleNo": "", "description": f"Schale {i}", "targetQty": qty, "dueDate": "", "baselinePlan": None, "hours": 2, "goodQty": 0, "scrapQty": 0, "status": "planned", "direction": "forward", "anchorMode": "none", "requiredStart": "", "requiredFinish": "", "createdAt": "2026-10-01T08:00:00Z", "lockedStart": "", "lockedSegments": [], "actualStartedAt": "", "runningSince": "", "pausedAt": "", "pauseIntervals": [], "remainingHours": None, "lastStatusCheckAt": ""}
+    new["workSteps"] += [step(1, "FA 7001", 100), step(2, "FA 7002", 60)]
     ok, code, reason = server.validate_state(old, new)
     if not ok:
         print("SEED-FEHLER", code, reason, flush=True); sys.exit(1)
@@ -149,7 +149,7 @@ try {
   await lead.locator('[data-fm-take]').first().click();
   st = await until(lead, s => s.formats[0].tools.length === 2 && s.formats[0].tools.every(t => t.stepId), 'Beide Aufträge auf dem Format (mit Verknüpfung)');
 
-  const t1 = st.formats[0].tools.find(t => t.fs === 'FS 7001').id;
+  const t1 = st.formats[0].tools.find(t => t.fa === 'FA 7001').id;
   const setTool = async (id, k, v) => { const el = lead.locator(`[data-fmtool="${id}"][data-k="${k}"]`); await el.fill(String(v)); await el.press('Tab'); await lead.waitForTimeout(350); };
   await setTool(t1, 'wkz', 'wkz-100');
   await setTool(t1, 'l', 300);
@@ -158,7 +158,7 @@ try {
   await setTool(t1, 'n', 2);
   st = await until(lead, s => { const t = s.formats[0].tools.find(x => x.id === t1); return t.wkz === 'WKZ-100' && t.l === 300 && t.n === 2; }, 'WKZ-Nr. (Großschrift), Maße und Nutzen gespeichert');
 
-  // Laufzeit: FS 7001 100 Stk / 2 Nutzen = 50 Takte, FS 7002 60 Stk / 1 = 60 Takte → 60 Takte × 12 s = 0,2 h
+  // Laufzeit: FA 7001 100 Stk / 2 Nutzen = 50 Takte, FA 7002 60 Stk / 1 = 60 Takte → 60 Takte × 12 s = 0,2 h
   const kpi = await lead.evaluate(() => [...document.querySelectorAll('.fmKpis b')].map(b => b.textContent));
   check(kpi[0] === '60', `Takte = 60 (${kpi[0]})`);
   check(kpi[2] === '0,2 h', `Laufzeit = 0,2 h (${kpi.join(' | ')} · Takt-ID ${st.formats[0].taktId} · Maschine ${st.formats[0].machineId} · Takte ${JSON.stringify(st.machines.find(m => m.id === 'tz1').takte)})`);
@@ -170,7 +170,7 @@ try {
   st = await until(lead, s => s.workSteps.some(o => o.formatId === s.formats[0].id), 'Format-Auftrag im Wochenplan (Server)');
   const fo = st.workSteps.find(o => o.formatId);
   check(!st.workSteps.some(o => ['ws_tz1', 'ws_tz2'].includes(o.id)), 'Übernommene Einzelaufträge ersetzt');
-  check(fo.fs === fmtNumber && fo.machineId === 'tz1' && Math.abs(fo.hours - 0.2) < 1e-9 && fo.targetQty === 160, `Format-Auftrag: FS ${fo.fs}, ${fo.hours} h, ${fo.targetQty} Stk`);
+  check(fo.fa === fmtNumber && fo.machineId === 'tz1' && Math.abs(fo.hours - 0.2) < 1e-9 && fo.targetQty === 160, `Format-Auftrag: FA ${fo.fa}, ${fo.hours} h, ${fo.targetQty} Stk`);
   check(st.formats[0].workStepId === fo.id, 'Format kennt seinen Auftrag');
 
   // Änderung am Format aktualisiert den geplanten Auftrag
@@ -187,9 +187,9 @@ try {
   await lead.waitForTimeout(300);
   const hit = await lead.evaluate(() => document.querySelector('.fmItem.stored')?.textContent || '');
   check(hit.includes('Regal A3') && hit.includes('tzlead hat es hier abgelegt'), 'Suche nach WKZ-Nr. findet eingelagertes Format mit Lagerort');
-  await lead.fill('#fmSearch', 'FS 7002');
+  await lead.fill('#fmSearch', 'FA 7002');
   await lead.waitForTimeout(300);
-  check(await lead.locator('.fmItem.stored').count() === 1, 'Suche nach FS-Nr. findet eingelagertes Format');
+  check(await lead.locator('.fmItem.stored').count() === 1, 'Suche nach FA-Nr. findet eingelagertes Format');
   await lead.fill('#fmSearch', 'gibtsnicht');
   await lead.waitForTimeout(300);
   check(await lead.locator('.fmItem').count() === 0, 'Suche ohne Treffer zeigt kein Format');
@@ -213,17 +213,17 @@ try {
   await lead.click('#addOrder2');
   await lead.waitForTimeout(300);
   check(await lead.locator('#qToFormat').isVisible(), 'Neuer Auftrag (Tiefziehen): Knopf "Anlegen & auf Format" sichtbar');
-  await lead.fill('#qFS', 'FS 7100');
+  await lead.fill('#qFA', 'FA 7100');
   await lead.fill('#qQty', '40');
   await lead.click('#qToFormat');
-  st = await until(lead, s => s.formats.length === 3 && s.formats[2].tools[0]?.fs === 'FS 7100' && s.workSteps.some(o => o.fs === 'FS 7100'), 'Auftrag FS 7100 angelegt und auf neues Format gesetzt');
+  st = await until(lead, s => s.formats.length === 3 && s.formats[2].tools[0]?.fa === 'FA 7100' && s.workSteps.some(o => o.fa === 'FA 7100'), 'Auftrag FA 7100 angelegt und auf neues Format gesetzt');
   check(await lead.locator('#formatsModal.show').count() === 1 && (await lead.textContent('#fmEdit')).includes(st.formats[2].number), 'Formate-Fenster zeigt das neue Format');
   await lead.click('#fmClose');
   await lead.waitForTimeout(200);
   // Auftragsliste: ▣ öffnet das Fenster mit markiertem Auftrag
   await lead.click('#navList');
   await lead.waitForTimeout(300);
-  await lead.locator('#ordersBody tr:has(strong:text-is("FS 7100")) [data-act="format"]').click();
+  await lead.locator('#ordersBody tr:has(strong:text-is("FA 7100")) [data-act="format"]').click();
   await lead.waitForTimeout(400);
   check(await lead.locator('#formatsModal.show').count() === 1, 'Auftragsliste: ▣ öffnet das Formate-Fenster');
   await lead.keyboard.press('Escape');
@@ -260,7 +260,8 @@ try {
   const cnc = await open('cnclead');
   const cncDenied = await cnc.evaluate(async () => {
     const r = await (await fetch('/api/state', { cache: 'no-store' })).json();
-    r.data.formats[0].name = 'fremd';
+    if(r.data.formats.length)throw new Error('Fremde Formate dürfen nicht gelesen werden');
+    r.data.formats.push({id:'fm_forged',departmentId:'thermoforming',name:'fremd',number:'FM-9000',status:'active',L:600,B:400,H:0,rand:0,tools:[],log:[]});
     const res = await fetch('/api/state', { method: 'PUT', headers: { 'Content-Type': 'application/json', 'X-MP-Client-Version': (await (await fetch('/api/health')).json()).version }, body: JSON.stringify({ revision: r.revision, data: r.data, action: 'Test' }) });
     return [res.status, (await res.json()).errorCode];
   });

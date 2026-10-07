@@ -156,10 +156,10 @@ try {
 
   // ------------------------------------------------------------------ Priorität per Tastatur/Knopf (↑/↓)
   await page.click('#navPlan');
-  for (const fs of ['FS 9001', 'FS 9002']) {
+  for (const fs of ['FA 9001', 'FA 9002']) {
     await page.click('#quickAdd');
     await page.waitForSelector('#orderModal.show');
-    await page.fill('#qFS', fs);
+    await page.fill('#qFA', fs);
     await page.fill('#qHours', '4');
     await page.click('#createOrder');
     await page.waitForTimeout(700);

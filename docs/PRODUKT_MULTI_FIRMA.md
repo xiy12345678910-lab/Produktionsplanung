@@ -172,7 +172,7 @@ Begründung: Was ein Update nie anfassen darf und was Admin ohne Datenbank siche
               "logoFile": "logo.png", "color": "#E2382A", "uiAccent": "#1f5eff", "font": "Arial",
               "address": "", "footer": ""},
   "locale": {"language": "de", "timezone": "Europe/Berlin", "holidayRegion": ""},
-  "terms": {"projectNumber": "WT", "orderNumber": "FS", "roleLabels": {}},
+  "terms": {"projectNumber": "WT", "orderNumber": "FA", "roleLabels": {}},
   "template": "werbetechnik",
   "modules": {"projects": true, "formats": true, "personnel": true, "chat": true, "notifications": true, "postcalc": true, "kpi": true},
   "projectAreas": [{"id": "sales", "name": "Vertrieb"}],

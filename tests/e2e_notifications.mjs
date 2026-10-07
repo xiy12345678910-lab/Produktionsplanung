@@ -35,7 +35,7 @@ server.create_or_reset_admin("admin", ${JSON.stringify(PASS)})
 with server.DB_LOCK, server.db_session() as con:
     old = json.loads(con.execute("SELECT json FROM state WHERE id=1").fetchone()["json"])
     new = json.loads(json.dumps(old))
-    new["workSteps"].append({"id": "ws_n1", "sequence": 10, "planningType": "MACHINE", "pos": 10, "departmentId": "cnc", "projectId": "", "predecessorIds": [], "fs": "FS 4711", "ab": "", "wt": "", "machineId": "m1", "altMachineId": "", "allowAlternative": False, "order": "FS 4711", "articleNo": "", "description": "Deckel fräsen", "targetQty": 10, "dueDate": "2026-10-01", "baselinePlan": None, "hours": 3, "goodQty": 0, "scrapQty": 0, "status": "planned", "direction": "forward", "anchorMode": "none", "requiredStart": "", "requiredFinish": "", "createdAt": "2026-10-01T08:00:00Z", "lockedStart": "", "lockedSegments": [], "actualStartedAt": "", "runningSince": "", "pausedAt": "", "pauseIntervals": [], "remainingHours": None, "lastStatusCheckAt": ""})
+    new["workSteps"].append({"id": "ws_n1", "sequence": 10, "planningType": "MACHINE", "pos": 10, "departmentId": "cnc", "projectId": "", "predecessorIds": [], "fa": "FA 4711", "ab": "", "wt": "", "machineId": "m1", "altMachineId": "", "allowAlternative": False, "order": "FA 4711", "articleNo": "", "description": "Deckel fräsen", "targetQty": 10, "dueDate": "2026-10-01", "baselinePlan": None, "hours": 3, "goodQty": 0, "scrapQty": 0, "status": "planned", "direction": "forward", "anchorMode": "none", "requiredStart": "", "requiredFinish": "", "createdAt": "2026-10-01T08:00:00Z", "lockedStart": "", "lockedSegments": [], "actualStartedAt": "", "runningSince": "", "pausedAt": "", "pauseIntervals": [], "remainingHours": None, "lastStatusCheckAt": ""})
     ok, code, reason = server.validate_state(old, new)
     if not ok:
         print("SEED-FEHLER", code, reason, flush=True); sys.exit(1)
@@ -87,7 +87,7 @@ try {
   // Termin gefährdet: Client meldet nach der Planung, Server dedupliziert je Auftrag und Tag
   await lena.waitForFunction(() => document.getElementById('notifBadge').textContent === '1', null, { timeout: 12000 }).catch(() => {});
   let risk = await items(lena, 'risk');
-  check(risk.length === 1 && /FS 4711/.test(risk[0].text) && /30\.|01\.10\./.test(risk[0].text), `Termin gefährdet: ein Eintrag für die CNC-Leitung („${risk[0]?.text}“)`);
+  check(risk.length === 1 && /FA 4711/.test(risk[0].text) && /30\.|01\.10\./.test(risk[0].text), `Termin gefährdet: ein Eintrag für die CNC-Leitung („${risk[0]?.text}“)`);
   check(await badge(lena) === '1', 'Glocke zeigt Zähler 1');
   await lena.reload(); await lena.waitForSelector('#notifBtn', { state: 'visible' }); await lena.waitForTimeout(4500);
   check((await items(lena, 'risk')).length === 1, 'Nach Neuladen am selben Tag kein zweiter Eintrag (Dedupe)');
@@ -120,7 +120,7 @@ try {
   await lena.waitForSelector('#notifPanel.on .notifItem');
   await lena.click('#notifList .notifItem.unread');
   await lena.waitForTimeout(500);
-  check(await lena.evaluate(() => document.getElementById('orders').classList.contains('active') && document.getElementById('searchOrders').value.includes('FS 4711')), 'Klick auf Termin-Eintrag öffnet den Auftrag in der Auftragsliste');
+  check(await lena.evaluate(() => document.getElementById('orders').classList.contains('active') && document.getElementById('searchOrders').value.includes('FA 4711')), 'Klick auf Termin-Eintrag öffnet den Auftrag in der Auftragsliste');
   check(await badge(lena) === '0', 'Alles gelesen: Zähler leer');
 
   // Einstellungen ⚙: Art ausschalten -> kein neuer Eintrag
@@ -140,13 +140,13 @@ try {
   // Freigabe über die Oberfläche (tom = AV darf nicht freigeben, daher Admin)
   const admin = await open('admin');
   await admin.click('#navList'); await admin.waitForTimeout(400);
-  await admin.locator('#ordersBody tr:has(strong:text-is("FS 4711")) [data-act="prodstart"]').click();
+  await admin.locator('#ordersBody tr:has(strong:text-is("FA 4711")) [data-act="prodstart"]').click();
   await admin.waitForSelector('#psReleaseOnly', { timeout: 5000 });
   await admin.click('#psReleaseOnly');
   await admin.waitForTimeout(1200);
   await lena.waitForFunction(() => document.getElementById('notifBadge').textContent === '1', null, { timeout: 8000 }).catch(() => {});
   const rel = await items(lena, 'release');
-  check(rel.length === 1 && /FS 4711 freigegeben/.test(rel[0].text), `Freigabe: Eintrag für die CNC-Leitung („${rel[0]?.text}“)`);
+  check(rel.length === 1 && /FA 4711 freigegeben/.test(rel[0].text), `Freigabe: Eintrag für die CNC-Leitung („${rel[0]?.text}“)`);
   check((await items(theo, 'release')).length === 0 && (await items(gast, 'release')).length === 0 && (await items(tom, 'release')).length === 0, 'Freigabe: nicht für anderen Bereich, Lesende und AV (Default aus)');
   check((await items(admin, 'release')).length === 0, 'Freigabe: Auslöser erhält nichts');
 

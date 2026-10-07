@@ -58,10 +58,10 @@ with server.db_session() as con:
     # --- Chat: Erwähnung und Direktnachricht
     s, b = server.chat_post(con, U["adm"], "/api/chat/channels", {"kind": "direct", "members": ["pm1"]})
     did = b["channel"]["id"]
-    server.chat_post(con, U["adm"], "/api/chat/messages", {"channel": did, "text": "Hallo ⟦u:pm1⟧, siehe ⟦o:ws1|FS 7001⟧"})
+    server.chat_post(con, U["adm"], "/api/chat/messages", {"channel": did, "text": "Hallo ⟦u:pm1⟧, siehe ⟦o:ws1|FA 7001⟧"})
     n = st(con, "pm1")
     check(len(n) == 1 and n[0]["kind"] == "mention" and n[0]["ref_type"] == "chat" and n[0]["ref_id"] == str(did), "Direktnachricht + @ = ein Eintrag für den Empfänger")
-    check("@pm1" in n[0]["text"] and "/FS 7001" in n[0]["text"] and "⟦" not in n[0]["text"], "Vorschau ohne Token-Syntax")
+    check("@pm1" in n[0]["text"] and "/FA 7001" in n[0]["text"] and "⟦" not in n[0]["text"], "Vorschau ohne Token-Syntax")
     check(st(con, "adm") == [], "Absender erhält nichts")
     server.chat_post(con, U["adm"], "/api/chat/messages", {"channel": 1, "text": "Info an alle ⟦u:lead_cnc⟧"})
     check(len(st(con, "lead_cnc")) == 1 and st(con, "gf1") == [], "@ im Kanal Alle: nur die erwähnte Person")
@@ -80,7 +80,7 @@ with server.db_session() as con:
 
     # --- Diff: Freigabe, Sperre, Abwesenheit, Leiharbeiter
     def step(i, dep, mid, status="planned", **kw):
-        x = {"id": f"s{i}", "planningType": "MACHINE", "departmentId": dep, "machineId": mid, "fs": f"FS {i}", "status": status, "dueDate": "2026-10-30"}
+        x = {"id": f"s{i}", "planningType": "MACHINE", "departmentId": dep, "machineId": mid, "fa": f"FA {i}", "status": status, "dueDate": "2026-10-30"}
         x.update(kw)
         return x
     machines = [{"id": "m1", "name": "Fräse 1", "departmentId": "cnc"}, {"id": "t1", "name": "Tiefzieher", "departmentId": "thermoforming"}]

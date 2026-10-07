@@ -298,9 +298,9 @@ def seed(url: str, admin_user: str, admin_pw: str, scenario: str = "ci") -> dict
     _expect(len(cnc) >= 2, "CNC-Maschinen im Datenstand")
 
     def step(i, dep, mid, **kw):
-        fs = f"FS 80{i:02d}"
+        fs = f"FA 80{i:02d}"
         x = {"id": f"ws_up{i}", "sequence": i * 10, "planningType": "MACHINE", "pos": i * 10, "departmentId": dep, "projectId": "", "predecessorIds": [],
-             "fs": fs, "ab": "AB-777", "wt": "", "machineId": mid, "altMachineId": "", "allowAlternative": False, "order": fs, "articleNo": f"Ä-{i}",
+             "fa": fs, "ab": "AB-777", "wt": "", "machineId": mid, "altMachineId": "", "allowAlternative": False, "order": fs, "articleNo": f"Ä-{i}",
              "description": f"Gehäuse Größe {i} (Übergröße)", "targetQty": 20 + i, "dueDate": "2026-11-20", "baselinePlan": None, "hours": 4.5 + i,
              "goodQty": 0, "scrapQty": 0, "status": "planned", "direction": "forward", "anchorMode": "none", "requiredStart": "", "requiredFinish": "",
              "createdAt": "2026-10-01T08:00:00Z", "lockedStart": "", "lockedSegments": [], "actualStartedAt": "", "runningSince": "", "pausedAt": "",
@@ -321,7 +321,7 @@ def seed(url: str, admin_user: str, admin_pw: str, scenario: str = "ci") -> dict
         new["baseFormats"] = [{"id": "bf_up1", "departmentId": "thermoforming", "name": "Groß", "L": 1500, "B": 1000}]
         new["formats"] = [{"id": "fm_up1", "number": "F-0001", "departmentId": "thermoforming", "name": "Schale 'Ü'", "status": "active", "baseId": "bf_up1",
                            "machineId": tf[0], "L": 1500, "B": 1000, "H": 60, "rand": 10, "log": [],
-                           "tools": [{"id": "t_up1", "wkz": "WKZ-100", "fs": "FS 8004", "order": "FS 8004", "article": "Ä-4", "l": 300, "b": 200, "h": 40, "n": 2, "qty": 10}]}]
+                           "tools": [{"id": "t_up1", "wkz": "WKZ-100", "fa": "FA 8004", "order": "FA 8004", "article": "Ä-4", "l": 300, "b": 200, "h": 40, "n": 2, "qty": 10}]}]
         rec["features"]["formats"] = True
     new.setdefault("ui", {})["accent"] = ACCENT
     rec["accent"] = ACCENT
@@ -357,7 +357,7 @@ def seed(url: str, admin_user: str, admin_pw: str, scenario: str = "ci") -> dict
         s, g = adm.call("POST", "/api/chat/channels", {"kind": "group", "name": "Frühschicht Ü", "members": ["lead_cnc", "viewer1"]})
         if s == 201:
             cid = g["channel"]["id"]
-            adm.call("POST", "/api/chat/messages", {"channel": cid, "text": "Guten Morgen, Auftrag FS 8001 läuft ⟦u:viewer1⟧"})
+            adm.call("POST", "/api/chat/messages", {"channel": cid, "text": "Guten Morgen, Auftrag FA 8001 läuft ⟦u:viewer1⟧"})
             lead = Api(url)
             lead.version = ver
             if lead.login("lead_cnc", by["lead_cnc"]["password"]) == 200:

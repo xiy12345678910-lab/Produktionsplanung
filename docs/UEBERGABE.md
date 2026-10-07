@@ -1,12 +1,12 @@
-# Übergabe – Produktionsplanung (Stand 05.10.2026)
+# Übergabe – Produktionsplanung (Stand 07.10.2026)
 
-Branch: `claude/new-session-95ro2l` (Basis `claude/new-session-mpx5ch`) · Live-fähiger Stand: **V12.18.0** (getestet, Abnahme siehe unten)
+Branch: `codex/blocks-a-d` · Stand: **V12.19.0** · Abnahme A–D: `docs/BLOCKS_A_D.md` · ausschließlich I 7a: `docs/ADMIN_UPDATES.md` (echter Windows-Server-Hostnachweis separat ausstehend)
 
 ## 1. Fertig und getestet (per `UPDATE_LIVE.ps1` einspielbar)
 
 | Version | Thema | Test |
 |---|---|---|
-| 12.8.0 | Formatplanung Tiefziehen (Ansicht „Formate“): Grundformate, Takte je Maschine, Werkzeuge, Layout, Einplanen als Format-Auftrag, Einlagern/Suche WKZ/FS | `tests/e2e_formats.mjs` 35/35 |
+| 12.8.0 | Formatplanung Tiefziehen (Ansicht „Formate“): Grundformate, Takte je Maschine, Werkzeuge, Layout, Einplanen als Format-Auftrag, Einlagern/Suche WKZ/FA | `tests/e2e_formats.mjs` 35/35 |
 | 12.8.1 | Parallelbelegung: Spalte „Parallel“ je Maschine/Linie, Scheduler + Server (MP-PROD-010, MP-PLAN-058) spurfähig | `tests/e2e_parallel.mjs` 15/15 |
 | 12.8.2 | GF legt Bereiche an (Produktion/Vertrieb/Entwicklung), erste Maschine/Linie mit Schichtmodell/Umrüstzeit | `tests/e2e_departments.mjs` 18/18 |
 | 12.8.3 | PM-Vorplan beim ersten AV-Überschreiben gesichert, PM-Termine danach gesperrt, Vergleich PM · AV · Ist in AT | `tests/e2e_pmplan.mjs` 11/11 |
@@ -28,6 +28,7 @@ Branch: `claude/new-session-95ro2l` (Basis `claude/new-session-mpx5ch`) · Live-
 | 12.17.0 | Paket C1: Einrichtungsassistent beim ersten Admin-Login (5 Schritte, überspringbar, später erneut aufrufbar), neutraler Seed für Neuinstallationen, `setupDone` in `firma.json` (Bestand nie), Projektbereiche aus der Config | `tests/test_setup.py` N1, `tests/e2e_setup.mjs` N2, `test_deploy_upgrade.py` N3 |
 | 12.17.2 | Hotfix Windows: ACL-Prüfung wertet nur echte Schreib-Bits (`Test-MPRightsWritable`, kein Fehlalarm bei Benutzer RX); CHECK_LAN ohne Fehlerrauschen; Firma_Einrichten zeigt Pfad; Server_Status: Task-Ergebnis 267009 = „läuft“. Client-Abbruch (10053/10054/EPIPE) kein MP-SRV-500; Run_Server_LAN loggt stderr 1:1. Tests `tests/ps_acl.ps1`, `tests/test_client_abort.py` |
 | 12.18.0 | Dauer nach Besetzung (P18): Schalter je Ressource (Default aus), Sollstunden = Personenstunden, Dauer = Ph ÷ Besetzung je Schicht (Gate EIN: zugeordnete Mitarbeiter, AUS: crew), `crewMax`; Personal je Parallelplatz (P16, Teil: `laneStaff`, Bedarf = Summe belegter Plätze); Freigabeplan mit Besetzung je Segment; Ist-Personenstunden in der Historie | `tests/e2e_effort.mjs` 36/36, `tests/test_effort.py` 22/22 |
+| 12.19.0 | A–D: FA-Kern, Teilzeit/Parallelplätze, AV-Übergabe/Bereichsschutz, gemeinsame atomare Produktion; I ausschließlich 7a: allgemeine Releaseupdates mit Backup/Healthcheck/Rollback | `test_blocks.py`, `test_updates.py`, `e2e_blocks.mjs`, erweiterte Windows-Deploy-CI |
 | alle | Rollen-Rundgang (8 Rollen × alle Ansichten × Desktop/Handy) | `tests/e2e_roles.mjs` 374/374 |
 | alle | Regression Rechte/Migration (künstliche DB über `tests/make_test_db.py`) | `tests/test_regression.py` 151/151 |
 | alle | Server-Regeln ohne Browser | `tests/test_v128.py` 35/35 |
@@ -40,17 +41,18 @@ Testhinweis: E2E-Tests setzen die Browser-Zeitzone auf Europe/Berlin (wie `relea
 ## 2. Bekannte Grenzen
 
 - Format mit Positionen aus mehreren Projekten: Format-Auftrag ohne Projektverknüpfung.
-- Parallelplätze: Personalbedarf je Platz nur als Summe (`laneStaff`, V12.18.0); Zuordnung auf einen Platz (laneIndex), Auswertung/GF-Cockpit/Board je Platz und Dauer nach Besetzung bei mehreren Plätzen sind offen (Prompt 16/18).
+- Parallelplätze: Zuordnung über `laneIndex`, Planung/Runtime und P18 je Platz implementiert. Das GF-Cockpit fasst weiterhin je Bereich zusammen; der Wochenplan gruppiert Plätze unter ihrer Ressource.
 - Projektfenster zeichnet sich erst nach Verlassen eines Eingabefelds neu (bewusst, Fokus bleibt).
 
 ## 3. Ideen für danach
 
 - Messenger: Dateianhänge/Fotos, Nachrichten bearbeiten/löschen, Gruppe verlassen.
-- Parallelplätze: Personalbedarf je Platz.
+- GF-Cockpit: zusätzliche Detailansicht je Parallelplatz.
 
 ## 4. Betrieb
 
-- Update als normaler Windows-Benutzer (z. B. boensch): `Update_von_GitHub.ps1` (siehe README_Windows.txt 2b) – lädt das Paket, startet `UPDATE_LIVE.ps1` per UAC als Administrator.
+- Ab V12.19.0: Admin-Updatehinweis nur bei neuem freigegebenem Release, siehe `docs/ADMIN_UPDATES.md`.
+- Einmaliger Einstieg / manuelles IT-Update als normaler Windows-Benutzer (z. B. boensch): `Update_von_GitHub.ps1` (siehe README_Windows.txt 2b) – lädt das Paket, startet `UPDATE_LIVE.ps1` per UAC als Administrator.
 - Alternativ (Admin-PowerShell): Paket-ZIP des Branches laden, entpacken, `.\UPDATE_LIVE.ps1`.
 - Gelöschte Chat-Nachrichten bleiben bis zu 30 Tage in den Backups (60 Sicherungen).
 - Danach alle Browser mit Strg+F5 neu laden.

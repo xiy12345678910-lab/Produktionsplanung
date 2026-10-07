@@ -36,8 +36,8 @@ with server.DB_LOCK, server.db_session() as con:
     old = json.loads(con.execute("SELECT json FROM state WHERE id=1").fetchone()["json"])
     new = json.loads(json.dumps(old))
     def step(i, dep, mid, **kw):
-        fs = f"FS 70{i:02d}"
-        x = {"id": f"ws_r{i}", "sequence": i * 10, "planningType": "MACHINE", "pos": i * 10, "departmentId": dep, "projectId": "", "predecessorIds": [], "fs": fs, "ab": "AB-500", "wt": "", "machineId": mid, "altMachineId": "", "allowAlternative": False, "order": fs, "articleNo": "A-1", "description": "Rundgang", "targetQty": 20, "dueDate": "2026-10-23", "baselinePlan": None, "hours": 5, "goodQty": 0, "scrapQty": 0, "status": "planned", "direction": "forward", "anchorMode": "none", "requiredStart": "", "requiredFinish": "", "createdAt": "2026-10-01T08:00:00Z", "lockedStart": "", "lockedSegments": [], "actualStartedAt": "", "runningSince": "", "pausedAt": "", "pauseIntervals": [], "remainingHours": None, "lastStatusCheckAt": ""}
+        fs = f"FA 70{i:02d}"
+        x = {"id": f"ws_r{i}", "sequence": i * 10, "planningType": "MACHINE", "pos": i * 10, "departmentId": dep, "projectId": "", "predecessorIds": [], "fa": fs, "ab": "AB-500", "wt": "", "machineId": mid, "altMachineId": "", "allowAlternative": False, "order": fs, "articleNo": "A-1", "description": "Rundgang", "targetQty": 20, "dueDate": "2026-10-23", "baselinePlan": None, "hours": 5, "goodQty": 0, "scrapQty": 0, "status": "planned", "direction": "forward", "anchorMode": "none", "requiredStart": "", "requiredFinish": "", "createdAt": "2026-10-01T08:00:00Z", "lockedStart": "", "lockedSegments": [], "actualStartedAt": "", "runningSince": "", "pausedAt": "", "pauseIntervals": [], "remainingHours": None, "lastStatusCheckAt": ""}
         x.update(kw)
         return x
     tf = next(m["id"] for m in new["machines"] if m["departmentId"] == "thermoforming")

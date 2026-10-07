@@ -95,8 +95,8 @@ day = "2026-09-07"
 def released(hours, segs, effort=True, crew=1):
     s = state()
     s["machines"][0]["effortScaling"] = True
-    o = {"id": "ws_eff", "sequence": 10, "planningType": "MACHINE", "pos": 10, "departmentId": dep, "projectId": "", "predecessorIds": [], "fs": "FS 1",
-         "ab": "", "wt": "", "machineId": MID, "altMachineId": "", "allowAlternative": False, "order": "FS 1", "hours": hours, "status": "planned",
+    o = {"id": "ws_eff", "sequence": 10, "planningType": "MACHINE", "pos": 10, "departmentId": dep, "projectId": "", "predecessorIds": [], "fa": "FA 1",
+         "ab": "", "wt": "", "machineId": MID, "altMachineId": "", "allowAlternative": False, "order": "FA 1", "hours": hours, "status": "planned",
          "direction": "forward", "anchorMode": "none"}
     old = copy.deepcopy(s)
     old["workSteps"] = [dict(o)]
