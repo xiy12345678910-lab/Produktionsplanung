@@ -110,7 +110,7 @@ try {
   await page.keyboard.press('Escape');
   await page.waitForTimeout(150);
   check(!(await page.evaluate(() => document.getElementById('orderModal').classList.contains('show'))), 'Escape schließt den Auftragsdialog');
-  check(await page.evaluate(() => document.activeElement?.id === 'quickAdd'), 'Fokus kehrt zu "+ Auftrag" zurück');
+  check(await page.evaluate(() => document.activeElement?.id === 'quickAdd'), 'Fokus kehrt zu "+ Fertigungsauftrag" zurück');
   check(await page.evaluate(() => document.getElementById('toast').getAttribute('aria-live') === 'polite'), 'Toast wird vorgelesen (aria-live)');
 
   // ------------------------------------------------------------------ eigener Eingabedialog statt prompt()
