@@ -28,7 +28,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 MP_DEBUG_ABORTS = os.environ.get('MP_DEBUG_ABORTS') == '1'
-APP_VERSION = "12.19.1"
+APP_VERSION = "12.20.0"
 HOST = os.environ.get("MP_HOST", "0.0.0.0")
 PORT = int(os.environ.get("MP_PORT", "8765"))
 BASE = Path(__file__).resolve().parent
@@ -4404,6 +4404,11 @@ def redact_state(state: dict, user: dict) -> dict:
         out["dependencyStatus"].update({str(x.get("originalOrderId")): "done" for x in state.get("history") or [] if str(x.get("originalOrderId")) in needed and x.get("recordType", "done") == "done"})
     out["personnelAbsences"] = [a if not isinstance(a, dict) or visible(a) else _masked_absence(a)
                                 for a in (out.get("personnelAbsences") or [])]
+    if user.get("role") == "production":
+        # Production follows its own FA plan; commercial and cross-area plans
+        # are not needed in this read-only project view.
+        out["projects"] = [{k: v for k, v in p.items() if k not in {"customerPlan", "offer", "development"}}
+                           for p in out.get("projects") or []]
     out["audit"] = [_masked_audit(a) if isinstance(a, dict) and user.get("role") not in ABSENCE_FULL_ROLES else a for a in (out.get("audit") or [])]
     return out
 

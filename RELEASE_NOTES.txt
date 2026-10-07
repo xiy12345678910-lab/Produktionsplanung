@@ -1,3 +1,21 @@
+MASCHINENPLANUNG V12.20.0 - RELEASE NOTES
+=========================================
+Datum: 07.10.2026 · Basis: V12.19.1 · Update gemäß README_Windows.txt 2b, Daten bleiben erhalten
+
+AV-AUFTRAG UND LIVE-VERFOLGUNG (#57)
+- Breiter AV-Dialog nach dem Clickdummy: deutlich sichtbare FA, Projekt/AB, Menge und Fertigstellung.
+  Bereiche einzeln hinzufügen, Reihenfolge ändern, stabile Vorgänger sowie Fertigtermin je Bereich pflegen.
+- AV erfasst Sollstunden getrennt und ausschließlich für Konfektion. CNC, Tiefziehen und andere Bereiche
+  erhalten keine AV-Stundenfelder. Die zuständige Abteilung plant Ressource und operative Laufzeit.
+- Produktion kann unter Projekte den Plan und aktuellen Fortschritt ihres eigenen Bereichs live lesen,
+  auch bei geöffnetem Projekt: Status, Plan-/Isttermine, Gut-, Ausschuss- und Restmenge je FA.
+  Projektbearbeitung bleibt gesperrt; bestehende Produktionsaktionen bleiben erhalten.
+- Die Serverantwort begrenzt Projekte/FA auf den Bereich und entfernt für Produktion Angebote,
+  Entwicklung und bereichsübergreifende Kundenpläne. Globale Rollen behalten ihre Projektansichten.
+- Lazy Loading und Block E folgen erst nach erfolgreicher Windows-Installation dieser Version.
+  Blocks F–I bleiben separate Aufgaben.
+- Abnahme und Installation: docs/V12_20_0.md.
+
 MASCHINENPLANUNG V12.19.1 - RELEASE NOTES
 =========================================
 Datum: 07.10.2026 · Basis: V12.19.0 · Update gemäß README_Windows.txt 2b, Daten bleiben erhalten
