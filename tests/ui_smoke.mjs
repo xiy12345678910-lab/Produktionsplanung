@@ -203,6 +203,10 @@ try {
   await page.close();
 } catch (e) {
   check(false, 'Ablauf: ' + (e?.message || e));
+  for (const page of browser.pages()) {
+    const detail = await page.locator('#errorModal.show').textContent({ timeout: 500 }).catch(() => '');
+    if (detail) console.log('Fehlerdialog: ' + detail.trim());
+  }
 } finally {
   check(!errors.length, 'keine JavaScript-Fehler ' + errors.slice(0, 3).join(' | '));
   await browser.close();

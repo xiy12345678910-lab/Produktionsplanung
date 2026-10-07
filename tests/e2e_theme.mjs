@@ -127,6 +127,8 @@ try {
     await page.addInitScript(t => { try { localStorage.setItem('mp_theme', t); } catch {} }, theme);
     await login(page);
     check(await page.evaluate(() => document.documentElement.dataset.theme) === theme, `${theme}: Theme aktiv`);
+    const fontScale = await page.evaluate(() => Number(getComputedStyle(document.documentElement).getPropertyValue('--fs')));
+    check(fontScale === (theme === 'hall' ? 1.35 : 1), `${theme}: Schriftgröße verwendet den vorgesehenen Skalierungsfaktor (${fontScale})`);
     const bad = [], small = [], overflow = [];
     for (const steps of TARGETS) {
       for (const sel of steps) { await page.click(sel); await page.waitForTimeout(250); }
