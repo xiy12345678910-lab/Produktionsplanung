@@ -1,4 +1,4 @@
-MASCHINENPLANUNG V12.18.0 - FEHLERCODES
+﻿MASCHINENPLANUNG V12.19.0 - FEHLERCODES
 ======================================
 
 Jeder Fehler wird dem Mitarbeiter als Klartext + Code angezeigt.
@@ -20,7 +20,7 @@ CODEGRUPPEN
 - MP-UI-xxx: Oberfläche / allgemeine UI-Fehler
 - MP-UNDO-xxx: Rückgängig / Wiederholen
 - MP-DEPT-xxx: Produktionsbereiche und Bereichsrechte
-- MP-STEP-xxx: Arbeitsgänge (FS/AB/WT, Reihenfolge, Vorgänger)
+- MP-STEP-xxx: Arbeitsgänge (FA/AB/WT, Reihenfolge, Vorgänger)
 - MP-PM-xxx: Projektmanagement / AB-Aufträge
 - MP-GF-xxx: Geschäftsführung
 - MP-AV-xxx: Arbeitsvorbereitung
@@ -284,7 +284,7 @@ MP-PM-030  Projektmanagement darf nur AB-Aufträge (Projekte) ändern, keine Pro
 [REQ - Ergänzungen V12]
 MP-REQ-405  Methode nicht erlaubt.
 
-[STEP - Arbeitsgänge (FS/AB/WT, Reihenfolge, Vorgänger)]
+[STEP - Arbeitsgänge (FA/AB/WT, Reihenfolge, Vorgänger)]
 MP-STEP-001  Arbeitsgangliste fehlt.
 MP-STEP-002  Arbeitsgang benötigt eine gültige ID. / Doppelte Arbeitsgang-ID ….
 MP-STEP-003  Arbeitsgang … verweist auf einen unbekannten AB-Auftrag.
@@ -298,7 +298,7 @@ MP-STEP-010  Arbeitsgang-Abhängigkeiten enthalten einen Zyklus.
 MP-STEP-011  Takt-Arbeitsgang … benötigt einen ganzzahligen Personalbedarf von 1 bis 99.
 MP-STEP-012  Takt-Arbeitsgang … hat eine ungültige Rüstzeit.
 MP-STEP-013  Arbeitsgang ist noch Vorgänger eines nachfolgenden Arbeitsgangs und kann nicht gelöscht werden.
-MP-STEP-014  Produktionsauftrag … benötigt eine FS. / Arbeitsgang …: FS/AB/WT ist zu lang.
+MP-STEP-014  Produktionsauftrag … benötigt eine FA. / Arbeitsgang …: FA/AB/WT ist zu lang.
 MP-STEP-015  Arbeitsgang …: AB passt nicht zur Projektverknüpfung.
 MP-STEP-016  Arbeitsgang …: WT passt nicht zur AB-Verknüpfung.
 MP-STEP-017  Arbeitsgang … hat einen ungültigen Status.
@@ -313,12 +313,12 @@ MP-PM-006  Projektnummer fehlt oder ist doppelt.
 MP-PM-007  Projekt hat eine ungültige Phase.
 MP-PM-008  Ab Annahme ist die AB-Nummer Pflicht.
 MP-PM-009  Für die Annahme sind AB-Nummer und Liefertermin Pflicht / Liefertermin ungültig.
-MP-PM-010  Prozess ungültig (Bereich, Aufgabe, Status, Fälligkeit oder verknüpfte FS).
+MP-PM-010  Prozess ungültig (Bereich, Aufgabe, Status, Fälligkeit oder verknüpfte FA).
 MP-PM-011  Projektverlauf ist ungültig.
 MP-PM-012  Kunde ist Pflicht.
 MP-PM-013  Bei Verlust/Absage ist ein Grund im Notizfeld Pflicht.
 MP-PM-014  Vor „Angebot versendet“ die Angebotsnummer eintragen und speichern.
-MP-PM-015  Es sind noch FS offen; zum Abschließen ein zweites Mal klicken.
+MP-PM-015  Es sind noch FA offen; zum Abschließen ein zweites Mal klicken.
 MP-PM-016  Prozess startet nach seiner Fälligkeit.
 MP-PM-031  Diese Rolle darf dieses Projektfeld bzw. diesen Phasenwechsel nicht ausführen (Klartext nennt Feld/Phase).
 
@@ -429,3 +429,25 @@ V12.17.2 (Hotfix: keine neuen Codes. Die ACL-Pruefung meldet "hat Schreibrechte"
 
 V12.17.1 (Personal-Gate fuer Linien)
 MP-PERS-003  Unbesetzt: Auftrag nicht planbar, weil das Gate EIN ist und fuer die geforderte Personenzahl (Linie: crew) kein Personal zugeordnet ist.
+
+V12.19.0 (Bloecke A-D und I ausschliesslich 7a)
+MP-FA-001    FA-Quelle oder FA-Nummernzuordnung ungueltig; Projekt/Rahmen/Bestandsreferenz pruefen.
+MP-PERS-034  Parallelplatz oder Besetzung ungueltig; nur freie Plaetze/ganze Mitarbeiterzahlen.
+MP-PERS-035  Arbeitstage/Tagesstunden ungueltig oder Summe ueber Wochenstunden.
+MP-PROD-040  FA nicht gefunden.
+MP-PROD-041  Keine Produktionsrechte fuer den Bereich.
+MP-PROD-042  Start/Fortsetzen ausserhalb Arbeitszeit oder vor dem freigegebenen Start.
+MP-PROD-043  Produktionszeit ungueltig bzw. Legacy-Start fehlt.
+MP-PROD-044  FA bereits abgeschlossen.
+MP-PROD-045  Statuswechsel/Abbruchgrund ungueltig oder direkte Runtime-Manipulation.
+MP-PROD-046  Vorgaenger offen oder Konfektionsstunden fehlen.
+MP-PROD-047  Maschine/Parallelplatz gesperrt, belegt oder ungueltig.
+MP-PROD-048  Mengen/Etikettenvorlage/Haltbarkeit ungueltig; Restmenge beachten.
+MP-PROD-049  Bestands-FA ohne Artikelreferenz.
+MP-PROD-050  Request-ID fehlt oder wurde mit anderem Inhalt verwendet; bei Verbindungsabbruch Aktion wiederholen.
+MP-AUTH-024  (zusaetzlich) Aktive Mitarbeiterzuordnung oder offene Zustaendigkeit vor Benutzerloeschung loesen.
+MP-UPD-001   Kein freigegebenes/kompatibles Paket, ungueltige Quelle oder Updateauftrag.
+MP-UPD-002   Eine andere Installation laeuft bereits.
+MP-UPD-003   Update-Wartungssperre: Aenderungen bis Healthcheck blockiert.
+MP-UPD-004   Vorabtest/Backup unvollstaendig oder ungueltig; Live-Eingriff wird abgebrochen.
+MP-UPD-005   Rollback-Healthcheck fehlgeschlagen; Wartungssperre bleibt bestehen, Wiederherstellung durch IT erforderlich.

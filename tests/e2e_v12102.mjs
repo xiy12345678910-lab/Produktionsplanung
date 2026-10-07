@@ -133,7 +133,7 @@ try {
   // ------------------------------------------------------------------ F-M1: CSV Ortszeit, Formelschutz, Dateiname
   const [dl] = await Promise.all([page.waitForEvent('download'), ev(page, () => {
     const m = data.machines[0];
-    data.workSteps.push({ id: 'csv_t1', machineId: m.id, departmentId: m.departmentId || 'cnc', order: '=HYPERLINK("x")', fs: '=HYPERLINK("x")', description: '+SUMME(1)', articleNo: '@A', hours: 2, targetQty: 10, status: 'planned', pos: 999, planningType: 'MACHINE' });
+    data.workSteps.push({ id: 'csv_t1', machineId: m.id, departmentId: m.departmentId || 'cnc', order: '=HYPERLINK("x")', fa: '=HYPERLINK("x")', description: '+SUMME(1)', articleNo: '@A', hours: 2, targetQty: 10, status: 'planned', pos: 999, planningType: 'MACHINE' });
     try { exportCSV(); } finally { data.workSteps = data.workSteps.filter(x => x.id !== 'csv_t1'); }
   })]);
   const name = dl.suggestedFilename();

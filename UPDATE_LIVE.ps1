@@ -4,6 +4,7 @@
 # Ablauf: Online-Backup -> Stopp -> finales Backup -> Code sichern -> neue Dateien ->
 #         Ordner sperren -> Tasks registrieren -> Start -> Health/Version -> HTTP-Check.
 # Bei jedem Fehler: alter Code UND Datenbank aus dem finalen Backup werden zurueckgespielt.
+param([string]$UpdateJobPath)
 $ErrorActionPreference = 'Stop'
 $NewSource = Split-Path -Parent $MyInvocation.MyCommand.Path
 . (Join-Path $NewSource 'MP_Common.ps1')
@@ -33,6 +34,19 @@ if ([string]$oldAction.Arguments -match '(?i)-PythonExe\s+"([^"]+)"') { $PythonE
 if (-not $PythonExe -or -not (Test-Path $PythonExe)) { $PythonExe = Get-MPPython }
 $migrating = -not ([IO.Path]::GetFullPath($OldBase).TrimEnd('\') -ieq [IO.Path]::GetFullPath($TargetBase).TrimEnd('\'))
 
+# The browser starts a detached worker; this file only accepts its fixed private status path.
+if ($UpdateJobPath -and [IO.Path]::GetFullPath($UpdateJobPath) -ine [IO.Path]::GetFullPath((Join-Path $OldBase 'updates\status.json'))) { throw 'MP-UPD-001: Ungueltiger Updateauftrag.' }
+function Set-MPUpdateStage([string]$Stage, [string]$ErrorText = '', [bool]$RolledBack = $false) {
+    if (-not $UpdateJobPath) { return }
+    $job = Get-Content -LiteralPath $UpdateJobPath -Raw -Encoding UTF8 | ConvertFrom-Json
+    $job | Add-Member -NotePropertyName stage -NotePropertyValue $Stage -Force
+    $job | Add-Member -NotePropertyName error -NotePropertyValue $ErrorText -Force
+    $job | Add-Member -NotePropertyName rolledBack -NotePropertyValue $RolledBack -Force
+    $tmp = "$UpdateJobPath.ps.tmp"
+    [IO.File]::WriteAllText($tmp, ($job | ConvertTo-Json -Depth 10), (New-Object Text.UTF8Encoding($false)))
+    if (Test-Path -LiteralPath $UpdateJobPath) { [IO.File]::Replace($tmp, $UpdateJobPath, [NullString]::Value) } else { [IO.File]::Move($tmp, $UpdateJobPath) }
+}
+
 # --- Downgrade-Schutz -----------------------------------------------------------------
 $running = Get-MPHealth $OldBase
 if ($running -and $running.Health -and $running.Health.version) {
@@ -49,13 +63,21 @@ if (-not (Test-MPPythonLocationSafe $PythonExe)) { Write-Warning 'Python-Ordner 
 $FinalBackup = $null
 $RollbackCode = $null
 $LiveTouched = $false
+$Maintenance = Join-Path $TargetBase 'updates\installing'
+$UpdateMutex = New-Object Threading.Mutex($false, 'Global\MaschinenplanungUpdate')
+$HaveMutex = $false
 try {
+    try { $HaveMutex = $UpdateMutex.WaitOne(0) } catch [Threading.AbandonedMutexException] { $HaveMutex = $true }
+    if (-not $HaveMutex) { throw 'MP-UPD-002: Ein anderes Update laeuft bereits.' }
+    Set-MPUpdateStage 'backup'
     Write-Host '1/9 Online-Datenbankbackup ...'
-    & $PythonExe (Join-Path $OldBase 'Backup_Datenbank.py')
+    # Use this package's backup code: legacy installations may not yet back up firma.json.
+    & $PythonExe -I (Join-Path $NewSource 'Backup_Datenbank.py') --base $OldBase
     if ($LASTEXITCODE -notin @(0, 2)) { throw 'Online-Datenbankbackup fehlgeschlagen.' }
 
     Write-Host '2/9 Vorabtest: neue Version mit einer Datenkopie starten (Live bleibt unberuehrt) ...'
     $preCfg = Read-MPConfig $OldBase
+    Set-MPUpdateStage 'preflight'
     if ($preCfg) {
         $preDb = Get-ChildItem (Join-Path $OldBase 'backups') -File -Filter 'maschinenplanung_*.sqlite3' | Sort-Object LastWriteTime -Descending | Select-Object -First 1
         $pre = Invoke-MPPreflight $NewSource $PythonExe $preDb.FullName $preCfg $NewVersion $OldBase
@@ -71,20 +93,31 @@ try {
         }
         Write-Host "    PASS: V$NewVersion startet mit Datenkopie (Testport $($pre.Port))." -ForegroundColor Green
     } else {
-        Write-Warning 'LAN_CONFIG.json fehlt oder ist nicht lesbar - Vorabtest uebersprungen.'
+        throw 'MP-UPD-004: LAN_CONFIG.json fehlt oder ist nicht lesbar. Vorabtest ist verpflichtend.'
     }
 
     Write-Host '3/9 Live-Server stoppen ...'
+    New-Item -ItemType Directory -Path (Split-Path -Parent $Maintenance) -Force | Out-Null
+    Set-MPFolderAcl (Split-Path -Parent $Maintenance) $false
+    [IO.File]::WriteAllText($Maintenance, $NewVersion)
     $LiveTouched = $true
+    Set-MPUpdateStage 'backup'
     Stop-MPServer $OldBase
 
     Write-Host '4/9 Finales Backup nach Stopp ...'
-    & $PythonExe (Join-Path $OldBase 'Backup_Datenbank.py')
+    & $PythonExe -I (Join-Path $NewSource 'Backup_Datenbank.py') --base $OldBase
     if ($LASTEXITCODE -notin @(0, 2)) { throw 'Finales Datenbankbackup fehlgeschlagen.' }
     $FinalBackup = Get-ChildItem (Join-Path $OldBase 'backups') -File -Filter 'maschinenplanung_*.sqlite3' |
         Sort-Object LastWriteTime -Descending | Select-Object -First 1
     if (-not $FinalBackup) { throw 'Finales Datenbankbackup wurde nicht gefunden.' }
     Write-Host "    DB-Sicherung: $($FinalBackup.FullName)" -ForegroundColor Green
+
+    if (Test-Path -LiteralPath (Join-Path $OldBase 'config\firma.json')) {
+        $cfgBackup = $FinalBackup.FullName.Replace('maschinenplanung_', 'firma_').Replace('.sqlite3', '.zip')
+        if (-not (Test-Path -LiteralPath $cfgBackup)) { throw 'MP-UPD-004: Firmenprofil-Backup fehlt.' }
+        & $PythonExe -I -c "import zipfile,sys; z=zipfile.ZipFile(sys.argv[1]); assert z.testzip() is None and 'firma.json' in z.namelist()" $cfgBackup
+        if ($LASTEXITCODE -ne 0) { throw 'MP-UPD-004: Firmenprofil-Backup ist ungueltig.' }
+    }
 
     Write-Host '5/9 Bisherigen Programmstand sichern ...'
     New-Item -ItemType Directory -Path (Join-Path $TargetBase 'update_backups') -Force | Out-Null
@@ -97,6 +130,7 @@ try {
     Copy-Item -LiteralPath $FinalBackup.FullName -Destination (Join-Path $RollbackCode 'maschinenplanung_vor_update.sqlite3') -Force
     Write-Host "    Rollback-Stand: $RollbackCode" -ForegroundColor Green
 
+    Set-MPUpdateStage 'installation'
     Write-Host '6/9 Dateien uebernehmen ...'
     if ($migrating) {
         foreach ($sub in @('data', 'backups')) { New-Item -ItemType Directory -Path (Join-Path $TargetBase $sub) -Force | Out-Null }
@@ -126,8 +160,11 @@ try {
     if (-not (Wait-MPTaskIdle $MP_TaskName 30)) { Write-Warning 'Alte Task-Instanz meldet noch "Running" - Start wird trotzdem versucht.' }
     Register-MPServerTask $TargetBase $PythonExe
     Register-MPBackupTask $TargetBase $PythonExe
+    Set-MPUpdateStage 'migration'
     Start-ScheduledTask -TaskName $MP_TaskName
+    Set-MPUpdateStage 'restart'
 
+    Set-MPUpdateStage 'healthcheck'
     Write-Host '8/9 Health-/Versionscheck (bis 90 s) ...'
     $health = Wait-MPHealth $TargetBase $NewVersion 90
     if (-not $health) {
@@ -152,22 +189,29 @@ try {
     Write-Host "Live-Ordner:     $TargetBase"
     Write-Host "Rollback-Stand:  $RollbackCode"
     if ($migrating) { Write-Host "Alter Ordner bleibt unveraendert: $OldBase (vorerst nicht loeschen)" -ForegroundColor Yellow }
+    Remove-Item -LiteralPath $Maintenance -Force -ErrorAction SilentlyContinue
+    Set-MPUpdateStage 'complete'
     Write-Host 'Alle Browser-Tabs einmal mit Strg+F5 neu laden. Danach CHECK_LAN_SICHERHEIT.ps1 ausfuehren.' -ForegroundColor Cyan
 }
 catch {
     $err = $_
     Write-Host ''
     Write-Host "UPDATE FEHLGESCHLAGEN: $($err.Exception.Message)" -ForegroundColor Red
+    if (-not $HaveMutex) { throw $err }
     if (-not $LiveTouched) {
+        Set-MPUpdateStage 'failed' $err.Exception.Message
         Write-Host 'Live-System wurde nicht veraendert; kein Rollback noetig.' -ForegroundColor Yellow
         throw $err
     }
+    Set-MPUpdateStage 'rollback' $err.Exception.Message
     Write-Host 'Rollback wird ausgefuehrt ...' -ForegroundColor Yellow
     try { Stop-MPServer $TargetBase } catch { Stop-ScheduledTask -TaskName $MP_TaskName -ErrorAction SilentlyContinue }
     if (-not $migrating -and $RollbackCode -and (Test-Path $RollbackCode)) {
         Get-ChildItem -LiteralPath $RollbackCode -File | Where-Object { $_.Name -ne 'maschinenplanung_vor_update.sqlite3' } |
             Copy-Item -Destination $TargetBase -Force
         if (Test-Path -LiteralPath (Join-Path $RollbackCode $MP_ConfigDir)) {
+            # Retain the directory and replace its contents from the verified saved profile.
+            Get-ChildItem -LiteralPath (Join-Path $TargetBase $MP_ConfigDir) -Force | Remove-Item -Recurse -Force
             Copy-Item -LiteralPath (Join-Path $RollbackCode $MP_ConfigDir) -Destination $TargetBase -Recurse -Force
         }
         foreach ($name in $MP_AppFiles) {
@@ -189,6 +233,20 @@ catch {
     Register-ScheduledTask -TaskName $oldTask.TaskName -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Force | Out-Null
     Wait-MPTaskIdle $oldTask.TaskName 30 | Out-Null
     Start-ScheduledTask -TaskName $oldTask.TaskName -ErrorAction SilentlyContinue
+    $oldVersion = Get-MPPackageVersion $OldBase
+    $restored = Wait-MPHealth $OldBase $oldVersion 90
+    if ($restored) {
+        Remove-Item -LiteralPath $Maintenance -Force -ErrorAction SilentlyContinue
+        Set-MPUpdateStage 'failed' $err.Exception.Message $true
+    } else {
+        Set-MPUpdateStage 'failed' ('Rollback-Healthcheck fehlgeschlagen. ' + $err.Exception.Message) $false
+        throw 'MP-UPD-005: Rollback-Healthcheck fehlgeschlagen. Wartungssperre bleibt aktiv; IT muss den gesicherten Stand wiederherstellen.'
+    }
     Write-Host "Alter Stand wieder gestartet (Task '$($oldTask.TaskName)', Ordner $OldBase)." -ForegroundColor Yellow
     throw $err
+}
+
+finally {
+    if ($HaveMutex) { $UpdateMutex.ReleaseMutex() }
+    $UpdateMutex.Dispose()
 }

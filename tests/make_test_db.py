@@ -38,7 +38,7 @@ with server.DB_LOCK, server.db_session() as con:
     ]
     m1 = next(m for m in new["machines"] if m["departmentId"] == "cnc")
     new["workSteps"].append({"id": "ws_seed1", "sequence": 10, "planningType": "MACHINE", "pos": 10, "departmentId": "cnc", "projectId": "", "predecessorIds": [],
-                             "fs": "FS 1001", "ab": "AB-1001", "wt": "", "machineId": m1["id"], "altMachineId": "", "allowAlternative": False, "order": "FS 1001",
+                             "fa": "FA 1001", "ab": "AB-1001", "wt": "", "machineId": m1["id"], "altMachineId": "", "allowAlternative": False, "order": "FA 1001",
                              "articleNo": "", "description": "Seed", "targetQty": 5, "dueDate": "2026-11-20", "baselinePlan": None, "hours": 4, "goodQty": 0,
                              "scrapQty": 0, "status": "planned", "direction": "forward", "anchorMode": "none", "requiredStart": "", "requiredFinish": "",
                              "createdAt": server.now_iso(), "lockedStart": "", "lockedSegments": [], "actualStartedAt": "", "runningSince": "", "pausedAt": "",

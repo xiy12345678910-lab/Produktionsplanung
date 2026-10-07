@@ -28,14 +28,15 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 MP_DEBUG_ABORTS = os.environ.get('MP_DEBUG_ABORTS') == '1'
-APP_VERSION = "12.18.0"
+APP_VERSION = "12.19.0"
 HOST = os.environ.get("MP_HOST", "0.0.0.0")
 PORT = int(os.environ.get("MP_PORT", "8765"))
 BASE = Path(__file__).resolve().parent
 if str(BASE) not in sys.path:
     # Anhängen statt voranstellen: Standardbibliothek hat immer Vorrang vor Dateien im Programmordner.
     sys.path.append(str(BASE))
-from release_gates import machine_lanes, validate_release_feasibility
+from release_gates import machine_lanes, validate_release_feasibility, local_dt, work_intervals, personnel_assignment, can_staff, is_absent, LOCAL_TZ, make_segments, hits_machine_block, overlaps, clock_minutes
+from app_updates import UpdateManager
 
 DATA_DIR = BASE / "data"
 DB_PATH = DATA_DIR / "maschinenplanung.sqlite3"
@@ -777,9 +778,10 @@ MAX_CONNECTIONS = 256
 # Zusätzlich erlaubte Host-Namen (Komma-getrennt), z. B. DNS-Alias des Servers.
 EXTRA_ALLOWED_HOSTS = {h.strip().lower() for h in os.environ.get("MP_ALLOWED_HOSTS", "").split(",") if h.strip()}
 
-ROLES = {"admin", "gf", "department_lead", "department_deputy", "viewer", "project_management", "production_planning", "sales"}
+ROLES = {"admin", "gf", "department_lead", "department_deputy", "viewer", "project_management", "production_planning", "sales", "production"}
 WRITE_ROLES = {"admin", "gf", "department_lead", "department_deputy", "project_management", "production_planning", "sales"}
 DEPARTMENT_ROLES = {"department_lead", "department_deputy"}
+SCOPED_ROLES = DEPARTMENT_ROLES | {"viewer", "production"}
 USER_MANAGER_ROLES = {"admin", "department_lead", "department_deputy"}
 # Welche Rollen eine Bereichsrolle im eigenen Bereich anlegen/ändern darf.
 # Leitungen verwalten Stellvertretungen und Lesende; Stellvertretungen nur Lesende.
@@ -790,6 +792,15 @@ MANAGEABLE_ROLES = {
 }
 ALLOWED_NETWORK = None
 AUTH_POST_PATHS = {"/api/login", "/api/logout", "/api/password"}
+UPDATE_MANAGER = None
+
+
+def update_manager():
+    global UPDATE_MANAGER
+    with DB_LOCK:
+        if UPDATE_MANAGER is None:
+            UPDATE_MANAGER = UpdateManager(BASE, APP_VERSION, lambda: CURRENT_CFG or {})
+        return UPDATE_MANAGER
 
 
 def now_iso() -> str:
@@ -979,7 +990,10 @@ def init_db(seed: str = "neutral") -> None:
             );
             """
         )
+        con.execute("CREATE TABLE IF NOT EXISTS production_requests(username TEXT NOT NULL, request_id TEXT NOT NULL, fingerprint TEXT NOT NULL, result TEXT NOT NULL, PRIMARY KEY(username,request_id))")
+        con.execute("CREATE TABLE IF NOT EXISTS retired_usernames(username TEXT PRIMARY KEY COLLATE NOCASE,retired_at TEXT NOT NULL)")
         migrate_users_schema(con)
+        con.execute("UPDATE users SET department_id='' WHERE role IN ('admin','gf','project_management','production_planning','sales') AND department_id<>''")
         row = con.execute("SELECT id FROM state WHERE id=1").fetchone()
         if not row:
             initial = {
@@ -1015,6 +1029,7 @@ def init_db(seed: str = "neutral") -> None:
         migrate_state_v1280(con)
         migrate_state_v1216(con)
         migrate_state_v1218(con)
+        migrate_state_v1219(con)
         if not con.execute("SELECT 1 FROM chat_channels WHERE kind='all'").fetchone():
             con.execute("INSERT INTO chat_channels(kind,name,members,created_by,created_at) VALUES('all','Alle','[]','Server',?)", (now_iso(),))
         migrate_chat_v1291(con)
@@ -1039,6 +1054,50 @@ def migrate_state_v1280(con: sqlite3.Connection) -> None:
         con.execute("UPDATE state SET json=?,updated_at=?,updated_by=? WHERE id=1",
                     (json.dumps(state, ensure_ascii=False, separators=(",", ":")), now_iso(), "V12.8.0 migration"))
         print("DB-MIGRATION state: V12.8.0 Formatlisten angelegt")
+
+
+FA_SOURCE_TYPES = {"PROJECT", "FRAME_ORDER", "STOCK_REQUIREMENT"}
+
+
+def normalize_fa_state(state: dict) -> None:
+    """Add canonical references without deleting or renumbering legacy records."""
+    machine_dept = {str(m.get("id")): m.get("departmentId") for m in state.get("machines", [])}
+    def record(x):
+        if not isinstance(x, dict):
+            return
+        number = str(x.get("fa") or x.get("faNumber") or x.get("fs") or x.get("order") or "")
+        if not x.get("fa"):
+            x["fa"] = number
+        if not x.get("faNumber"):
+            x["faNumber"] = number
+        if not x.get("departmentId") and machine_dept.get(str(x.get("machineId"))):
+            x["departmentId"] = machine_dept[str(x["machineId"])]
+        source = "FRAME_ORDER" if x.get("frameOrderId") or x.get("callOffId") else "STOCK_REQUIREMENT" if x.get("stockRequirementId") else "PROJECT"
+        x.setdefault("sourceType", source)
+        x.setdefault("sourceId", str(x.get("callOffId") or x.get("frameOrderId") or x.get("stockRequirementId") or x.get("projectId") or x.get("id") or ""))
+    for key in ("productionEvents", "palletLabels", "palletTemplates", "inventory"):
+        state.setdefault(key, [])
+    for key in ("workSteps", "history", "orders"):
+        for x in state.get(key) or []:
+            record(x)
+    for f in state.get("formats") or []:
+        for t in f.get("tools") or []:
+            t.setdefault("fa", str(t.get("fs") or t.get("order") or ""))
+    for v in state.get("planVersions") or []:
+        if isinstance(v.get("payload"), dict):
+            normalize_fa_state(v["payload"])
+
+
+def migrate_state_v1219(con: sqlite3.Connection) -> None:
+    row = con.execute("SELECT json FROM state WHERE id=1").fetchone()
+    if not row:
+        return
+    state = json.loads(row["json"])
+    before = canonical(state)
+    normalize_fa_state(state)
+    if canonical(state) != before:
+        con.execute("UPDATE state SET json=? WHERE id=1", (json.dumps(state, ensure_ascii=False),))
+    # Archived JSON remains immutable; the read boundary normalizes a copy.
 
 
 def migrate_state_v1218(con: sqlite3.Connection) -> None:
@@ -1125,7 +1184,7 @@ def migrate_state_v1243(con: sqlite3.Connection) -> None:
             if alt not in machines or alt == mid:
                 alt = ""
             order = str(x.get("order") or "").strip()
-            fs = str(x.get("fs") or x.get("fertigungsauftrag") or x.get("fertigungsschein") or order).strip()
+            fa = str(x.get("fa") or x.get("fs") or x.get("fertigungsauftrag") or x.get("fertigungsschein") or order).strip()
             try:
                 seq = float(x.get("sequence") or x.get("pos") or ((i + 1) * 10))
             except Exception:
@@ -1136,9 +1195,9 @@ def migrate_state_v1243(con: sqlite3.Connection) -> None:
                 "predecessorIds": list(x.get("predecessorIds") or []),
                 "departmentId": str(x.get("departmentId") or (machines.get(mid) or {}).get("departmentId") or "cnc"),
                 "projectId": str(x.get("projectId") or ""),
-                "fs": fs, "ab": str(x.get("ab") or ""), "wt": str(x.get("wt") or ""),
+                "fa": fa, "ab": str(x.get("ab") or ""), "wt": str(x.get("wt") or ""),
                 "machineId": mid, "altMachineId": alt, "allowAlternative": bool(alt),
-                "order": order or fs, "status": str(x.get("status") or "planned") if str(x.get("status") or "planned") in valid_status else "planned",
+                "order": order or fa, "status": str(x.get("status") or "planned") if str(x.get("status") or "planned") in valid_status else "planned",
             })
             steps.append(x)
         dept_types = {str(d.get("id")): str(d.get("planningType") or "LABOR_HOURS") for d in (state.get("departments") or []) if isinstance(d, dict)}
@@ -1146,7 +1205,7 @@ def migrate_state_v1243(con: sqlite3.Connection) -> None:
             if not isinstance(old, dict):
                 continue
             x = dict(old); did = str(x.get("departmentId") or "")
-            x.update({"id": str(x.get("id") or f"legacy_dp_{j+1}"), "planningType": str(x.get("planningType") or dept_types.get(did) or "LABOR_HOURS"), "sequence": float(x.get("sequence") or ((len(steps)+j+1)*10)), "predecessorIds": list(x.get("predecessorIds") or []), "projectId": str(x.get("projectId") or ""), "fs": str(x.get("fs") or x.get("order") or ""), "ab": str(x.get("ab") or ""), "wt": str(x.get("wt") or ""), "status": str(x.get("status") or "planned")})
+            x.update({"id": str(x.get("id") or f"legacy_dp_{j+1}"), "planningType": str(x.get("planningType") or dept_types.get(did) or "LABOR_HOURS"), "sequence": float(x.get("sequence") or ((len(steps)+j+1)*10)), "predecessorIds": list(x.get("predecessorIds") or []), "projectId": str(x.get("projectId") or ""), "fa": str(x.get("fa") or x.get("fs") or x.get("order") or ""), "ab": str(x.get("ab") or ""), "wt": str(x.get("wt") or ""), "status": str(x.get("status") or "planned")})
             steps.append(x)
         state["workSteps"] = steps
         changed = True
@@ -1155,8 +1214,8 @@ def migrate_state_v1243(con: sqlite3.Connection) -> None:
     for step in (state.get("workSteps") or []):
         if not isinstance(step, dict):
             continue
-        if step.get("planningType") == "MACHINE" and not str(step.get("fs") or "").strip():
-            step["fs"] = str(step.get("order") or "").strip()
+        if step.get("planningType") == "MACHINE" and not str(step.get("fa") or "").strip():
+            step["fa"] = str(step.get("order") or "").strip()
             changed = True
         pid = str(step.get("projectId") or "")
         linked = projects.get(pid)
@@ -1167,7 +1226,7 @@ def migrate_state_v1243(con: sqlite3.Connection) -> None:
                 step["wt"] = str(linked.get("wt") or "").strip(); changed = True
     if changed:
         con.execute("UPDATE state SET json=?,updated_at=?,updated_by=? WHERE id=1", (json.dumps(state, ensure_ascii=False, separators=(",", ":")), now_iso(), "V12.4.3 hierarchy migration"))
-        print("DB-MIGRATION state: V12.4.3 FS/AB/WT hierarchy normalized")
+        print("DB-MIGRATION state: V12.4.3 FA/AB/WT hierarchy normalized")
 
 
 def migrate_state_v1244(con: sqlite3.Connection) -> None:
@@ -1380,9 +1439,9 @@ def migrate_state_v1270(con: sqlite3.Connection) -> None:
         mid = dept_machine[did]
         hours_total = _legacy_step_hours(x)
         done_h = max(0.0, _finite_float(x.get("doneHours", 0)) or 0.0)
-        fs = str(x.get("fs") or x.get("order") or "").strip() or str(x.get("id"))
-        common = {"projectId": str(x.get("projectId") or ""), "fs": fs, "ab": str(x.get("ab") or ""), "wt": str(x.get("wt") or ""),
-                  "order": fs, "articleNo": "", "description": "", "targetQty": int(max(0, _finite_float(x.get("quantity", 0)) or 0)),
+        fa = str(x.get("fa") or x.get("fs") or x.get("order") or "").strip() or str(x.get("id"))
+        common = {"projectId": str(x.get("projectId") or ""), "fa": fa, "ab": str(x.get("ab") or ""), "wt": str(x.get("wt") or ""),
+                  "order": fa, "articleNo": "", "description": "", "targetQty": int(max(0, _finite_float(x.get("quantity", 0)) or 0)),
                   "departmentId": did, "machineId": mid, "createdAt": str(x.get("createdAt") or ts)}
         status = str(x.get("status") or "planned")
         if status in {"done", "cancelled"}:
@@ -1480,7 +1539,7 @@ def canonical(obj) -> str:
 
 # --------------------------------------------------------------------------- V12.9.0 Messenger
 # Eigene Tabellen statt Live-State: Nachrichten erhöhen keine Planungsrevision und kollidieren nicht
-# mit Planänderungen. Erwähnungen (/FS, /Projekt, /Format, @Benutzer) speichert der Client als Token
+# mit Planänderungen. Erwähnungen (/FA, /Projekt, /Format, @Benutzer) speichert der Client als Token
 # im Text; der Server speichert nur Text und prüft Mitgliedschaft.
 CHAT_MAX_TEXT = 2000
 CHAT_MAX_MEMBERS = 100
@@ -1853,7 +1912,7 @@ def notify_from_diff(con, old: dict, new: dict, actor: str) -> int:
         if a == b or {a, b} != {"planned", "released"}:
             continue
         did = _step_dept(s, machine_dept, dd)
-        label = str(s.get("fs") or s.get("order") or s.get("id"))
+        label = str(s.get("fa") or s.get("order") or s.get("id"))
         text = f"{label} freigegeben" if b == "released" else f"{label} zurückgezogen"
         send([u for u in users if notif_sees_dept(u, did)], "release", "order", s.get("id"), f"{text} · {actor}")
 
@@ -1979,7 +2038,7 @@ def notif_post(con, user: dict, path: str, body: dict, state: dict | None = None
             if not s or str(s.get("status") or "planned") not in _ACTIVE_STEP or not _valid_date_key(s.get("dueDate")) \
                     or not notif_sees_dept(me, _step_dept(s, machine_dept, dd)):
                 continue
-            label = str(s.get("fs") or s.get("order") or s.get("id"))
+            label = str(s.get("fa") or s.get("order") or s.get("id"))
             text = f"{label}: Plan-Ende {_short(it['end'])} nach Termin {_short(s['dueDate'])}" if it["kind"] == "late" \
                 else f"{label}: Puffer unter 1 Arbeitstag (Termin {_short(s['dueDate'])})"
             if notif_add(con, username, role, "risk", "order", s["id"], text, f"risk|{s['id']}|{today}"):
@@ -2318,6 +2377,8 @@ def validate_projects(old: dict, projects: list) -> tuple[bool, str, str]:
         if phase not in PROJECT_PHASES:
             return False, "MP-PM-007", f"Projekt '{label}' hat eine ungültige Phase."
         ab = str(project.get("ab") or "").strip()
+        if "quantity" in project and not _nonnegative_int(project["quantity"]):
+            return False, "MP-PM-002", f"Projekt '{label}': Menge muss eine ganze nicht negative Zahl sein."
         if len(ab) > 80 or (ab and ab.casefold() in seen_ab):
             return False, "MP-PM-003", f"Projekt '{label}': AB ist zu lang oder bereits vergeben."
         if ab:
@@ -2348,7 +2409,7 @@ def validate_projects(old: dict, projects: list) -> tuple[bool, str, str]:
             if str(pr.get("status") or "open") not in PROCESS_STATUS:
                 return False, "MP-PM-010", f"Projekt '{label}': Prozess hat einen ungültigen Status."
             if len(str(pr.get("workStepId") or "")) > 80:
-                return False, "MP-PM-010", f"Projekt '{label}': Prozess verweist auf eine ungültige FS."
+                return False, "MP-PM-010", f"Projekt '{label}': Prozess verweist auf eine ungültige FA."
             if pr.get("dueDate") not in (None, "") and not _valid_date_key(pr.get("dueDate")):
                 return False, "MP-PM-010", f"Projekt '{label}': Prozess hat ein ungültiges Fälligkeitsdatum."
             if pr.get("startDate") not in (None, "") and not _valid_date_key(pr.get("startDate")):
@@ -2375,6 +2436,8 @@ def validate_projects(old: dict, projects: list) -> tuple[bool, str, str]:
         log = project.get("log") or []
         if not isinstance(log, list) or any(not isinstance(x, dict) or not x.get("id") for x in log):
             return False, "MP-PM-011", f"Projekt '{label}': Verlauf ist ungültig."
+        if len({str(x["id"]) for x in log}) != len(log):
+            return False, "MP-PM-011", f"Projekt '{label}': Verlauf benötigt eindeutige IDs."
     return True, "", ""
 
 
@@ -2480,7 +2543,7 @@ def validate_formats(old: dict, new: dict, dept_ids: set) -> tuple[bool, str, st
             if not isinstance(t, dict) or not _SAFE_ID.fullmatch(str(t.get("id") or "")) or str(t.get("id")) in tool_ids:
                 return False, "MP-FMT-006", f"Format '{label}': Werkzeug ohne eindeutige ID."
             tool_ids.add(str(t.get("id")))
-            for k, lim in (("wkz", 40), ("fs", 40), ("order", 80), ("article", 120), ("stepId", 80), ("projectId", 80)):
+            for k, lim in (("wkz", 40), ("fa", 40), ("order", 80), ("article", 120), ("stepId", 80), ("projectId", 80)):
                 if len(str(t.get(k) or "")) > lim:
                     return False, "MP-FMT-006", f"Format '{label}': Feld '{k}' ist zu lang."
             if not all(_num_in(t.get(k), 1, 5000) for k in ("l", "b", "h")):
@@ -2630,6 +2693,14 @@ def validate_state(old: dict, new: dict) -> tuple[bool, str, str]:
     ok, code, reason = validate_formats(old, new, dept_ids)
     if not ok:
         return False, code, reason
+    templates = new.get("palletTemplates", [])
+    if not isinstance(templates, list):
+        return False, "MP-PROD-048", "Etikettenvorlagen sind ungültig."
+    tids = set()
+    for t in templates:
+        if not isinstance(t, dict) or not re.fullmatch(r"[A-Za-z0-9_-]{1,80}", str(t.get("id") or "")) or t["id"] in tids or not _nonnegative_int(t.get("shelfLifeDays", 0)) or t.get("shelfLifeDays", 0) > 36500 or any(not isinstance(t.get(k, ""), str) or len(t.get(k, "")) > 1000 for k in ("name", "fromAddress", "toAddress")):
+            return False, "MP-PROD-048", "Etikettenvorlage ist ungültig."
+        tids.add(t["id"])
     seen_project_ids = {str(p.get("id")) for p in projects}
 
     project_ids = seen_project_ids
@@ -2645,15 +2716,15 @@ def validate_state(old: dict, new: dict) -> tuple[bool, str, str]:
         pid = str(step.get("projectId") or "")
         if pid and pid not in project_ids:
             return False, "MP-STEP-003", f"Arbeitsgang '{sid}' verweist auf einen unbekannten AB-Auftrag."
-        fs = str(step.get("fs") or step.get("order") or "").strip()
+        fa = str(step.get("fa") or step.get("order") or "").strip()
         ab_ref = str(step.get("ab") or "").strip()
         wt_ref = str(step.get("wt") or "").strip()
-        if not fs:
-            return False, "MP-STEP-014", f"Produktionsauftrag '{sid}' benötigt eine FS."
+        if not fa:
+            return False, "MP-STEP-014", f"Produktionsauftrag '{sid}' benötigt eine FA."
         if str(step.get("status") or "planned") not in {"planned", "released", "running", "paused", "done", "cancelled"}:
             return False, "MP-STEP-017", f"Arbeitsgang '{sid}' hat einen ungültigen Status."
-        if any(len(v) > 80 for v in (fs, ab_ref, wt_ref)):
-            return False, "MP-STEP-014", f"Arbeitsgang '{sid}': FS/AB/WT ist zu lang."
+        if any(len(v) > 80 for v in (fa, ab_ref, wt_ref)):
+            return False, "MP-STEP-014", f"Arbeitsgang '{sid}': FA/AB/WT ist zu lang."
         if pid:
             linked = next((p for p in projects if str(p.get("id")) == pid), None)
             if linked and ab_ref and ab_ref.casefold() != str(linked.get("ab") or "").strip().casefold():
@@ -2682,6 +2753,11 @@ def validate_state(old: dict, new: dict) -> tuple[bool, str, str]:
         if predecessors and not pid:
             return False, "MP-STEP-007", f"Arbeitsgang '{sid}': Vorgänger sind nur innerhalb eines AB-Auftrags zulässig."
 
+        if str(step.get("status")) in {"released", "running"}:
+            completed = {str(h.get("originalOrderId")) for h in new.get("history") or [] if h.get("recordType", "done") == "done"}
+            completed |= {str(x.get("id")) for x in work_steps if x.get("status") == "done"}
+            if any(str(i) not in completed for i in step.get("predecessorIds") or []):
+                return False, "MP-PROD-046", "Vorgänger offen."
         if ptype != "MACHINE":
             for field in ("requiredHours", "dryMinutes", "quantity", "cycleSeconds", "partsPerCycle", "setupMinutes", "staffRequired"):
                 value = _finite_float(step.get(field, 0))
@@ -2692,7 +2768,7 @@ def validate_state(old: dict, new: dict) -> tuple[bool, str, str]:
                 return False, "MP-STEP-018", f"Arbeitsgang '{sid}': erledigte Stunden müssen endlich und nicht negativ sein."
             if step.get("planningWeek") not in (None, "") and not _valid_date_key(step.get("planningWeek")):
                 return False, "MP-STEP-019", f"Arbeitsgang '{sid}' hat eine ungültige Planwoche."
-            if ptype == "LABOR_HOURS" and _finite_float(step.get("requiredHours", 0)) <= 0:
+            if ptype == "LABOR_HOURS" and str(step.get("status") or "planned") != "planned" and _finite_float(step.get("requiredHours", 0)) <= 0:
                 return False, "MP-STEP-009", f"Konfektions-Arbeitsgang '{sid}' benötigt Stunden größer 0."
             if ptype == "PROCESS" and _finite_float(step.get("requiredHours", 0)) <= 0:
                 return False, "MP-STEP-009", f"Prozess-Arbeitsgang '{sid}' benötigt aktive Stunden größer 0."
@@ -2709,14 +2785,15 @@ def validate_state(old: dict, new: dict) -> tuple[bool, str, str]:
                 if setup is None or setup < 0 or setup > 1440:
                     return False, "MP-STEP-012", f"Takt-Arbeitsgang '{sid}' hat eine ungültige Rüstzeit."
 
-    by_id = {str(x.get("id")): x for x in work_steps}
+    by_id = {str(x.get("originalOrderId")): x for x in new.get("history") or [] if x.get("recordType", "done") == "done"}
+    by_id.update({str(x.get("id")): x for x in work_steps})
     for step in work_steps:
         for predecessor_id in (step.get("predecessorIds") or []):
             predecessor = by_id.get(str(predecessor_id))
             if not predecessor or str(predecessor.get("projectId")) != str(step.get("projectId")):
                 return False, "MP-STEP-007", f"Arbeitsgang '{step.get('id')}' verweist auf einen ungültigen Vorgänger."
 
-    graph = {sid: [str(x) for x in (step.get("predecessorIds") or [])] for sid, step in by_id.items()}
+    graph = {sid: [str(x) for x in (step.get("predecessorIds") or [])] for sid, step in by_id.items() if sid in step_ids}
     visiting, visited = set(), set()
     def visit_step(sid):
         if sid in visiting:
@@ -2734,6 +2811,12 @@ def validate_state(old: dict, new: dict) -> tuple[bool, str, str]:
         if not visit_step(sid):
             return False, "MP-STEP-010", "Arbeitsgang-Abhängigkeiten enthalten einen Zyklus."
 
+    for step in work_steps:
+        source = step.get("sourceType", "PROJECT")
+        if source not in FA_SOURCE_TYPES or not isinstance(step.get("sourceId", ""), str) or ("sourceId" in step and not step["sourceId"]):
+            return False, "MP-FA-001", "FA-Herkunft ist ungültig."
+        if step.get("faNumber") is not None and step.get("faNumber") != step.get("fa"):
+            return False, "MP-FA-001", "FA-Nummer und Referenz sind inkonsistent."
     orders = [step for step in work_steps if step.get("planningType") == "MACHINE"]
 
     mids = []
@@ -2858,6 +2941,8 @@ def validate_state(old: dict, new: dict) -> tuple[bool, str, str]:
         if not isinstance(skills, list) or any(str(x) not in midset for x in skills):
             return False, "MP-PERS-025", f"Mitarbeiter '{e.get('name') or eid}' besitzt eine ungültige Maschinenfreigabe."
         hm = str(e.get("homeMachineId", "") or "")
+        if "homeLaneIndex" in e and (not hm or isinstance(e["homeLaneIndex"], bool) or not isinstance(e["homeLaneIndex"], int) or not 1 <= e["homeLaneIndex"] <= machine_lanes(new, hm)):
+            return False, "MP-PERS-034", "Stamm-Parallelplatz ist ungültig."
         if hm and (hm not in midset or hm not in {str(x) for x in skills}):
             return False, "MP-PERS-025", f"Stammmaschine von '{e.get('name') or eid}' ist nicht freigegeben."
         if str(e.get("homeShift", "auto")) not in {"auto", "early", "late"}:
@@ -2870,9 +2955,17 @@ def validate_state(old: dict, new: dict) -> tuple[bool, str, str]:
                 return False, "MP-PERS-033", f"Leiharbeiter-Anfrage von '{e.get('name') or eid}' ist ungültig (Zeitraum/Status)."
         if str(e.get("departmentId") or "") not in dept_ids:
             return False, "MP-PERS-029", f"Mitarbeiter '{e.get('name') or eid}' verweist auf einen unbekannten Bereich."
+        days = e.get("workingDays", [1, 2, 3, 4, 5])
+        daily = e.get("dailyHours", {})
+        if (not isinstance(days, list) or not days or len(days) != len(set(map(str, days)))
+                or any(isinstance(d, bool) or not isinstance(d, int) or d not in range(1, 8) for d in days)
+                or not isinstance(daily, dict) or any(str(k) not in set(map(str, days)) or _finite_float(v) is None or not 0 <= float(v) <= 16 for k, v in daily.items())):
+            return False, "MP-PERS-035", "Individuelle Arbeitstage/-stunden sind ungültig."
         weekly = _finite_float(e.get("weeklyHours", 40))
         if weekly is None or weekly < 0 or weekly > 80:
             return False, "MP-PERS-030", f"Wochenstunden von '{e.get('name') or eid}' sind ungültig."
+        if sum(float(daily.get(str(d), weekly/len(days))) for d in days) > weekly+0.001:
+            return False, "MP-PERS-035", "Tagesstunden überschreiten die Wochenstunden."
     if len(eids) != len(set(eids)):
         return False, "MP-PERS-001", "Doppelte Mitarbeiter-ID."
     eidset = set(eids)
@@ -2898,8 +2991,15 @@ def validate_state(old: dict, new: dict) -> tuple[bool, str, str]:
         deployed = deployment_new.get((eid, _week_start_key(date))) if employee else None
         deployed_ok = bool(deployed) and deployed != str(employee.get("departmentId") or "") and machine_dept_new.get(mid) == deployed
         unchanged = canonical(old_assignments.get((eid, str(date)))) == canonical(a)
-        if employee and not unchanged and not deployed_ok and mid not in {str(x) for x in (employee.get("skills") or [])}:
+        if employee and not unchanged and mid not in {str(x) for x in (employee.get("skills") or [])}:
             return False, "MP-PERS-025", f"Mitarbeiter '{employee.get('name') or eid}' ist für Maschine '{mid}' nicht freigegeben."
+        if employee and not unchanged:
+            effective = deployed or str(employee.get("departmentId") or "")
+            if machine_dept_new.get(mid) != effective:
+                return False, "MP-PERS-034", "Mitarbeiter ist nicht im Einsatzbereich der Ressource."
+        lane = a.get("laneIndex", 1)
+        if isinstance(lane, bool) or not isinstance(lane, int) or not 1 <= lane <= machine_lanes(new, mid):
+            return False, "MP-PERS-034", "Parallelplatz der Personalzuordnung ist ungültig."
         key = (eid, str(date))
         if key in assignment_keys:
             return False, "MP-PERS-001", f"Mitarbeiter '{eid}' hat am {date} mehrere explizite Zuordnungen."
@@ -2907,6 +3007,19 @@ def validate_state(old: dict, new: dict) -> tuple[bool, str, str]:
         ok, code, reason = _personnel_assignment_valid(a)
         if not ok:
             return False, code, reason
+
+    # Explicit hours cannot exceed the contractual weekly capacity (breaks excluded).
+    weekly_assigned = {}
+    for a in assignments:
+        key = (str(a["employeeId"]), _week_start_key(a["date"]))
+        minutes = _clock_minutes(a["end"]) - _clock_minutes(a["start"])
+        minutes -= sum((_clock_minutes(b.get("end")) or 0) - (_clock_minutes(b.get("start")) or 0) for b in a.get("breaks") or [] if b.get("start") and b.get("end"))
+        weekly_assigned[key] = weekly_assigned.get(key, 0) + minutes / 60
+    for (eid, week), hours in weekly_assigned.items():
+        employee = next(e for e in employees if str(e["id"]) == eid)
+        changed = any(str(a["employeeId"]) == eid and _week_start_key(a["date"]) == week and canonical(old_assignments.get((eid, a["date"]))) != canonical(a) for a in assignments)
+        if changed and hours > float(employee.get("weeklyHours", 40)) + 0.001:
+            return False, "MP-PERS-035", "Personalplanung überschreitet die individuellen Wochenstunden."
 
     absence_keys = set()
     absences = new.get("personnelAbsences") or []
@@ -2964,7 +3077,7 @@ def validate_state(old: dict, new: dict) -> tuple[bool, str, str]:
     locked_by_machine: dict[str, set] = {}
     old_orders = {str(o.get("id")): o for o in (old.get("workSteps") or []) if isinstance(o, dict) and o.get("id") and o.get("planningType") == "MACHINE"}
     planning_fields = (
-        "projectId", "fs", "ab", "wt", "sequence", "departmentId", "planningType", "predecessorIds", "pos", "machineId", "altMachineId", "allowAlternative", "order", "articleNo", "description",
+        "projectId", "fa", "faNumber", "sourceType", "sourceId", "frameOrderId", "callOffId", "stockRequirementId", "ab", "wt", "sequence", "departmentId", "planningType", "predecessorIds", "pos", "machineId", "altMachineId", "allowAlternative", "order", "articleNo", "description",
         "targetQty", "hours", "direction", "anchorMode", "requiredStart", "requiredFinish", "createdAt", "baselinePlan"
     )
     core_without_machine_choice = tuple(f for f in planning_fields if f not in {"machineId", "altMachineId", "allowAlternative"})
@@ -3006,6 +3119,9 @@ def validate_state(old: dict, new: dict) -> tuple[bool, str, str]:
         if bool(o.get("allowAlternative")) != bool(alt):
             return False, "MP-PLAN-033", f"Auftrag '{o.get('order') or oid}': Alternativmaschinen-Schalter und Alternativmaschine sind inkonsistent."
 
+        lane = o.get("laneIndex")
+        if lane is not None and (isinstance(lane, bool) or not isinstance(lane, int) or not 1 <= lane <= machine_lanes(new, mid)):
+            return False, "MP-PERS-034", "FA-Parallelplatz ist ungültig."
         status = str(o.get("status", "planned"))
         if status not in {"planned", "released", "running", "paused"}:
             return False, "MP-PLAN-004", f"Auftrag '{o.get('order') or oid}' hat einen ungültigen Status."
@@ -3231,7 +3347,7 @@ def validate_state(old: dict, new: dict) -> tuple[bool, str, str]:
                     return False, "MP-HIST-006", f"Historieneintrag '{h.get('id')}': Ist-Zeiten verwenden inkompatible Formate."
 
     removed = set(old_orders) - seen_orders
-    history_copy_fields = ("machineId", "projectId", "fs", "ab", "wt", "order", "articleNo", "description", "targetQty", "hours", "direction", "anchorMode", "requiredStart", "requiredFinish", "createdAt", "baselinePlan")
+    history_copy_fields = ("machineId", "projectId", "fa", "ab", "wt", "order", "articleNo", "description", "targetQty", "hours", "direction", "anchorMode", "requiredStart", "requiredFinish", "createdAt", "baselinePlan")
     for oid in removed:
         old_order = old_orders[oid]
         old_status = str(old_order.get("status", "planned"))
@@ -3368,17 +3484,17 @@ def sales_change_allowed(old: dict, new: dict) -> tuple[bool, str]:
 
 
 # Phasenwechsel je Rolle (Admin: alle). Nach der Annahme wird der Produktionsstand
-# nicht gespeichert, sondern aus den verknüpften FS abgeleitet.
+# nicht gespeichert, sondern aus den verknüpften FA abgeleitet.
 PROJECT_TRANSITIONS = {
     # PM legt an und übergibt an die Produktion; alte Phasen (Eingang/Angebot) gelten als PM.
     "project_management": {("pm", "accepted"), ("inquiry", "accepted"), ("offer_sent", "accepted"), ("accepted", "closed")},
-    "production_planning": {("accepted", "closed")},
+    "production_planning": {("pm", "accepted"), ("inquiry", "accepted"), ("offer_sent", "accepted"), ("accepted", "closed")},
 }
-PROJECT_BASE_FIELDS = {"customer", "contact", "name", "note", "wt", "workflow"}
+PROJECT_BASE_FIELDS = {"customer", "contact", "name", "note", "wt", "workflow", "quantity"}
 PROJECT_FIELDS = {
     "sales": PROJECT_BASE_FIELDS | {"ab", "dueDate", "phase", "log", "updatedAt", "processes"},
     "project_management": PROJECT_BASE_FIELDS | {"ab", "dueDate", "phase", "log", "updatedAt", "processes", "offer", "development", "customerPlan"},
-    "production_planning": {"phase", "log", "updatedAt", "processes"},
+    "production_planning": PROJECT_BASE_FIELDS | {"ab", "dueDate", "phase", "log", "updatedAt", "processes"},
     "department": {"log", "updatedAt", "processes"},
 }
 PROCESS_SELF_FIELDS = {"status", "note", "owner", "workStepId"}
@@ -3410,7 +3526,7 @@ def project_changes_allowed(old: dict, new: dict, role: str, username: str, depa
         if a is None:
             if role == "sales" and str(b.get("phase")) == "inquiry":
                 pass
-            elif role == "project_management" and str(b.get("phase")) in {"inquiry", "pm"}:
+            elif role in {"project_management", "production_planning"} and str(b.get("phase")) in {"inquiry", "pm"}:
                 pass
             else:
                 return False, f"Diese Rolle darf kein Projekt in dieser Phase anlegen ({label})."
@@ -3587,15 +3703,19 @@ def production_planning_change_allowed(old: dict, new: dict) -> tuple[bool, str]
             continue
         for side in (a.get(rid), b.get(rid)):
             if side is not None and str(side.get("status") or "planned") != "planned":
-                return False, f"Arbeitsvorbereitung ändert nur geplante Aufträge ('{side.get('fs') or side.get('order') or rid}' ist {side.get('status')})."
+                return False, f"Arbeitsvorbereitung ändert nur geplante Aufträge ('{side.get('fa') or side.get('order') or rid}' ist {side.get('status')})."
         before, after = a.get(rid), b.get(rid)
+        if before and after:
+            for field in ("machineId", "altMachineId", "allowAlternative", "laneIndex", "pos", "direction", "anchorMode", "requiredStart", "requiredFinish", "planningWeek", "baselinePlan"):
+                if canonical(before.get(field)) != canonical(after.get(field)):
+                    return False, "Operative Planung übernimmt die zuständige Abteilung."
         done_before = _finite_float((before or {}).get("doneHours", 0)) or 0.0
         done_after = _finite_float((after or {}).get("doneHours", 0)) or 0.0
         if after is not None and done_after != done_before:
-            return False, f"Erledigte Stunden meldet die Abteilung, nicht die Arbeitsvorbereitung ('{after.get('fs') or rid}')."
+            return False, f"Erledigte Stunden meldet die Abteilung, nicht die Arbeitsvorbereitung ('{after.get('fa') or rid}')."
         for f in ("goodQty", "scrapQty"):
             if after is not None and canonical((before or {}).get(f, 0) or 0) != canonical(after.get(f, 0) or 0):
-                return False, f"Produktionsmengen meldet die Abteilung, nicht die Arbeitsvorbereitung ('{after.get('fs') or rid}')."
+                return False, f"Produktionsmengen meldet die Abteilung, nicht die Arbeitsvorbereitung ('{after.get('fa') or rid}')."
     return True, ""
 
 
@@ -3681,6 +3801,11 @@ def department_change_allowed(old: dict, new: dict, department_id: str) -> tuple
     old_steps = _record_map(old.get("workSteps"))
     for rid, rec in _record_map(new.get("workSteps")).items():
         before = old_steps.get(rid)
+        resource = next((m for m in old.get("machines") or [] if m.get("id") == (before or {}).get("machineId")), {})
+        if before is not None and (resource.get("kind") == "line" or resource.get("effortScaling")) and canonical(before.get("hours")) != canonical(rec.get("hours")):
+            return False, "Konfektionsstunden pflegt die Arbeitsvorbereitung."
+        if before is not None and before.get("planningType") == "LABOR_HOURS" and canonical(before.get("requiredHours")) != canonical(rec.get("requiredHours")):
+            return False, "Konfektionsstunden pflegt die Arbeitsvorbereitung."
         if before is not None and str(before.get("dueDate") or "") != str(rec.get("dueDate") or ""):
             return False, "Den AV-Termin (fertig bis) legt die Arbeitsvorbereitung fest. Die Abteilung plant innerhalb dieses Termins."
     for rec in changed_records("machineBlocks"):
@@ -3847,20 +3972,371 @@ def _masked_absence(rec: dict) -> dict:
 
 
 def _masked_audit(rec: dict) -> dict:
+    if rec.get("collection") == "personnelAbsences" and rec.get("field") == "label":
+        return {**rec, "old": ABSENCE_MASK if rec.get("old") else None, "new": ABSENCE_MASK if rec.get("new") else None}
     if str(rec.get("action") or "") in ABSENCE_AUDIT_ACTIONS:
         return {**rec, "action": "Abwesenheit eingetragen"}
     return rec
 
 
+class ProductionError(Exception):
+    def __init__(self, code, message, status=400):
+        self.code, self.message, self.status = code, message, status
+
+
+def production_access(state, user, oid):
+    order = next((x for x in state.get("workSteps") or [] if str(x.get("id")) == oid), None)
+    hist = next((x for x in state.get("history") or [] if str(x.get("originalOrderId")) == oid), None)
+    rec = order or hist
+    if not rec:
+        raise ProductionError("MP-PROD-040", "FA nicht gefunden.", 404)
+    if user["role"] != "admin" and (user["role"] not in DEPARTMENT_ROLES | {"production"} or str(user.get("department_id") or "") != str(rec.get("departmentId") or "")):
+        raise ProductionError("MP-PROD-041", "Keine Produktionsrechte für diesen Bereich.", 403)
+    return order, hist
+
+
+def production_capacity(state, order):
+    """Freeze relevant staffing/calendar inputs at each start or resume."""
+    mid, did = order.get("machineId"), order.get("departmentId")
+    employees = [dict(e) for e in state.get("employees") or [] if mid in e.get("skills", []) and (e.get("departmentId") == did or any(x.get("employeeId") == e.get("id") and x.get("departmentId") == did for x in state.get("weeklyEmployeeDeployments") or []))]
+    eids = {e["id"] for e in employees}
+    return {"personnelGate": state.get("personnelGate", False), "machines": [dict(m) for m in state.get("machines") or [] if m.get("id") == mid], "employees": employees, "personnelAssignments": [dict(x) for x in state.get("personnelAssignments") or [] if x.get("employeeId") in eids], "personnelAbsences": [{"employeeId": x.get("employeeId"), "date": x.get("date")} for x in state.get("personnelAbsences") or [] if x.get("employeeId") in eids], "weeklyEmployeeDeployments": [dict(x) for x in state.get("weeklyEmployeeDeployments") or [] if x.get("employeeId") in eids], "shiftTemplates": json.loads(json.dumps(state.get("shiftTemplates") or {})), "exceptions": state.get("exceptions") or [], "yearRules": [dict(x) for x in state.get("yearRules") or [] if x.get("machineId") == mid], "weekRules": [dict(x) for x in state.get("weekRules") or [] if x.get("machineId") == mid], "machineBlocks": [dict(x) for x in state.get("machineBlocks") or [] if x.get("machineId") == mid]}
+
+
+def production_windows(state, order, day, fallback_crew=1):
+    mid = str(order.get("machineId") or "")
+    dk, lane = day.strftime("%Y-%m-%d"), order.get("laneIndex", 1)
+    m = next((m for m in state.get("machines") or [] if str(m.get("id")) == mid), {})
+    minimum = max(1, int((m.get("laneStaff") or {}).get(str(lane), m.get("staffRequired", 0)) or 0))
+    maximum = int(m.get("crewMax") or (99 if m.get("effortScaling") else m.get("crew") or fallback_crew))
+    roster = []
+    if mid and state.get("personnelGate"):
+        for e in state.get("employees") or []:
+            if not e.get("active", True) or is_absent(state, e, dk) or not can_staff(state, e, mid, day):
+                continue
+            assignment = personnel_assignment(state, e, day, dk)
+            if assignment and assignment.get("machineId") == mid and assignment.get("laneIndex", 1) == lane:
+                roster.append((e, assignment))
+    base = work_intervals(state, mid, day) if mid else [(day.replace(hour=0, minute=0, second=0, microsecond=0), day.replace(hour=0, minute=0, second=0, microsecond=0)+timedelta(days=1), "single")]
+    for a, z, shift in base:
+        points = {a, z}
+        for _, assignment in roster:
+            for value in [assignment.get("start"), assignment.get("end"), *[b.get(k) for b in assignment.get("breaks") or [] for k in ("start", "end")]]:
+                minute = clock_minutes(value)
+                if minute is not None:
+                    point = day.replace(hour=minute//60, minute=minute%60, second=0, microsecond=0)
+                    if a < point < z:
+                        points.add(point)
+        for block in state.get("machineBlocks") or []:
+            for key in ("start", "end"):
+                point = local_dt(block.get(key))
+                if point and a < point < z:
+                    points.add(point)
+        points = sorted(points)
+        for x, y in zip(points, points[1:]):
+            at = x+(y-x)/2
+            clock = at.strftime("%H:%M")
+            people = [{"id": str(e["id"]), "name": str(e["name"])} for e, assignment in roster if assignment.get("start", "") <= clock < assignment.get("end", "") and not any(b.get("start", "") <= clock < b.get("end", "") for b in assignment.get("breaks") or [] if b.get("start") and b.get("end"))]
+            crew = min(maximum, len(people)) if mid and state.get("personnelGate") else min(maximum, fallback_crew)
+            blocked = hits_machine_block(state, {"start": x, "end": y, "machineId": mid}) if mid else False
+            yield x, y, shift, crew, people[:maximum], (crew >= minimum and not blocked)
+
+
+def production_staff(state, order, stamp):
+    moment = local_dt(stamp)
+    fallback = int((order.get("baselinePlan") or {}).get("crew") or next((m.get("crew") for m in state.get("machines") or [] if m.get("id") == order.get("machineId")), 1) or 1)
+    for a, z, _, crew, people, available in production_windows(state, order, moment, fallback):
+        if a <= moment < z and available:
+            return people, crew
+    raise ProductionError("MP-PERS-034", "Qualifiziertes Personal am Parallelplatz fehlt.")
+
+
+def production_segments(state, order, start, hours, effort=False, setup=0, fallback_crew=1):
+    cur = local_dt(start)
+    left, setup_left, segs = max(0.01, hours), setup, []
+    for offset in range(730):
+        day = cur+timedelta(days=offset)
+        for a, z, shift, crew, people, available in production_windows(state, order, day, fallback_crew):
+            a = max(a, cur)
+            if z <= a or not available:
+                continue
+            while z > a and (left > 1e-8 or setup_left > 1e-8):
+                is_setup = setup_left > 1e-8
+                rate = 1 if is_setup or not effort else crew
+                take = min(setup_left if is_setup else left/rate, (z-a).total_seconds()/3600)
+                end = a+timedelta(hours=take)
+                segs.append({"start": a.replace(tzinfo=LOCAL_TZ).isoformat(), "end": end.replace(tzinfo=LOCAL_TZ).isoformat(), "shift": shift, "laneIndex": order.get("laneIndex", 1), "crew": crew, "employees": people, **({"setup": True} if is_setup else {})})
+                if is_setup:
+                    setup_left -= take
+                else:
+                    left -= take*rate
+                a = end
+            if left <= 1e-8 and setup_left <= 1e-8:
+                return segs
+    raise ProductionError("MP-PROD-042", "Keine verfügbare Arbeits-/Personalzeit gefunden.")
+
+
+def production_actual(state, order, end):
+    segments = []
+    for phase in order.get("productionPhases") or []:
+        a, z = local_dt(phase["start"]), local_dt(phase.get("end") or end)
+        if z < a:
+            raise ProductionError("MP-PROD-043", "Produktionszeit ist ungültig.")
+        frozen = phase.get("capacity") or state
+        day = a.replace(hour=0, minute=0, second=0, microsecond=0)
+        while day <= z:
+            for x, y, shift, crew, people, _ in production_windows(frozen, order, day, phase["crew"]):
+                x, y = max(a, x), min(z, y)
+                blocked = order.get("machineId") and hits_machine_block(frozen, {"start": x, "end": y, "machineId": order["machineId"]})
+                if y > x and not blocked:
+                    segments.append({"start": x.replace(tzinfo=LOCAL_TZ).isoformat(), "end": y.replace(tzinfo=LOCAL_TZ).isoformat(), "shift": shift, "laneIndex": order.get("laneIndex", 1), "crew": crew, "employees": people if phase.get("capacity") else phase["employees"]})
+            day += timedelta(days=1)
+    wall = sum((local_dt(x["end"])-local_dt(x["start"])).total_seconds()/3600 for x in segments)
+    person = sum((local_dt(x["end"])-local_dt(x["start"])).total_seconds()/3600*x["crew"] for x in segments)
+    return segments, wall, person
+
+
+def production_replan(state, order, stamp, crew):
+    segments, wall, person = production_actual(state, order, stamp)
+    setup = float((order.get("baselinePlan") or {}).get("setupMinutes") or 0)/60
+    setup_person, setup_left = 0, setup
+    for x in segments:
+        take = min(setup_left, (local_dt(x["end"])-local_dt(x["start"])).total_seconds()/3600)
+        setup_person += take*x["crew"]
+        setup_left -= take
+    effort = bool((order.get("baselinePlan") or {}).get("effort")) or order.get("planningType") == "LABOR_HOURS"
+    target = float(order.get("hours") or order.get("requiredHours") or 1)
+    if not effort:
+        target /= float((order.get("baselinePlan") or {}).get("crew") or 1)
+    remaining = max(0.01, target-max(0, person-setup_person if effort else wall-setup))
+    locked = production_segments(state, order, stamp, remaining, effort, setup_left, crew)
+    order["lockedSegments"] = locked
+    order["lockedStart"] = locked[0]["start"]
+    order["remainingHours"] = sum((local_dt(x["end"])-local_dt(x["start"])).total_seconds()/3600 for x in locked)
+
+
+def production_apply(state, user, oid, action, body, stamp=None):
+    """One authoritative runtime for every FA source and planning type."""
+    stamp = stamp or now_iso()
+    order, hist = production_access(state, user, oid)
+    if not order and action == "label":
+        order = hist
+    if not order:
+        raise ProductionError("MP-PROD-044", "FA ist bereits abgeschlossen.", 409)
+    status = order.get("status", "planned")
+    if status in {"running", "paused"} and "productionPhases" not in order:
+        start = order.get("actualStartedAt") or order.get("runningSince")
+        if not start:
+            raise ProductionError("MP-PROD-043", "Legacy-Produktionsstart fehlt.")
+        crew = int((order.get("baselinePlan") or {}).get("crew") or 1)
+        phases, cursor = [], start
+        for pause in order.get("pauseIntervals") or []:
+            phases.append({"start": cursor, "end": pause["start"], "crew": crew, "employees": [], "actor": "Legacy"})
+            cursor = pause.get("end")
+            if not cursor:
+                break
+        if cursor:
+            phases.append({"start": cursor, "end": "", "crew": crew, "employees": [], "actor": "Legacy"})
+        order["productionPhases"] = phases
+        order.setdefault("partialCompletions", [])
+    allowed = {"release": {"planned"}, "start": {"released"}, "pause": {"running"}, "resume": {"paused"}, "partial": {"running", "paused"}, "finish": {"running", "paused"}, "abort": {"running", "paused"}, "label": {"planned", "released", "running", "paused", "done", "cancelled"}}
+    if action not in allowed or status not in allowed[action]:
+        raise ProductionError("MP-PROD-045", "Ungültiger Produktionsstatuswechsel.", 409)
+    if action in {"release", "start"}:
+        completed = {str(h.get("originalOrderId")) for h in state.get("history") or [] if h.get("recordType", "done") == "done"}
+        completed |= {str(x.get("id")) for x in state.get("workSteps") or [] if x.get("status") == "done"}
+        if any(str(i) not in completed for i in order.get("predecessorIds") or []):
+            raise ProductionError("MP-PROD-046", "Vorgänger offen.")
+        if order.get("planningType") == "LABOR_HOURS" and float(order.get("requiredHours") or 0) <= 0:
+            raise ProductionError("MP-PROD-046", "Konfektionsstunden fehlen.")
+    if action == "release":
+        if order.get("planningType") == "MACHINE":
+            raise ProductionError("MP-PROD-045", "Maschinen-FA über den Plan freigeben.")
+        order["status"] = "released"
+    elif action in {"start", "resume"}:
+        mid = str(order.get("machineId") or "")
+        if action == "start":
+            planned_mid = str((order.get("baselinePlan") or {}).get("machineId") or mid)
+            if planned_mid != mid:
+                if not order.get("allowAlternative") or planned_mid != str(order.get("altMachineId") or ""):
+                    raise ProductionError("MP-PROD-047", "Freigegebene Einsatzmaschine ist ungültig.")
+                mid = planned_mid
+                order.update(machineId=mid, altMachineId="", allowAlternative=False)
+            occupied = [x for x in state.get("workSteps") or [] if x is not order and str(x.get("machineId") or "") == mid and x.get("status") in {"running", "paused"}]
+            if mid and len(occupied) >= machine_lanes(state, mid):
+                raise ProductionError("MP-PROD-047", "Alle Parallelplätze sind belegt.")
+            if mid:
+                used = {int(x.get("laneIndex", 1)) for x in occupied}
+                lane = body.get("laneIndex", order.get("laneIndex") or next((i for i in range(1, machine_lanes(state, mid)+1) if i not in used), 1))
+                if isinstance(lane, bool) or not isinstance(lane, int) or lane in used or not 1 <= lane <= machine_lanes(state, mid):
+                    raise ProductionError("MP-PROD-047", "Parallelplatz ist belegt oder ungültig.")
+                order["laneIndex"] = lane
+            order["actualStartedAt"] = stamp
+            order["goodQty"], order["scrapQty"] = 0, 0
+            order["productionPhases"], order["partialCompletions"] = [], []
+            order["pauseIntervals"] = []
+        if mid:
+            moment = local_dt(stamp)
+            if not any(a <= moment < z for a, z, _ in work_intervals(state, mid, moment)):
+                raise ProductionError("MP-PROD-042", "Start/Fortsetzen nur während der Arbeitszeit möglich.")
+            probe = {"start": moment, "end": moment+timedelta(microseconds=1), "machineId": mid}
+            if hits_machine_block(state, probe):
+                raise ProductionError("MP-PROD-047", "Maschine ist aktuell gesperrt.")
+            if action == "start" and (order.get("baselinePlan") or {}).get("start") and moment < local_dt(order["baselinePlan"]["start"])-timedelta(minutes=1):
+                raise ProductionError("MP-PROD-042", "Geplanter Start liegt in der Zukunft.")
+            people, crew = production_staff(state, order, stamp)
+        else:
+            crew = body.get("crew", 1)
+            if isinstance(crew, bool) or not isinstance(crew, int) or not 1 <= crew <= 99:
+                raise ProductionError("MP-PERS-034", "Besetzung muss zwischen 1 und 99 liegen.")
+            people = []
+        order["productionPhases"].append({"start": stamp, "end": "", "crew": crew, "employees": people, "actor": user["username"], "capacity": production_capacity(state, order)})
+        if action == "resume":
+            order["pauseIntervals"][-1]["end"] = stamp
+        production_replan(state, order, stamp, crew)
+        order["runningSince"], order["pausedAt"], order["status"] = stamp, "", "running"
+        order["runtimeVersion"] = 1
+    elif action == "pause":
+        order["productionPhases"][-1]["end"] = stamp
+        order["pauseIntervals"].append({"start": stamp, "end": ""})
+        order["pausedAt"], order["status"] = stamp, "paused"
+        production_replan(state, order, stamp, order["productionPhases"][-1]["crew"])
+    elif action in {"partial", "finish", "abort"}:
+        target = int(order.get("targetQty") or order.get("quantity") or 0)
+        previous_good, previous_scrap = int(order.get("goodQty") or 0), int(order.get("scrapQty") or 0)
+        good = body.get("goodQty", max(0, target-previous_good-previous_scrap) if action == "finish" else 0)
+        scrap = body.get("scrapQty", 0)
+        if not _nonnegative_int(good) or not _nonnegative_int(scrap) or (action == "partial" and good+scrap <= 0) or (target and previous_good+previous_scrap+good+scrap > target):
+            raise ProductionError("MP-PROD-048", "Meldemenge ist ungültig oder größer als die Restmenge.")
+        order["goodQty"], order["scrapQty"] = previous_good+good, previous_scrap+scrap
+        order["remainingQty"] = max(0, target-order["goodQty"]-order["scrapQty"])
+        partial = {"id": body["requestId"], "goodQty": good, "scrapQty": scrap, "at": stamp, "actor": user["username"]}
+        order.setdefault("partialCompletions", []).append(partial)
+        if action in {"finish", "abort"}:
+            if action == "abort" and (not isinstance(body.get("reason"), str) or not body["reason"].strip() or len(body["reason"]) > 500):
+                raise ProductionError("MP-PROD-045", "Abbruchgrund fehlt oder ist zu lang.")
+            if status == "running":
+                order["productionPhases"][-1]["end"] = stamp
+            else:
+                order["pauseIntervals"][-1]["end"] = stamp
+            segments, wall, person = production_actual(state, order, stamp)
+            finished = {**order, "id": "h_"+secrets.token_hex(10), "originalOrderId": oid, "recordType": "done", "status": "done", "actualFinishedAt": stamp, "finishedAt": stamp, "actualSegments": segments, "actualWorkHours": wall, "actualMachineHours": wall, "actualPersonHours": person, "actualProductionHours": max(0, wall-float((order.get("baselinePlan") or {}).get("setupMinutes", 0))/60), "actor": user["username"]}
+            if action == "abort":
+                finished.update(recordType="cancelled", status="cancelled", abortReason=body["reason"].strip())
+            state["history"].insert(0, finished)
+            state["workSteps"].remove(order)
+            if action == "finish" and order.get("sourceType") in {"FRAME_ORDER", "STOCK_REQUIREMENT"}:
+                article = str(order.get("articleId") or order.get("articleNo") or "")
+                if not article:
+                    raise ProductionError("MP-PROD-049", "Bestands-FA benötigt eine Artikelreferenz.")
+                inv = next((x for x in state.get("inventory") or [] if str(x.get("articleId")) == article and x.get("departmentId") == order.get("departmentId")), None)
+                if inv is None:
+                    inv = {"id": "inv_"+secrets.token_hex(8), "articleId": article, "departmentId": order["departmentId"], "physicalQty": 0, "reservedQty": 0}
+                    state["inventory"].append(inv)
+                inv["physicalQty"] += order["goodQty"]
+    elif action == "label":
+        template = next((t for t in state.get("palletTemplates") or [] if t.get("id") == body.get("templateId")), {})
+        if body.get("templateId") and not template:
+            raise ProductionError("MP-PROD-048", "Etikettenvorlage nicht gefunden.")
+        qty = body.get("quantity")
+        if not _nonnegative_int(qty) or qty <= 0:
+            raise ProductionError("MP-PROD-048", "Palettenmenge muss größer 0 sein.")
+        shelf = template.get("shelfLifeDays", 0)
+        if not _nonnegative_int(shelf) or shelf > 36500:
+            raise ProductionError("MP-PROD-048", "Haltbarkeit ist ungültig.")
+        sequence = 1+max((int(x.get("sequence", 0)) for x in state.get("palletLabels") or []), default=0)
+        # Hex encodes the stable ID without losing distinctions such as '_' versus '-'.
+        barcode = f"FA-{oid.encode().hex().upper()}-P{sequence:06d}"
+        state["palletLabels"].append({"id": "pal_"+secrets.token_hex(8), "sequence": sequence, "orderId": oid, "departmentId": order["departmentId"], "fa": order.get("fa"), "articleNo": order.get("articleNo", ""), "description": order.get("description", ""), "quantity": qty, "fromAddress": str(template.get("fromAddress") or ""), "toAddress": str(template.get("toAddress") or ""), "bestBefore": (local_dt(stamp)+timedelta(days=shelf)).strftime("%Y-%m-%d") if shelf else "", "barcode": barcode, "templateId": template.get("id", ""), "createdAt": stamp})
+    event = {"id": "evt_"+secrets.token_hex(10), "orderId": oid, "fa": order.get("fa"), "departmentId": order["departmentId"], "projectId": order.get("projectId", ""), "sourceType": order.get("sourceType", "PROJECT"), "sourceId": order.get("sourceId", ""), "action": action, "at": stamp, "actor": user["username"], "role": user["role"], "goodQty": order.get("goodQty", 0), "scrapQty": order.get("scrapQty", 0)}
+    state["productionEvents"].append(event)
+    return event
+
+
+SCOPE_COLLECTIONS = {"productionEvents", "palletLabels", "inventory", "machines", "workSteps", "history", "formats", "baseFormats", "machineBlocks", "yearRules", "weekRules", "employees", "personnelAssignments", "personnelAbsences", "weeklyEmployeeDeployments", "departmentStaffNeeds", "projects", "audit", "planVersions"}
+
+
+def record_key(name, x):
+    if x.get("id") is not None:
+        return str(x["id"])
+    if name in {"personnelAssignments", "personnelAbsences"}:
+        return str(x.get("employeeId")) + "|" + str(x.get("date"))
+    if name == "weeklyEmployeeDeployments":
+        return str(x.get("employeeId")) + "|" + str(x.get("weekStart"))
+    if name == "departmentStaffNeeds":
+        return str(x.get("departmentId")) + "|" + str(x.get("weekStart"))
+    return canonical({k: x.get(k) for k in ("machineId", "year", "week")})
+
+
+def append_change_audit(old, new, user, revision, stamp):
+    """Authoritative field diffs, also persisted in server_audit by the caller."""
+    changes = []
+    machine_depts = {str(m.get("id")): m.get("departmentId", "") for m in new.get("machines") or []}
+    employee_depts = {str(e.get("id")): e.get("departmentId", "") for e in new.get("employees") or []}
+    for collection in ("workSteps", "projects", "employees", "personnelAssignments", "personnelAbsences", "weeklyEmployeeDeployments", "machines", "palletTemplates"):
+        before = {record_key(collection, x): x for x in old.get(collection) or []}
+        after = {record_key(collection, x): x for x in new.get(collection) or []}
+        for rid in sorted(set(before) | set(after)):
+            a, b = before.get(rid) or {}, after.get(rid) or {}
+            rec = b or a
+            for field in sorted(set(a) | set(b)):
+                if field == "id" or canonical(a.get(field)) == canonical(b.get(field)):
+                    continue
+                previous, current = a.get(field), b.get(field)
+                if collection == "projects" and field in {"processes", "log"}:
+                    left = _record_map(previous)
+                    right = _record_map(current)
+                    ids = {i for i in set(left) | set(right) if canonical(left.get(i)) != canonical(right.get(i))}
+                    previous = [left[i] for i in sorted(ids) if i in left]
+                    current = [right[i] for i in sorted(ids) if i in right]
+                changes.append({"id": "a_"+secrets.token_hex(10), "ts": stamp, "actor": user["username"], "role": user["role"], "departmentId": rec.get("departmentId") or machine_depts.get(str(rec.get("machineId"))) or employee_depts.get(str(rec.get("employeeId"))) or user.get("department_id") or "", "collection": collection, "recordId": rid, "fa": rec.get("fa", ""), "projectId": rec.get("projectId") or (rid if collection == "projects" else ""), "field": field, "old": previous, "new": current, "action": "Feld geändert", "detail": f"{collection}/{rid}: {field}", "revision": revision})
+    new["audit"] = [*reversed(changes), *(new.get("audit") or [])][:AUDIT_CAP]
+    return changes
+
+
+def read_scope(state, user):
+    role = str(user.get("role") or "")
+    own = str(user.get("department_id") or user.get("departmentId") or "")
+    if role not in SCOPED_ROLES or (role == "viewer" and not own):
+        return None
+    mids = {str(m["id"]) for m in state.get("machines") or [] if str(m.get("departmentId")) == own}
+    eids = {str(e["id"]) for e in state.get("employees") or [] if str(e.get("departmentId")) == own}
+    eids |= {str(x.get("employeeId")) for x in state.get("weeklyEmployeeDeployments") or [] if str(x.get("departmentId")) == own}
+    pids = {str(x.get("projectId")) for x in [*(state.get("workSteps") or []), *(state.get("history") or [])] if str(x.get("departmentId")) == own}
+    def visible(name, x):
+        if not own or not isinstance(x, dict):
+            return False
+        if name == "planVersions":
+            return False
+        if name == "projects":
+            return str(x.get("id")) in pids or any(str(pr.get("areaId")) == own for pr in x.get("processes") or [])
+        if name == "employees":
+            return str(x.get("id")) in eids
+        if name == "audit":
+            return str(x.get("departmentId")) == own or str(x.get("actor") or x.get("user")) == str(user.get("username"))
+        if name in {"personnelAssignments", "personnelAbsences", "weeklyEmployeeDeployments"}:
+            return str(x.get("employeeId")) in eids
+        return str(x.get("departmentId")) == own or (not x.get("departmentId") and str(x.get("machineId")) in mids)
+    return visible
+
+
 def redact_state(state: dict, user: dict) -> dict:
     """Kopie des Datenstands für diesen Benutzer (Abwesenheitsgrund ggf. ausgeblendet)."""
-    if str(user.get("role") or "") in ABSENCE_FULL_ROLES:
-        return state
     visible = _absence_visible(state, user)
     out = dict(state)
+    scoped = read_scope(state, user)
+    if scoped:
+        for key in SCOPE_COLLECTIONS:
+            out[key] = [dict(x) for x in state.get(key) or [] if scoped(key, x)]
+        own = str(user.get("department_id") or user.get("departmentId") or "")
+        out["projects"] = [{**p, "processes": [pr for pr in p.get("processes") or [] if str(pr.get("areaId")) == own], "log": [x for x in p.get("log") or [] if str(x.get("actor")) == str(user.get("username"))]} for p in out["projects"]]
+        # Dependency status alone permits cross-department handoff without foreign order data.
+        needed = {str(i) for x in out["workSteps"] for i in x.get("predecessorIds") or []}
+        out["dependencyStatus"] = {str(x.get("id")): str(x.get("status") or "planned") for x in state.get("workSteps") or [] if str(x.get("id")) in needed}
+        out["dependencyStatus"].update({str(x.get("originalOrderId")): "done" for x in state.get("history") or [] if str(x.get("originalOrderId")) in needed and x.get("recordType", "done") == "done"})
     out["personnelAbsences"] = [a if not isinstance(a, dict) or visible(a) else _masked_absence(a)
-                                for a in (state.get("personnelAbsences") or [])]
-    out["audit"] = [_masked_audit(a) if isinstance(a, dict) else a for a in (state.get("audit") or [])]
+                                for a in (out.get("personnelAbsences") or [])]
+    out["audit"] = [_masked_audit(a) if isinstance(a, dict) and user.get("role") not in ABSENCE_FULL_ROLES else a for a in (out.get("audit") or [])]
     return out
 
 
@@ -3869,8 +4345,27 @@ def unredact_incoming(old: dict, incoming: dict, user: dict) -> None:
 
     Geänderte Datensätze bleiben wie gesendet; darüber entscheiden die Rechteprüfungen.
     """
-    if str(user.get("role") or "") in ABSENCE_FULL_ROLES:
-        return
+    incoming.pop("dependencyStatus", None)
+    scoped = read_scope(old, user)
+    if scoped:
+        projected = redact_state(old, user)
+        for key in SCOPE_COLLECTIONS:
+            sent = incoming.get(key)
+            if not isinstance(sent, list):
+                continue
+            keys = {record_key(key, x) for x in sent if isinstance(x, dict)}
+            sent += [x for x in old.get(key) or [] if not scoped(key, x) and record_key(key, x) not in keys]
+        old_projects = _record_map(old.get("projects"))
+        for p in incoming.get("projects") or []:
+            before = old_projects.get(str(p.get("id")))
+            shown = next((x for x in projected.get("projects") or [] if x.get("id") == p.get("id")), None)
+            if before and shown:
+                own = str(user.get("department_id") or "")
+                shown_ids = {str(x.get("id")) for x in shown.get("log") or []}
+                sent_log = p.get("log", [])
+                sent_ids = {str(x.get("id")) for x in sent_log}
+                p["log"] = [*[x for x in before.get("log") or [] if str(x.get("id")) not in shown_ids and str(x.get("id")) not in sent_ids], *sent_log]
+                p["processes"] = [*p.get("processes", []), *[pr for pr in before.get("processes") or [] if str(pr.get("areaId")) != own and str(pr.get("id")) not in {str(x.get("id")) for x in p.get("processes", [])}]]
     visible = _absence_visible(old, user)
     old_abs = {(str(a.get("employeeId")), str(a.get("date"))): a for a in (old.get("personnelAbsences") or []) if isinstance(a, dict)}
     absences = incoming.get("personnelAbsences")
@@ -4352,6 +4847,9 @@ class Handler(BaseHTTPRequestHandler):
         return user
 
     def require_current_client(self) -> bool:
+        if (BASE / "updates" / "installing").exists():
+            self.json_response(503, mp_error("MP-UPD-003", "Update läuft. Änderungen sind bis zum Healthcheck gesperrt."))
+            return False
         client_version = str(self.headers.get("X-MP-Client-Version", "")).strip()
         if client_version != APP_VERSION:
             self.json_response(426, mp_error("MP-SYNC-002", "Client-Version veraltet. Seite vollständig neu laden.", serverVersion=APP_VERSION))
@@ -4361,6 +4859,11 @@ class Handler(BaseHTTPRequestHandler):
     def _do_GET(self):
         parsed = urlparse(self.path)
         path = parsed.path
+        if path == "/api/updates":
+            user = self.require_user(["admin"])
+            if not user:
+                return
+            return self.json_response(200, update_manager().poll())
         if path == "/api/health":
             return self.json_response(200, {"ok": True, "version": APP_VERSION})
         if path == "/api/session":
@@ -4434,11 +4937,22 @@ class Handler(BaseHTTPRequestHandler):
             if date_to:
                 # finished_at ist ein ISO-Zeitstempel; "bis" schließt den ganzen Tag ein.
                 where.append("finished_at < ?"); args.append((datetime.strptime(date_to, "%Y-%m-%d") + timedelta(days=1)).strftime("%Y-%m-%d"))
+            own = str(user.get("department_id") or "")
+            if user["role"] in SCOPED_ROLES and (own or user["role"] != "viewer"):
+                if not own:
+                    where.append("1=0")
+                else:
+                    where.append("COALESCE(NULLIF(json_extract(history_archive.json, '$.departmentId'), ''), (SELECT json_extract(value, '$.departmentId') FROM json_each((SELECT json FROM state WHERE id=1), '$.machines') WHERE json_extract(value, '$.id')=json_extract(history_archive.json, '$.machineId') LIMIT 1)) = ?")
+                    args.append(own)
             clause = (" WHERE " + " AND ".join(where)) if where else ""
             with DB_LOCK, db_session() as con:
                 total = con.execute(f"SELECT COUNT(*) FROM history_archive{clause}", args).fetchone()[0]
                 rows = con.execute(f"SELECT json FROM history_archive{clause} ORDER BY finished_at DESC, id LIMIT ? OFFSET ?", [*args, limit, offset]).fetchall()
-            return self.json_response(200, {"total": total, "offset": offset, "history": [json.loads(r["json"]) for r in rows]})
+            history = [json.loads(r["json"]) for r in rows]
+            with DB_LOCK, db_session() as con:
+                machines = json.loads(con.execute("SELECT json FROM state WHERE id=1").fetchone()[0]).get("machines", [])
+            normalize_fa_state({"history": history, "machines": machines})
+            return self.json_response(200, {"total": total, "offset": offset, "history": history})
         if path == "/api/revision":
             user = self.require_user()
             if not user:
@@ -4569,6 +5083,17 @@ class Handler(BaseHTTPRequestHandler):
             body = self.read_json(limit)
         except Exception as e:
             return self.json_response(400, mp_error("MP-DATA-013", str(e)))
+        if path == "/api/updates/install":
+            user = self.require_user(["admin"])
+            if not user or not self.require_current_client():
+                return
+            if body:
+                return self.json_response(400, mp_error("MP-UPD-001", "Updatequelle und Paket werden ausschließlich vom Server gewählt."))
+            try:
+                job, started = update_manager().start(user["username"])
+                return self.json_response(202 if started else 200, {"ok": True, "job": {k: job.get(k) for k in ("jobId", "version", "stage", "error")}, "alreadyRunning": not started})
+            except ValueError as e:
+                return self.json_response(409, mp_error("MP-UPD-001", str(e)))
         if path == "/api/config/logo":
             user = self.require_user(["admin"])
             if not user:
@@ -4626,6 +5151,46 @@ class Handler(BaseHTTPRequestHandler):
                 with REVISION_CONDITION:
                     REVISION_CONDITION.notify_all()
             return self.json_response(status, payload)
+        production_path = re.fullmatch(r"/api/production/([A-Za-z0-9_-]{1,80})/(release|start|pause|resume|partial|finish|abort|label)", path)
+        if production_path:
+            user = self.require_user(["admin", *DEPARTMENT_ROLES, "production"])
+            if not user or not self.require_current_client():
+                return
+            request_id = body.get("requestId")
+            if not isinstance(request_id, str) or not re.fullmatch(r"[A-Za-z0-9_-]{8,100}", request_id):
+                return self.json_response(400, mp_error("MP-PROD-050", "Stabile Request-ID erforderlich."))
+            fingerprint = canonical({"path": path, "body": {k: v for k, v in body.items() if k != "revision"}})
+            try:
+                with DB_LOCK, db_session() as con:
+                    con.execute("BEGIN IMMEDIATE")
+                    row = con.execute("SELECT json,revision FROM state WHERE id=1").fetchone()
+                    state = json.loads(row["json"])
+                    oid, action = production_path.groups()
+                    previous = con.execute("SELECT fingerprint,result FROM production_requests WHERE username=? AND request_id=?", (user["username"], request_id)).fetchone()
+                    if previous:
+                        if previous["fingerprint"] != fingerprint:
+                            raise ProductionError("MP-PROD-050", "Request-ID wurde bereits anders verwendet.", 409)
+                        result, revision = json.loads(previous["result"]), row["revision"]
+                        if user["role"] != "admin" and str(user.get("department_id") or "") != str(result.get("departmentId") or ""):
+                            raise ProductionError("MP-PROD-041", "Keine Produktionsrechte für diesen Bereich.", 403)
+                    else:
+                        production_access(state, user, oid)
+                        if body.get("revision") is not None and body["revision"] != row["revision"]:
+                            raise ProductionError("MP-SYNC-001", "Revision veraltet.", 409)
+                        old = json.loads(row["json"])
+                        result = production_apply(state, user, oid, action, body)
+                        revision = row["revision"]+1
+                        state.setdefault("meta", {})["serverRevision"] = revision
+                        changes = append_change_audit(old, state, user, revision, result["at"])
+                        con.execute("UPDATE state SET json=?,revision=?,updated_at=?,updated_by=? WHERE id=1", (json.dumps(state, ensure_ascii=False), revision, now_iso(), user["username"]))
+                        con.execute("INSERT INTO production_requests VALUES(?,?,?,?)", (user["username"], request_id, fingerprint, json.dumps(result, ensure_ascii=False)))
+                        con.execute("INSERT INTO server_audit(ts,username,action,detail,revision) VALUES(?,?,?,?,?)", (now_iso(), user["username"], "Produktion: "+action, json.dumps({"event": result, "changes": changes}, ensure_ascii=False), revision))
+                    con.execute("COMMIT")
+                with REVISION_CONDITION:
+                    REVISION_CONDITION.notify_all()
+                return self.json_response(200, {"ok": True, "revision": revision, "data": redact_state(state, user), "event": result, "replayed": bool(previous)})
+            except ProductionError as e:
+                return self.json_response(e.status, mp_error(e.code, e.message))
         if path == "/api/login":
             ip = self.client_address[0]
             username = str(body.get("username", "")).strip()
@@ -4675,7 +5240,14 @@ class Handler(BaseHTTPRequestHandler):
                 if not own or role not in MANAGEABLE_ROLES.get(user["role"], set()):
                     return self.json_response(403, mp_error("MP-AUTH-021", "Diese Rolle darf im eigenen Bereich nur Stellvertretungen (Leitung) bzw. Lesende (Stellvertretung) anlegen."))
                 department_id = own
-            if len(username) < 2 or len(password) < 8 or role not in ROLES or (role in DEPARTMENT_ROLES and not department_id):
+            if role not in SCOPED_ROLES:
+                department_id = ""
+            if department_id:
+                with DB_LOCK, db_session() as con:
+                    state = json.loads(con.execute("SELECT json FROM state WHERE id=1").fetchone()[0])
+                if department_id not in {str(d.get("id")) for d in state.get("departments") or []}:
+                    return self.json_response(400, mp_error("MP-AUTH-010", "Bereich ist ungültig."))
+            if len(username) < 2 or len(password) < 8 or role not in ROLES or (role in DEPARTMENT_ROLES | {"production"} and not department_id):
                 return self.json_response(400, mp_error("MP-AUTH-010", "Benutzername, Passwort, Rolle oder Bereich ungültig."))
             if len(username) > 40 or any(ch in username for ch in "⟦⟧|<>\"'`") or any(ord(ch) < 32 for ch in username):
                 return self.json_response(400, mp_error("MP-AUTH-010", "Benutzername: höchstens 40 Zeichen, keine Sonderzeichen ⟦ ⟧ | < > \" ' `."))
@@ -4683,6 +5255,8 @@ class Handler(BaseHTTPRequestHandler):
             ts = now_iso()
             try:
                 with DB_LOCK, db_session() as con:
+                    if con.execute("SELECT 1 FROM retired_usernames WHERE username=?", (username,)).fetchone():
+                        return self.json_response(409, mp_error("MP-AUTH-013", "Dieser Benutzername bleibt für historische Nachweise reserviert. Bitte einen neuen Namen wählen."))
                     cur = con.execute("INSERT INTO users(username,salt,password_hash,role,department_id,active,created_at,updated_at) VALUES(?,?,?,?,?,1,?,?)", (username, salt, digest, role, department_id, ts, ts))
                     con.execute("INSERT INTO server_audit(ts,username,action,detail,revision) VALUES(?,?,?,?,NULL)", (ts, user["username"], "Benutzer angelegt", username))
                 return self.json_response(201, {"id": cur.lastrowid, "username": username, "role": role, "departmentId": department_id, "active": True})
@@ -4725,7 +5299,46 @@ class Handler(BaseHTTPRequestHandler):
     def _method_not_allowed(self):
         self.json_response(405, mp_error("MP-REQ-405", "Methode nicht erlaubt."))
 
-    do_DELETE = _method_not_allowed
+    def do_DELETE(self):
+        return self._guarded(self._do_DELETE, True)
+
+    def _do_DELETE(self):
+        user = self.require_user(["admin"])
+        if not user or not self.require_current_client():
+            return
+        path = urlparse(self.path).path
+        match = re.fullmatch(r"/api/users/(\d+)", path)
+        if not match:
+            return self.json_response(404, mp_error("MP-REQ-404", "Nicht gefunden."))
+        uid = int(match[1])
+        if uid == user["id"]:
+            return self.json_response(400, mp_error("MP-AUTH-016", "Das eigene Konto darf nicht gelöscht werden."))
+        with DB_LOCK, db_session() as con:
+            con.execute("BEGIN IMMEDIATE")
+            target = con.execute("SELECT * FROM users WHERE id=?", (uid,)).fetchone()
+            if not target:
+                return self.json_response(404, mp_error("MP-AUTH-014", "Benutzer nicht gefunden."))
+            if target["role"] == "admin" and target["active"] and con.execute("SELECT count(*) FROM users WHERE role='admin' AND active=1").fetchone()[0] <= 1:
+                return self.json_response(400, mp_error("MP-AUTH-016", "Mindestens ein aktiver Admin muss erhalten bleiben."))
+            state = json.loads(con.execute("SELECT json FROM state WHERE id=1").fetchone()[0])
+            if any(str(e.get("userId") or "") == str(uid) for e in state.get("employees") or [] if e.get("active", True)):
+                return self.json_response(409, mp_error("MP-AUTH-024", "Aktive Mitarbeiterzuordnung zuerst lösen."))
+            if any(str(pr.get("owner") or "").casefold() == target["username"].casefold() and pr.get("status", "open") not in {"done", "cancelled"} for p in state.get("projects") or [] for pr in p.get("processes") or []):
+                return self.json_response(409, mp_error("MP-AUTH-024", "Offene Zuständigkeit zuerst übertragen."))
+            # Keep message authors/mention evidence; remove current memberships/read cursors only.
+            for channel in con.execute("SELECT id,members FROM chat_channels WHERE kind='group'").fetchall():
+                members = json.loads(channel["members"] or "[]")
+                cleaned = [x for x in members if str(x).casefold() != target["username"].casefold()]
+                if cleaned != members:
+                    con.execute("UPDATE chat_channels SET members=? WHERE id=?", (json.dumps(cleaned), channel["id"]))
+            con.execute("DELETE FROM chat_reads WHERE username=? COLLATE NOCASE", (target["username"],))
+            # Actor snapshots use immutable usernames, so historical references remain readable.
+            con.execute("DELETE FROM sessions WHERE user_id=?", (uid,))
+            con.execute("INSERT OR IGNORE INTO retired_usernames VALUES(?,?)", (target["username"], now_iso()))
+            con.execute("DELETE FROM users WHERE id=?", (uid,))
+            con.execute("INSERT INTO server_audit(ts,username,action,detail,revision) VALUES(?,?,?,?,NULL)", (now_iso(), user["username"], "Benutzer gelöscht", json.dumps({"id": uid, "username": target["username"], "role": target["role"]})))
+            con.execute("COMMIT")
+        return self.json_response(200, {"ok": True})
     do_OPTIONS = _method_not_allowed
 
     def _do_PATCH(self):
@@ -4761,8 +5374,13 @@ class Handler(BaseHTTPRequestHandler):
                 manageable = MANAGEABLE_ROLES.get(user["role"], set())
                 if str(target["department_id"] or "") != own or department_id != own or target["role"] not in manageable or role not in manageable:
                     return self.json_response(403, mp_error("MP-AUTH-021", "Benutzerverwaltung ist auf untergeordnete Rollen im eigenen Bereich begrenzt."))
-            if role not in ROLES or (role in DEPARTMENT_ROLES and not department_id):
+            if role not in ROLES or (role in DEPARTMENT_ROLES | {"production"} and not department_id):
                 return self.json_response(400, mp_error("MP-AUTH-015", "Ungültige Rolle oder Bereich fehlt."))
+            if role not in SCOPED_ROLES:
+                department_id = ""
+            state = json.loads(con.execute("SELECT json FROM state WHERE id=1").fetchone()[0])
+            if department_id and department_id not in {str(d.get("id")) for d in state.get("departments") or []}:
+                return self.json_response(400, mp_error("MP-AUTH-015", "Bereich ist ungültig."))
             fields = ["role=?", "department_id=?", "active=?", "updated_at=?"]
             vals = [role, department_id, active, now_iso()]
             if "password" in body:
@@ -4774,7 +5392,7 @@ class Handler(BaseHTTPRequestHandler):
                 vals += [salt, digest]
             vals.append(uid)
             con.execute(f"UPDATE users SET {','.join(fields)} WHERE id=?", vals)
-            if not active or "password" in body:
+            if not active or "password" in body or role != target["role"] or department_id != target["department_id"]:
                 con.execute("DELETE FROM sessions WHERE user_id=?", (uid,))
             con.execute("INSERT INTO server_audit(ts,username,action,detail,revision) VALUES(?,?,?,?,NULL)", (now_iso(), user["username"], "Benutzer geändert", target["username"]))
         return self.json_response(200, {"ok": True})
@@ -4824,8 +5442,27 @@ class Handler(BaseHTTPRequestHandler):
                 con.execute("ROLLBACK")
                 return self.json_response(409, mp_error("MP-SYNC-001", "Revision veraltet.", revision=row["revision"]))
             old = json.loads(row["json"])
+            normalize_fa_state(old)
+            normalize_fa_state(incoming)
             unredact_incoming(old, incoming, user)
             strip_archived_history(con, old, incoming)
+            for key in ("productionEvents", "palletLabels", "inventory"):
+                if canonical(old.get(key)) != canonical(incoming.get(key)):
+                    return self.json_response(403, mp_error("MP-PROD-041", "Produktionsbuchungen erfolgen über die Produktionsaktionen."))
+            before_steps, after_steps = _record_map(old.get("workSteps")), _record_map(incoming.get("workSteps"))
+            runtime_fields = {"actualStartedAt", "runningSince", "pausedAt", "pauseIntervals", "productionPhases", "partialCompletions", "goodQty", "scrapQty", "remainingHours", "lockedSegments", "lockedStart", "runtimeVersion"}
+            for oid, before in before_steps.items():
+                after = after_steps.get(oid)
+                if before.get("status") in {"running", "paused"} and after is None:
+                    return self.json_response(403, mp_error("MP-PROD-041", "Fertigmeldung erfolgt über die Produktionsaktion."))
+                if after and (any(canonical(before.get(f)) != canonical(after.get(f)) for f in runtime_fields) or ((after.get("status") in {"running", "paused"} or before.get("status") in {"running", "paused"}) and before.get("status") != after.get("status"))):
+                    return self.json_response(403, mp_error("MP-PROD-041", "Produktionsdaten werden serverseitig erfasst."))
+            for oid, after in after_steps.items():
+                if oid not in before_steps and (after.get("status") in {"running", "paused", "done"} or after.get("productionPhases")):
+                    return self.json_response(403, mp_error("MP-PROD-041", "Neue FA beginnen im Planungsstatus."))
+            old_hist_ids = {str(h.get("id")) for h in old.get("history") or []}
+            if any(str(h.get("id")) not in old_hist_ids and h.get("recordType", "done") == "done" for h in incoming.get("history") or []):
+                return self.json_response(403, mp_error("MP-PROD-041", "Ist-Historie entsteht durch die Fertigmeldung."))
             # Legacy-Schattenkopie (V12.4.3 und älter) nie wieder in den Live-State übernehmen.
             incoming.pop("orders", None)
             mod, reason = module_state_guard(old, incoming)
@@ -4885,11 +5522,12 @@ class Handler(BaseHTTPRequestHandler):
             incoming["meta"]["serverRevision"] = new_revision
             incoming["meta"]["actor"] = user["username"]
             incoming["meta"]["storage"] = "server"
+            ts = now_iso()
+            changes = append_change_audit(old, incoming, user, new_revision, ts)
             archived_ids = archive_excess_history(con, incoming)
             raw = json.dumps(incoming, ensure_ascii=False, separators=(",", ":"))
-            ts = now_iso()
             con.execute("UPDATE state SET revision=?,json=?,updated_at=?,updated_by=? WHERE id=1", (new_revision, raw, ts, user["username"]))
-            con.execute("INSERT INTO server_audit(ts,username,action,detail,revision) VALUES(?,?,?,?,?)", (ts, user["username"], action, detail, new_revision))
+            con.execute("INSERT INTO server_audit(ts,username,action,detail,revision) VALUES(?,?,?,?,?)", (ts, user["username"], action, json.dumps({"detail": detail, "role": user["role"], "departmentId": user.get("department_id") or "", "changes": changes}, ensure_ascii=False), new_revision))
             con.execute("COMMIT")
         try:
             with DB_LOCK, db_session() as con:
@@ -4956,6 +5594,12 @@ def main() -> None:
     if not INDEX_PATH.exists():
         print(f"FEHLER: {INDEX_PATH} fehlt.", file=sys.stderr)
         raise SystemExit(2)
+    if os.name == 'nt':
+        def update_checks():
+            while True:
+                update_manager().check()
+                threading.Event().wait(3600)
+        threading.Thread(target=update_checks, daemon=True).start()
     httpd = MPHTTPServer((args.host, args.port), Handler)
     print(f"Maschinenplanung V{APP_VERSION} LAN-only läuft auf http://{args.host}:{args.port}")
     print(f"Erlaubtes LAN-Subnetz: {ALLOWED_NETWORK}")

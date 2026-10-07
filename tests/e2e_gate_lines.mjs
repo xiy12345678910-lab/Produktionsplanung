@@ -87,7 +87,7 @@ try {
     const dep = data.departments.find(d => d.active !== false && String(d.kind || 'production') === 'production');
     data.machines.push({ id: 'kf1', name: 'Konfektion 1', departmentId: dep.id, kind: 'line', crew: 1, setupMinutes: 0, start: dateKey(monday(new Date())) + 'T06:30', committedUntil: '', defaultShiftMode: '1', staffRequired: 0 });
     data.employees = []; data.personnelAssignments = []; data.personnelAbsences = [];
-    data.workSteps.push({ id: 'ws_rrs', projectId: '', sequence: 1, departmentId: dep.id, planningType: 'MACHINE', predecessorIds: [], pos: 1, machineId: 'kf1', altMachineId: '', allowAlternative: false, fs: 'rrs', ab: '', wt: '', order: 'rrs', articleNo: '', description: '', targetQty: 0, hours: 40, status: 'planned', direction: 'forward', anchorMode: 'none', requiredStart: '', requiredFinish: '', dueDate: '' });
+    data.workSteps.push({ id: 'ws_rrs', projectId: '', sequence: 1, departmentId: dep.id, planningType: 'MACHINE', predecessorIds: [], pos: 1, machineId: 'kf1', altMachineId: '', allowAlternative: false, fa: 'rrs', ab: '', wt: '', order: 'rrs', articleNo: '', description: '', targetQty: 0, hours: 40, status: 'planned', direction: 'forward', anchorMode: 'none', requiredStart: '', requiredFinish: '', dueDate: '' });
     data.personnelGate = false;
   });
   const sched = () => ev(page, () => { const r = calcSchedule()['ws_rrs']; return { start: !!r.start, segs: r.segments.length, conflict: r.conflict || '', unstaffed: !!r.unstaffed }; });
@@ -122,10 +122,10 @@ try {
   const staffed = await sched();
   check(staffed.start && staffed.segs > 0 && !staffed.unstaffed && !staffed.conflict, `Mit zugeordnetem Mitarbeiter wird eingeplant (${staffed.segs} Segmente)`);
 
-  // Crew 2 braucht zwei Personen
+  // Die Linienbesetzung ist das Maximum, ein Mitarbeiter bleibt zulässig
   await ev(page, () => { machine('kf1').crew = 2; });
   const crew2 = await sched();
-  check(!crew2.start && crew2.unstaffed, 'Crew 2 mit nur 1 Mitarbeiter: unbesetzt');
+  check(crew2.start && !crew2.unstaffed, 'Maximalbesetzung 2 mit 1 Mitarbeiter: planbar');
   await ev(page, () => { data.personnelGate = false; });
   const off2 = await sched();
   check(off2.start, 'Gate AUS: weiterhin nur Planung');

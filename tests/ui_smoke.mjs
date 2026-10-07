@@ -156,10 +156,10 @@ try {
 
   // ------------------------------------------------------------------ Priorität per Tastatur/Knopf (↑/↓)
   await page.click('#navPlan');
-  for (const fs of ['FS 9001', 'FS 9002']) {
+  for (const fa of ['FA 9001', 'FA 9002']) {
     await page.click('#quickAdd');
     await page.waitForSelector('#orderModal.show');
-    await page.fill('#qFS', fs);
+    await page.fill('#qFA', fa);
     await page.fill('#qHours', '4');
     await page.click('#createOrder');
     await page.waitForTimeout(700);
@@ -203,6 +203,10 @@ try {
   await page.close();
 } catch (e) {
   check(false, 'Ablauf: ' + (e?.message || e));
+  for (const page of browser.pages()) {
+    const detail = await page.locator('#errorModal.show').textContent({ timeout: 500 }).catch(() => '');
+    if (detail) console.log('Fehlerdialog: ' + detail.trim());
+  }
 } finally {
   check(!errors.length, 'keine JavaScript-Fehler ' + errors.slice(0, 3).join(' | '));
   await browser.close();

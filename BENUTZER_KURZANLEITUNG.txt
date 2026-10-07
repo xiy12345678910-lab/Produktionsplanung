@@ -1,4 +1,4 @@
-MASCHINENPLANUNG V12.18.0 - KURZANLEITUNG FUER BENUTZER
+﻿MASCHINENPLANUNG V12.19.0 - KURZANLEITUNG FUER BENUTZER
 ======================================================
 
 ANMELDEN
@@ -39,8 +39,8 @@ ROLLEN
 - Abteilungsleiter / Stellvertretung: planen den eigenen Bereich.
   Leitung legt Stellvertretungen und Lesende an, Stellvertretung nur Lesende.
 - Vertrieb: legt Eingaenge an und meldet Annahme oder Verlust.
-- Arbeitsvorbereitung: legt Auftraege (FS) in allen Bereichen mit AV-Termin an, plant sie und
-  verknuepft sie mit AB. Freigabe, Produktion und Fertigmeldung machen die Bereiche.
+- Arbeitsvorbereitung: legt Projekte und Auftraege (FA) in allen Bereichen mit AV-Termin und Stunden an
+  und verknuepft sie mit AB. Die operative Ressourcen-/Terminplanung uebernimmt der Bereich. Freigabe, Produktion und Fertigmeldung machen die Bereiche.
 - Projektmanagement: pflegt AB-Auftraege.
 - GF: GF-Ansicht (nur GF/Admin), Projekte, bestaetigt den von den Abteilungen gemeldeten Personalbedarf.
 - Admin: alles inkl. Benutzerverwaltung.
@@ -60,15 +60,15 @@ PROJEKTE (linke Leiste "Projekte")
   und Terminabstaende werden gemerkt. PM und Arbeitsvorbereitung haben je eigene Ablaeufe
   (Liste unten auf der Projektseite, dort auch loeschen).
 - Projekt oeffnen: oben violett Entwicklung & Vertrieb (Aufgabe fuer Aufgabe), darunter blau
-  Produktion (FS live aus der Fertigung) bis zur Ziellinie mit Liefertermin. Parallele Aufgaben
+  Produktion (FA live aus der Fertigung) bis zur Ziellinie mit Liefertermin. Parallele Aufgaben
   stehen mit "2 parallel" zusammen. Zeile anklicken = bearbeiten bzw. Details.
 - Abteilungen sehen ihre Projekt-Aufgaben unter dem eigenen Wochenplan und setzen den Status.
   Fertigungsaufgaben (z. B. Muster) mit "Als Auftrag einplanen" anlegen; der Prozess bleibt
-  mit der FS verknuepft.
+  mit der FA verknuepft.
 - Nach der Annahme plant und verwaltet die Arbeitsvorbereitung: Fertigungsablauf anwenden,
-  FS anlegen (ueber das Projekt oder "+ Auftrag") mit AV-Termin "fertig bis". Start,
+  FA anlegen (ueber das Projekt oder "+ Auftrag") mit AV-Termin "fertig bis". Start,
   Fortschritt und "Fertig" melden die Abteilungen. Status "In Produktion" / "Produziert" und der Fortschritt in % kommen
-  automatisch aus den FS. Am Ende "Projekt abschliessen".
+  automatisch aus den FA. Am Ende "Projekt abschliessen".
 - Jeder Schritt steht mit Name und Uhrzeit im Verlauf des Projekts.
 
 WOCHENPLAN (alle Bereiche - wie CNC)
@@ -112,7 +112,7 @@ BEREICHE
 NACHRICHTEN (ab V12.9.0)
 - Rechts unten der Knopf 💬 (rote Zahl = ungelesen). Kleines Fenster; ⤢ macht es gross, – schliesst.
 - "+ Gruppe": Name und Personen waehlen. "+ Direkt": Nachricht an eine Person. "Alle" erreicht jeden.
-- Im Text "/" tippen und z. B. die FS-Nummer: Auftrag, Projekt oder Format auswaehlen → wird ein
+- Im Text "/" tippen und z. B. die FA-Nummer: Auftrag, Projekt oder Format auswaehlen → wird ein
   Link; ein Klick darauf oeffnet ihn direkt. "@" + Name erwaehnt eine Person (rot markiert).
 - Enter sendet, Umschalt+Enter macht eine neue Zeile.
 - Nachrichten werden 30 Tage nach dem Versand automatisch geloescht. Wichtiges mit 📌 an der
@@ -122,11 +122,11 @@ NACHRICHTEN (ab V12.9.0)
 FORMATE TIEFZIEHEN (ab V12.10.0 nur Tiefziehen + Admin)
 - Wochenplan → "▣ Formate" oeffnet das Formate-Fenster. Dort Auftraege "Auf F-…" oder "+ Neues Format"
   setzen, Werkzeuge anordnen, "In Wochenplan einplanen". Escape/"Schliessen" schliesst das Fenster.
-- Neuer Auftrag im Bereich Tiefziehen: "▣ Anlegen & auf Format" legt die FS an und setzt sie direkt
+- Neuer Auftrag im Bereich Tiefziehen: "▣ Anlegen & auf Format" legt die FA an und setzt sie direkt
   auf ein neues Format. In der Auftragsliste oeffnet ▣ das Format bzw. setzt den Auftrag auf ein Format.
 - Grundformate (Platten) sowie Maschinenmasse und Takte: System → Maschinen & Linien.
   Ein Grundformat gilt fuer alle Maschinen des Bereichs; per Haken auf einzelne Maschinen einschraenken.
-- Nach der Fertigung "Einlagern" mit Lagerort; wiederfinden ueber die Suche nach WKZ- oder FS-Nummer.
+- Nach der Fertigung "Einlagern" mit Lagerort; wiederfinden ueber die Suche nach WKZ- oder FA-Nummer.
 
 FIRMENDATEN
 - Liegen in config\firma.json neben data\ und bleiben bei jedem Update erhalten.
@@ -134,7 +134,7 @@ FIRMENDATEN
 
 FEHLERCODES
 - Fehler erscheinen als Klartext plus Code, z. B. MP-PLAN-031.
-- Bei Rueckfragen Code, FS/AB und Uhrzeit nennen. Liste: FEHLERCODES.txt
+- Bei Rueckfragen Code, FA/AB und Uhrzeit nennen. Liste: FEHLERCODES.txt
 
 MODULE UND VORLAGEN (nur Admin, System > Firmenprofil)
 - Schalter fuer Module blenden Bereiche aus, die der Betrieb nicht nutzt; die Daten bleiben erhalten.
@@ -146,3 +146,20 @@ EINRICHTUNGSASSISTENT (nur Admin, neue Installation)
 
 PERSONAL-GATE (nur Admin, Personal)
 - Bei EIN wird nur eingeplant, wo die geforderte Personenzahl zugeordnet ist (Linie: Besetzung). Fehlt sie: 👤⚠ im Wochenplan, dort Knopf "Personal zuordnen".
+
+V12.19.0: FA, TEILFERTIG UND SOFTWAREUPDATES
+- FA ist die einheitliche Fertigungsauftragsnummer; bestehende Nummern/Verknuepfungen bleiben erhalten.
+- AV kann ein Projekt mit AB/Liefertermin an die Produktion uebergeben und mehrere FA dazu anlegen.
+  Konfektions-/Personenstunden kommen von AV; Bereiche planen Ressourcen und Termine.
+- Teilzeit: Arbeitstage und Tagesstunden am Mitarbeiter pflegen. Wochenversetzung braucht weiterhin
+  eine passende Maschinenqualifikation. Im Personalplan den Parallelplatz auswaehlen.
+- Produktion: Start, Pause, Fortsetzen, Teilfertig und Fertig werden serverseitig gebucht.
+  Bei Teilfertig nur die NEUE Gut-/Ausschussmenge eingeben; vorherige Teilmengen bleiben erhalten.
+  Wiederholen einer unterbrochenen Aktion bucht dieselbe Anfrage nicht doppelt.
+- Palettenetikett: vor dem Start in der Auftragsliste, waehrend der Produktion und nachher in der Historie.
+  Menge und Vorlage waehlen; Druck/PDF enthaelt Adressen, Barcode und ggf. MHD.
+- Admin: andere Benutzer mit Bestaetigung loeschen; aktive Zuordnungen zuerst loesen.
+- System zeigt Admin nur bei einer neueren freigegebenen Softwareversion einen Updatehinweis.
+  Versionen/Aenderungen pruefen und Update installieren waehlen. Fortschritt laeuft serverseitig weiter,
+  auch nach Browser-Neuladen. Nach Erfolg verschwindet der Hinweis. Bei Fehler nennt er den Abbruch
+  und gegebenenfalls den wiederhergestellten vorherigen Stand. Details: docs/ADMIN_UPDATES.md.

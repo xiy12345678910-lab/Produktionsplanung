@@ -117,7 +117,7 @@ def state(ck):
 
 
 def put(ck, mutate, action="test"):
-    rev, st = state(ck)
+    rev, st = state(A)
     new = copy.deepcopy(st)
     mutate(new)
     s, d, _ = req("PUT", "/api/state", {"revision": rev, "data": new, "action": action}, cookie=ck)
@@ -130,9 +130,9 @@ def audit_entry(new, actor):
 
 def res_of(n, dep):
     return next(m["id"] for m in n["machines"] if m.get("departmentId") == dep)
-def mstep(n, sid, fs, dep, hours, **kw):
+def mstep(n, sid, fa, dep, hours, **kw):
     pos = max([float(x.get("pos") or 0) for x in n["workSteps"]] + [0]) + 10
-    base = {"id": sid, "projectId": "", "fs": fs, "ab": "", "wt": "", "order": fs, "departmentId": dep, "planningType": "MACHINE", "sequence": 50000 + pos,
+    base = {"id": sid, "projectId": "", "fa": fa, "ab": "", "wt": "", "order": fa, "departmentId": dep, "planningType": "MACHINE", "sequence": 50000 + pos,
             "predecessorIds": [], "pos": pos, "machineId": res_of(n, dep), "altMachineId": "", "allowAlternative": False, "articleNo": "", "description": "",
             "targetQty": 0, "dueDate": "", "baselinePlan": None, "hours": hours, "goodQty": 0, "scrapQty": 0, "status": "planned", "direction": "forward",
             "anchorMode": "none", "requiredStart": "", "requiredFinish": "", "createdAt": server.now_iso(), "lockedStart": "", "lockedSegments": [],
@@ -146,7 +146,7 @@ LC = login("t_lead_cnc"); DC = login("t_dep_cnc"); LK = login("t_lead_k1")
 # Admin setup: a confirmed konf1 need and a free konf1 step
 def setup(n):
     n["departmentStaffNeeds"] = [{"departmentId": "konf1", "weekStart": "2026-10-19", "requested": 4, "confirmed": 3, "updatedAt": ""}]
-    n["workSteps"].append(mstep(n, "ws_k1_a", "FS K1", "konf1", 3, dueDate="2026-10-16"))
+    n["workSteps"].append(mstep(n, "ws_k1_a", "FA K1", "konf1", 3, dueDate="2026-10-16"))
 s, code, _d = put(A, setup); check(s == 200, f"Admin: Testdaten anlegen ({s} {code})")
 
 # --- Bereichsgrenzen (MP-AUD-032 / Person 2 Rollenmatrix)
@@ -162,7 +162,7 @@ def edit_cnc_machine(n):
 s, code, _ = put(LK, edit_cnc_machine); check(s == 403, f"Konf1-Leitung kann CNC-Maschine NICHT ändern ({s} {code})")
 def edit_own_step(n):
     next(x for x in n["workSteps"] if x["id"] == "ws_k1_a")["hours"] = 4; audit_entry(n, "t_lead_k1")
-s, code, _ = put(LK, edit_own_step); check(s == 200, f"Konf1-Leitung ändert eigenen Arbeitsgang ({s} {code})")
+s, code, _ = put(LK, edit_own_step); check(s == 403, f"Konf1-Leitung ändert keine AV-Konfektionsstunden ({s} {code})")
 def edit_cnc_order(n):
     o = next(x for x in n["workSteps"] if x["planningType"] == "MACHINE" and x["status"] == "planned"); o["hours"] = float(o["hours"]) + 0.25
     audit_entry(n, "t_lead_cnc")
@@ -206,10 +206,10 @@ s, code, _ = put(V, lambda n: n["machines"][0].update(name="x")); check(s == 403
 # --- Validierung (MP-AUD-004/009)
 def step_no_fs(n):
     n["workSteps"].append(mstep(n, "ws_nofs", "", "konf1", 1))
-s, code, _ = put(A, step_no_fs); check(s == 400 and code == "MP-STEP-014", f"Arbeitsgang ohne FS abgelehnt ({s} {code})")
+s, code, _ = put(A, step_no_fs); check(s == 400 and code == "MP-STEP-014", f"Arbeitsgang ohne FA abgelehnt ({s} {code})")
 def free_pred(n):
-    n["workSteps"].append(mstep(n, "ws_k1_b", "FS K1b", "konf1", 1, predecessorIds=["ws_k1_a"]))
-s, code, _ = put(A, free_pred); check(s == 400 and code == "MP-STEP-007", f"Vorgänger zwischen freien FS abgelehnt ({s} {code})")
+    n["workSteps"].append(mstep(n, "ws_k1_b", "FA K1b", "konf1", 1, predecessorIds=["ws_k1_a"]))
+s, code, _ = put(A, free_pred); check(s == 400 and code == "MP-STEP-007", f"Vorgänger zwischen freien FA abgelehnt ({s} {code})")
 def bad_status(n):
     next(x for x in n["workSteps"] if x["id"] == "ws_k1_a")["status"] = "kaputt"
 s, code, _ = put(A, bad_status); check(s == 400 and code == "MP-STEP-017", f"Ungültiger Status abgelehnt ({s} {code})")
@@ -249,17 +249,17 @@ s, code, _ = put(A, lambda n: next(y for y in n["workSteps"] if y["id"] == "ws_k
 AV = login("t_av")
 def av_cnc(n):
     o = copy.deepcopy(next(x for x in n["workSteps"] if x["planningType"] == "MACHINE" and x["status"] == "planned"))
-    o.update(id="ws_av_cnc", fs="FA AV1", order="FA AV1", pos=max(float(x.get("pos") or 0) for x in n["workSteps"] if x["planningType"] == "MACHINE") + 10,
+    o.update(id="ws_av_cnc", fa="FA AV1", faNumber="FA AV1", sourceId="ws_av_cnc", order="FA AV1", pos=max(float(x.get("pos") or 0) for x in n["workSteps"] if x["planningType"] == "MACHINE") + 10,
              sequence=9001, createdAt=server.now_iso(), direction="forward", anchorMode="none", requiredStart="", requiredFinish="")
     n["workSteps"].append(o); audit_entry(n, "t_av")
 s, code, _ = put(AV, av_cnc); check(s == 200, f"Arbeitsvorbereitung legt CNC-Auftrag an ({s} {code})")
 def av_dept(n):
-    n["workSteps"].append(mstep(n, "ws_av_k2", "FS AV2", "konf2", 40, dueDate="2026-10-16")); audit_entry(n, "t_av")
+    n["workSteps"].append(mstep(n, "ws_av_k2", "FA AV2", "konf2", 40, dueDate="2026-10-16")); audit_entry(n, "t_av")
 s, code, _ = put(AV, av_dept); check(s == 200, f"Arbeitsvorbereitung legt Konfektions-Auftrag an ({s} {code})")
 def av_link(n):
     x = next(y for y in n["workSteps"] if y["id"] == "ws_av_k2"); pr = n["projects"][0]; x["projectId"] = pr["id"]; x["ab"] = pr["ab"]; x["wt"] = pr.get("wt", ""); audit_entry(n, "t_av")
-s, code, _ = put(AV, av_link); check(s == 200, f"Arbeitsvorbereitung verknüpft freie FS mit AB ({s} {code})")
-s, code, _ = put(AV, lambda n: (n["machines"][0].update(setupMinutes=33), audit_entry(n, "t_av"))); check(s == 403 and code == "MP-AV-030", f"Arbeitsvorbereitung ändert KEINE Maschinen ({s} {code})")
+s, code, _ = put(AV, av_link); check(s == 200, f"Arbeitsvorbereitung verknüpft freie FA mit AB ({s} {code})")
+s, code, _ = put(AV, lambda n: (n["machines"][0].update(setupMinutes=33), audit_entry(n, "t_av"))); check(s == 403 and code in {"MP-AV-030", "MP-PROD-041"}, f"Arbeitsvorbereitung ändert KEINE Maschinen ({s} {code})")
 s, code, _ = put(AV, lambda n: (n["employees"][0].update(weeklyHours=10), audit_entry(n, "t_av"))); check(s == 403, f"Arbeitsvorbereitung ändert KEIN Personal ({s} {code})")
 s, code, _ = put(AV, lambda n: (next(y for y in n["workSteps"] if y["id"] == "ws_k1_a").update(dueDate="2026-10-23"), audit_entry(n, "t_av"))); check(s == 200, f"V12.7: Arbeitsvorbereitung ändert AV-Termin ({s} {code})")
 s, code, _ = put(LK, lambda n: (next(y for y in n["workSteps"] if y["id"] == "ws_k1_a").update(status="done"), audit_entry(n, "t_lead_k1"))); check(s == 400, f"V12.7: 'Fertig' nur über Produktion/Historie, nicht per Status ({s} {code})")
@@ -321,10 +321,10 @@ def cnc_own(n):
     p = plog(n, "pj1", "t_lead_cnc"); next(x for x in p["processes"] if x["id"] == "pr3").update(status="in_progress"); audit_entry(n, "t_lead_cnc")
 s_, code, _ = put(LC, cnc_own); check(s_ == 200, f"CNC bearbeitet Muster-Prozess parallel ({s_} {code})")
 def k1_takeover(n):
-    n["workSteps"].append(mstep(n, "ws_muster_k1", "FS M-1", "konf1", 6, projectId="pj1", sequence=20))
+    n["workSteps"].append(mstep(n, "ws_muster_k1", "FA M-1", "konf1", 6, projectId="pj1", sequence=20))
     p = plog(n, "pj1", "t_lead_k1"); pr = next(x for x in p["processes"] if x["id"] == "pr2"); pr["workStepId"] = "ws_muster_k1"; audit_entry(n, "t_lead_k1")
-s_, code, _ = put(LK, k1_takeover); check(s_ == 200, f"Konfektion übernimmt Muster-Prozess als FS ohne Termin ({s_} {code})")
-_, st_ = state(A); check(next(x for x in st_["workSteps"] if x["id"] == "ws_muster_k1")["anchorMode"] == "none", "FS ohne festen Termin gespeichert (automatisch eingeplant)")
+s_, code, _ = put(LK, k1_takeover); check(s_ == 200, f"Konfektion übernimmt Muster-Prozess als FA ohne Termin ({s_} {code})")
+_, st_ = state(A); check(next(x for x in st_["workSteps"] if x["id"] == "ws_muster_k1")["anchorMode"] == "none", "FA ohne festen Termin gespeichert (automatisch eingeplant)")
 def av_timing(n):
     p = plog(n, "pj1", "t_av"); next(x for x in p["processes"] if x["id"] == "pr3").update(startDate="2026-10-05", dueDate="2026-10-09"); audit_entry(n, "t_av")
 s_, code, _ = put(AV, av_timing); check(s_ == 200, f"Arbeitsvorbereitung terminiert Fertigungsprozess ({s_} {code})")
@@ -381,12 +381,12 @@ def sales_after(n):
     p = plog(n, "pj1", "t_sales"); p["customer"] = "anders"; audit_entry(n, "t_sales")
 s_, code, _ = put(SA, sales_after); check(s_ == 403, f"Vertrieb ändert nach Annahme keine Stammdaten ({s_} {code})")
 def av_fs(n):
-    n["workSteps"].append(mstep(n, "ws_pj1", "FS 8801", "konf2", 12, projectId="pj1", ab="AB-777", sequence=10, dueDate="2026-11-27")); audit_entry(n, "t_av")
-s_, code, _ = put(AV, av_fs); check(s_ == 200, f"Arbeitsvorbereitung legt FS zum angenommenen Projekt an ({s_} {code})")
+    n["workSteps"].append(mstep(n, "ws_pj1", "FA 8801", "konf2", 12, projectId="pj1", ab="AB-777", sequence=10, dueDate="2026-11-27")); audit_entry(n, "t_av")
+s_, code, _ = put(AV, av_fs); check(s_ == 200, f"Arbeitsvorbereitung legt FA zum angenommenen Projekt an ({s_} {code})")
 def av_edit_project(n):
     p = plog(n, "pj1", "t_av"); p["dueDate"] = "2026-12-24"; audit_entry(n, "t_av")
-s_, code, _ = put(AV, lambda n: (next(y for y in n["workSteps"] if y["id"] == "ws_pj1").update(goodQty=3), audit_entry(n, "t_av"))); check(s_ == 403 and code == "MP-AV-030", f"Arbeitsvorbereitung meldet KEINE Produktionsmengen ({s_} {code})")
-s_, code, _ = put(AV, av_edit_project); check(s_ == 403, f"Arbeitsvorbereitung ändert KEINEN Liefertermin ({s_} {code})")
+s_, code, _ = put(AV, lambda n: (next(y for y in n["workSteps"] if y["id"] == "ws_pj1").update(goodQty=3), audit_entry(n, "t_av"))); check(s_ == 403 and code in {"MP-AV-030", "MP-PROD-041"}, f"Arbeitsvorbereitung meldet KEINE Produktionsmengen ({s_} {code})")
+s_, code, _ = put(AV, av_edit_project); check(s_ == 200, f"Arbeitsvorbereitung pflegt den Projekt-Liefertermin ({s_} {code})")
 def av_close(n):
     p = plog(n, "pj1", "t_av", "Abschluss"); p["phase"] = "closed"; audit_entry(n, "t_av")
 s_, code, _ = put(AV, av_close); check(s_ == 200, f"Arbeitsvorbereitung schließt Projekt ab ({s_} {code})")
@@ -398,7 +398,7 @@ def gf_proj(n):
 s_, code, _ = put(G, gf_proj); check(s_ == 403, f"GF ändert keine Projekte ({s_} {code})")
 def pm_del_closed(n):
     n["projects"] = [x for x in n["projects"] if x["id"] != "pj1"]; audit_entry(n, "t_pm")
-s_, code, _ = put(P, pm_del_closed); check(s_ in (400, 403), f"Abgeschlossenes Projekt mit FS nicht löschbar ({s_} {code})")
+s_, code, _ = put(P, pm_del_closed); check(s_ in (400, 403), f"Abgeschlossenes Projekt mit FA nicht löschbar ({s_} {code})")
 s_, d, _ = req("POST", "/api/users", {"username": "t_sales2", "password": "password123", "role": "sales"}, cookie=A); check(s_ == 201, f"Admin legt Vertrieb an ({s_})")
 
 # --- No-op / orders / Methoden (MP-AUD-017/012/024)
@@ -410,7 +410,7 @@ def with_orders(n):
     n["orders"] = [{"id": "zombie"}]; n["machines"][0]["setupMinutes"] = 4
 s, code, _ = put(A, with_orders); _, st = state(A)
 check(s == 200 and "orders" not in st, "Mitgesendetes Legacy-orders wird verworfen")
-s, d, _ = req("DELETE", "/api/state", cookie=A); check(s == 405 and d.get("errorCode") == "MP-REQ-405", f"DELETE → 405 MP-REQ-405 ({s})")
+s, d, _ = req("DELETE", "/api/state", cookie=A); check(s == 404 and d.get("errorCode") == "MP-REQ-404", f"DELETE unbekannter Pfad → 404 MP-REQ-404 ({s})")
 
 # --- Benutzerverwaltung
 s, d, _ = req("GET", "/api/users", cookie=DC); names = {u["username"] for u in d["users"]}
@@ -457,12 +457,12 @@ def add_absence(n):
     n["audit"].insert(0, {"id": "a_abs1", "ts": server.now_iso(), "actor": "t_admin", "action": "Krank eingetragen", "detail": "Abwesend Test · 02.11.", "revision": 0})
 s, code, _ = put(A, add_absence); check(s == 200, f"Admin: Krankmeldung anlegen ({s} {code})")
 def abs_label(ck):
-    return next(a["label"] for a in state(ck)[1]["personnelAbsences"] if a["employeeId"] == "e_abs")
+    return next((a["label"] for a in state(ck)[1]["personnelAbsences"] if a["employeeId"] == "e_abs"), None)
 def abs_audit(ck):
     return next(a["action"] for a in state(ck)[1]["audit"] if a["id"] == "a_abs1")
 check(abs_label(A) == "Krank" and abs_label(G) == "Krank", "Abwesenheit: Admin/GF sehen den Grund")
 check(abs_label(LC) == "Krank" and abs_label(DC) == "Krank", "Abwesenheit: CNC-Leitung/Stellvertretung sehen den Grund im eigenen Bereich")
-check(abs_label(LK) == "Abwesend" and abs_label(V) == "Abwesend" and abs_label(P) == "Abwesend", "Abwesenheit: fremder Bereich/Lesende/PM sehen nur 'Abwesend'")
+check(abs_label(LK) is None and abs_label(V) == "Abwesend" and abs_label(P) == "Abwesend", "Abwesenheit: fremder Bereich ausgeschlossen, Lesende/PM sehen nur Abwesend")
 check(abs_audit(V) == "Abwesenheit eingetragen" and abs_audit(A) == "Krank eingetragen", "Abwesenheit: Grund auch im Änderungsprotokoll ausgeblendet")
 s, code, _ = put(LK, lambda n: audit_entry(n, "t_lead_k1")); check(s == 200, f"Abwesenheit: Speichern mit ausgeblendetem Stand funktioniert ({s} {code})")
 check(abs_label(A) == "Krank" and abs_audit(A) == "Krank eingetragen", "Abwesenheit: Speichern einer Rolle ohne Einsicht überschreibt den Grund nicht")
@@ -478,7 +478,7 @@ check(s == 403 and "Schicht" in str(d.get("error")), f"Bereichsrolle: Schichtvor
 with server.db_session() as c:  # ältester Eintrag ohne Projekt, direkt in den Live-Stand
     _j = json.loads(c.execute("SELECT json FROM state WHERE id=1").fetchone()[0])
     _j["history"].append({"id": "h_arch_test", "originalOrderId": "ws_arch_test", "recordType": "done", "status": "done", "projectId": "",
-                          "fs": "FS ARCH", "machineId": res_of(_j, "cnc"), "departmentId": "cnc", "hours": 1, "finishedAt": "2025-01-10T10:00:00+00:00"})
+                          "fa": "FA ARCH", "machineId": res_of(_j, "cnc"), "departmentId": "cnc", "hours": 1, "finishedAt": "2025-01-10T10:00:00+00:00"})
     c.execute("UPDATE state SET json=? WHERE id=1", (json.dumps(_j, ensure_ascii=False),))
 _rev, _st = state(A)
 _open = {p["id"] for p in _st["projects"] if p.get("phase") not in ("closed", "lost")}

@@ -1,3 +1,29 @@
+MASCHINENPLANUNG V12.19.0 - RELEASE NOTES
+=========================================
+Datum: 07.10.2026 · Basis: V12.18.0 · Update mit UPDATE_LIVE.ps1, Daten bleiben erhalten
+
+BLOCK A-D + BLOCK I 7a
+- Einheitlicher FA-Kern (fa/faNumber, sourceType/sourceId): alte fs-Felder und Nummern bleiben lesbar,
+  Projekt-, Format-, Werkzeug-, History- und Planstandreferenzen bleiben erhalten. Alte /FS-Verweise funktionieren.
+- Teilzeit: individuelle Arbeitstage/Tagesstunden, qualifizierte Wochenversetzungen und Zuordnung je Parallelplatz.
+  Linienbesetzung ist eine Obergrenze; P18-Dauer nach Besetzung bleibt erhalten und funktioniert je Platz.
+- AV legt Projekte/FA an und pflegt Konfektionsstunden. Die Abteilung plant operativ und liest die AV-Vorgabe.
+  Offene Vorgänger blockieren die Freigabe; Projektansicht leitet Produktionsstatus und Terminrisiken ab.
+- Bereichsgebundene Rollen bekommen nur erlaubte Daten vom Server, auch bei History/Export/PDF.
+  Globale Rollen haben kein Bereichsfeld. Admin kann andere Benutzer mit Bestätigung löschen;
+  Sessions verfallen, historische Produktions-/Audit-/Chatdaten bleiben erhalten.
+- Start/Pause/Fortsetzen/Teilfertig/Fertig laufen für alle FA-Quellen atomar auf dem Server.
+  Stabile Request-IDs verhindern doppelte Mengen und Bestandsbuchungen. Istzeit ohne Pausen und Besetzung bleiben nachvollziehbar.
+- Palettenetiketten vor/während/nach Produktion: Vorlagen, Adressen, Mengen, fortlaufende Nummer,
+  MHD aus Haltbarkeit und druckbarer Barcode. Keine erfundenen Firmendaten.
+- Audit enthält Benutzer, Rolle, Bereich, FA/Projekt und Feldänderungen mit Alt/Neu.
+- Allgemeiner Admin-Updatehinweis nur bei neuer freigegebener Version. Geschützter, browserunabhängiger
+  Windows-Worker mit Paket-/Versionsprüfung, verpflichtendem Vorabtest und Backup, Wartungssperre,
+  Task-Neustart, Healthcheck und geprüftem Rollback. Keine freien Paket-/Dateipfade im Browser.
+  Releasepakete und SHA256-Manifest werden über den neuen Release-Workflow aus einem grünen main-Commit gebaut.
+- Tests: test_blocks.py, test_updates.py, e2e_blocks.mjs; Windows-Deploy prüft zwei Folgeupdates und Rollback.
+  Der echte Windows-Server-2019-Hostnachweis bleibt separat erforderlich (docs/ADMIN_UPDATES.md).
+
 MASCHINENPLANUNG V12.18.0 - RELEASE NOTES
 =========================================
 Datum: 05.10.2026 · Basis: V12.17.2 · Update mit UPDATE_LIVE.ps1, Daten bleiben erhalten
@@ -340,7 +366,7 @@ Datum: 05.10.2026 · Basis: V12.9.1 · Update mit UPDATE_LIVE.ps1, Daten bleiben
 FORMATE (TIEFZIEHEN)
 - Kein eigener Menuepunkt "Formate" mehr. Das Formate-Fenster oeffnet sich aus dem Wochenplan
   ("▣ Formate"), aus der Auftragsliste (▣ am Tiefzieh-Auftrag) und beim neuen Auftrag
-  ("▣ Anlegen & auf Format": FS anlegen und direkt auf ein neues Format setzen).
+  ("▣ Anlegen & auf Format": FA anlegen und direkt auf ein neues Format setzen).
 - Sichtbar nur fuer Tiefziehen (Leitung, Stellvertretung, Lesende des Bereichs) und Admin.
   Arbeitsvorbereitung und GF sehen keine Formate mehr.
 - Offene Tiefzieh-Auftraege: "Auf F-…" (geoeffnetes Format) oder "+ Neues Format" mit dem Auftrag.
@@ -413,8 +439,8 @@ NACHRICHTEN (wie Teams, im Programm)
 - Kleines Fenster (unten rechts) oder gross (⤢): Liste links, Verlauf rechts. Auf dem Handy Vollbild.
 - Kanal "Alle" fuer jeden, eigene Gruppen (+ Gruppe, Mitglieder verwaltet der Ersteller) und
   Direktnachrichten (+ Direkt, je Paar nur ein Chat).
-- "/" im Text: Vorschlaege fuer Auftraege (FS, AB, WT, Beschreibung), Projekte und Formate (auch WKZ-
-  Nummer). Gewaehlt wird ein Link; Klick oeffnet die Auftragsliste gefiltert auf die FS, das Projekt
+- "/" im Text: Vorschlaege fuer Auftraege (FA, AB, WT, Beschreibung), Projekte und Formate (auch WKZ-
+  Nummer). Gewaehlt wird ein Link; Klick oeffnet die Auftragsliste gefiltert auf die FA, das Projekt
   bzw. das Format. Geloeschte Ziele werden durchgestrichen angezeigt.
 - "@Name" erwaehnt eine Person; die Nachricht ist bei ihr markiert und zaehlt als Erwaehnung.
 - Neue Nachrichten erscheinen ohne Neuladen (offener Chat alle 2,5 s, Zaehler alle 5 s).
@@ -482,7 +508,7 @@ MASCHINENPLANUNG V12.8.0 - RELEASE NOTES
 Datum: 05.10.2026 · Basis: V12.7.6 · Update mit UPDATE_LIVE.ps1, Daten bleiben erhalten
 
 FORMATPLANUNG TIEFZIEHEN (neue Ansicht "Formate")
-- Mehrere Tiefzieh-Auftraege auf einem Format: offene Auftraege "Auf Format" setzen (FS, Menge,
+- Mehrere Tiefzieh-Auftraege auf einem Format: offene Auftraege "Auf Format" setzen (FA, Menge,
   Projekt werden uebernommen) oder Werkzeuge frei anlegen (WKZ-Nr., L×B×H, Nutzen, Menge).
 - Grundformate (Plattengroessen) pflegt die Abteilungsleitung; je Format frei aenderbar
   ("Individuell"). Werkzeugmasse werden aus frueheren Formaten mit derselben WKZ-Nr. uebernommen.
@@ -490,10 +516,10 @@ FORMATPLANUNG TIEFZIEHEN (neue Ansicht "Formate")
   der Takt gewaehlt. Optional max. Formatgroesse und Ziehtiefe je Maschine.
 - Draufsicht mit empfohlenem Layout (Rand 100 mm, Abstand ½ Werkzeughoehe), Werkzeuge per Maus/
   Finger verschieben, Doppelklick dreht. Warnungen bei Ueberlappung, Rand, Ueberproduktion.
-- "In Wochenplan einplanen": die uebernommenen geplanten FS werden durch einen Format-Auftrag
+- "In Wochenplan einplanen": die uebernommenen geplanten FA werden durch einen Format-Auftrag
   ersetzt (Laufzeit = Takte × Takt). Aenderungen am Format aktualisieren den geplanten Auftrag.
 - "Einlagern" mit Lagerort (Vorschlagsliste bekannter Orte), "Auslagern & verwenden", Kopie als
-  Vorlage. Suche nach WKZ- oder FS-Nummer zeigt "X hat das Format hier abgelegt".
+  Vorlage. Suche nach WKZ- oder FA-Nummer zeigt "X hat das Format hier abgelegt".
 - Rechte: Abteilungsleitung/Stellvertretung nur eigener Bereich (Formate + Grundformate + Takte),
   Arbeitsvorbereitung Formate, GF/PM/Vertrieb/Lesende nur lesen – serverseitig geprueft.
 - Fehlerbehebung: Das Einlesen ergaenzte Takt-/Formatfelder an allen Maschinen; dadurch lehnte der
@@ -614,7 +640,7 @@ URLAUB & KRANKHEIT
 
 AUSWERTUNG & NACHKALKULATION (GF/Admin)
 - Je Bereich: Auftraege, Soll-/Ist-Stunden, Abweichung, Gut, Ausschuss, Minuten je Stueck,
-  Stueck je Stunde, Mitarbeiter. Filter: Zeitraum, Projekt oder Artikel/Bezeichnung/FS.
+  Stueck je Stunde, Mitarbeiter. Filter: Zeitraum, Projekt oder Artikel/Bezeichnung/FA.
 - "PDF-Bericht" im Firmen-CI mit allen Auftraegen und Mitarbeiterstunden (Drucken -> Als PDF).
 
 FEHLERBEHEBUNGEN
@@ -709,7 +735,7 @@ AV-TERMIN UND FEINPLANUNG
 
 PROJEKTANSICHT (neu)
 - Projekt oeffnen = senkrechter Ablauf: oben violett "1 Entwicklung & Vertrieb" Aufgabe fuer
-  Aufgabe, darunter blau "2 Produktion" mit allen FS live aus der Fertigung (Status, Fortschritt
+  Aufgabe, darunter blau "2 Produktion" mit allen FA live aus der Fertigung (Status, Fortschritt
   laufender Auftraege, Plan-/Ist-Zeiten, AV-Termin), am Ende die Ziellinie mit Liefertermin.
 - Gleichzeitig laufende Aufgaben/Auftraege werden als "2 parallel" zusammengefasst.
 - Zeile anklicken = bearbeiten (Status, Verantwortlich, Termine, Notiz) bzw. Details +
@@ -768,7 +794,7 @@ ROLLEN: PM UND AV PLANEN TERMINE UND VERWALTEN
   Liefertermin und Angebot. Den Status von Abteilungsprozessen (Fertigung, Vertrieb) meldet
   die Abteilung; das PM setzt ihn nur fuer Bereiche ohne eigenes Konto (Konstruktion,
   Kalkulation, Einkauf, QS, PM).
-- Arbeitsvorbereitung: FS anlegen/verknuepfen, Planwochen, Termine von Fertigungsprozessen,
+- Arbeitsvorbereitung: FA anlegen/verknuepfen, Planwochen, Termine von Fertigungsprozessen,
   Fertigungsprozesse im Ablauf anlegen/entfernen (offene). Keine Statusmeldung, keine
   erledigten Stunden, kein "Fertig" - das meldet die Abteilung. Serverseitig erzwungen.
 
@@ -780,7 +806,7 @@ GESPEICHERTE PROZESSABLAEUFE
 
 TERMINE
 - Prozesse mit Start und Faelligkeit; ueberfaellige Prozesse rot (Tafel, Projekt, Abteilung).
-- Zeitstrahl je Projekt: Prozesse und FS gegen heute und den Liefertermin, FS ohne Termin
+- Zeitstrahl je Projekt: Prozesse und FA gegen heute und den Liefertermin, FA ohne Termin
   als "noch zu verplanen".
 
 TESTS: tests/test_regression.py 118/118 PASS; Chromium-Durchlauf 5 Rollen ohne Fehler.
@@ -796,7 +822,7 @@ PROJEKT-LEBENSZYKLUS (neu, ersetzt die AB-Tabelle "Projektmanagement")
   (AB + Liefertermin) -> Arbeitsvorbereitung -> In Produktion -> Produziert -> Abgeschlossen.
   Verloren/abgesagt mit Pflicht-Grund, Reaktivieren moeglich.
 - Bis zur Annahme manuell (Vertrieb/Projektmanagement), danach automatisch: Stufe und
-  Fortschritt (erledigte / geplante Stunden) werden aus den verknuepften FS abgeleitet,
+  Fortschritt (erledigte / geplante Stunden) werden aus den verknuepften FA abgeleitet,
   Termin-Ampel vergleicht Planende mit Liefertermin.
 - Parallele Prozesse je Abteilung (Konstruktion, Kalkulation, Einkauf, QS, Vertrieb, PM,
   AV sowie alle Produktionsbereiche). Vorlagen: Wiederholteil, Neuteil, Entwicklung/Muster.
@@ -819,7 +845,7 @@ TESTS
 - tests/test_regression.py: 103/103 PASS (u. a. 30 neue Projekt-/Rollenpruefungen).
 - Chromium Ende-zu-Ende mit 5 Rollen: Vertrieb legt Eingang an und uebergibt, PM uebernimmt
   Vorlage und versendet Angebot, Konfektion uebernimmt Muster-Prozess ohne Termin in die
-  Fertigung, Vertrieb meldet Annahme, AV legt FS an - ohne JavaScript-Fehler.
+  Fertigung, Vertrieb meldet Annahme, AV legt FA an - ohne JavaScript-Fehler.
 
 
 MASCHINENPLANUNG V12.4.5 - RELEASE NOTES
@@ -828,7 +854,7 @@ Datum: 24.09.2026 · Basis: V12.4.4 · Grundlage: Deep Audit Konfektion/Tiefzieh
 
 NEUE ROLLE ARBEITSVORBEREITUNG (Produktionsplanung)
 - Legt Auftraege/Arbeitsgaenge in allen Bereichen an (CNC und Bereiche), plant sie, loescht
-  geplante und verknuepft freie FS mit einer AB (schliesst MP-AUD-006 fuer diese Rolle).
+  geplante und verknuepft freie FA mit einer AB (schliesst MP-AUD-006 fuer diese Rolle).
 - Serverseitig begrenzt auf geplante Arbeitsgaenge: keine Freigabe, Stornierung, Produktion,
   Fertigmeldung, Personal, Maschinen, Einstellungen (MP-AV-030). Anlegen nur durch den Admin.
 - Ansichten: Wochenplan, Auftraege, Bereiche (Bereichswahl oben), AB-Auftraege, GF-Uebersicht,
@@ -882,24 +908,24 @@ DATEN / VALIDIERUNG
 - Legacy-Array "orders" wird beim ersten Start einmalig in die Tabelle legacy_orders_archive
   verschoben und aus dem Live-Stand entfernt (MP-AUD-012/025). Start bricht ab, falls ein
   Legacy-Auftrag in workSteps fehlt (MP-MIG-002) - dann bleibt alles unveraendert.
-- FS ist fuer alle Arbeitsgaenge Pflicht (MP-AUD-004); Status wird geprueft (MP-STEP-017).
-- Vorgaenger nur innerhalb eines AB-Auftrags; freie FS werden nicht mehr ueber leere
+- FA ist fuer alle Arbeitsgaenge Pflicht (MP-AUD-004); Status wird geprueft (MP-STEP-017).
+- Vorgaenger nur innerhalb eines AB-Auftrags; freie FA werden nicht mehr ueber leere
   Projekt-ID gekoppelt (MP-AUD-009).
 - Unveraenderter Datenstand erzeugt keine neue Revision (MP-AUD-017).
 - Datenbankverbindungen werden sauber geschlossen.
 - Zeitzonen: ohne Paket "tzdata" wird die Windows-Zeitzone verwendet statt Startabbruch.
 
 OBERFLAECHE
-- Wochenplan, Listen und GF-Ansicht zeigen die FS (z. B. "FA 395 · AB … · WT …") statt "—"
+- Wochenplan, Listen und GF-Ansicht zeigen die FA (z. B. "FA 395 · AB … · WT …") statt "—"
   (MP-AUD-011).
 - Mehrtaegige Auftraege: nur die Karte am ersten Tag ist verschiebbar, Folgetage sind als
   "↳ Fortsetzung" markiert (MP-AUD-010).
 - Wochenwechsel, Reportmonat usw. werden nur lokal gemerkt und erzeugen keine Server-
   Revision mehr (bisher ca. 30 % aller Protokolleintraege).
-- Bereichsplanung: freie FS ohne AB moeglich (MP-AUD-005); bei fest zugeordnetem Bereich kein
+- Bereichsplanung: freie FA ohne AB moeglich (MP-AUD-005); bei fest zugeordnetem Bereich kein
   zweiter Bereichswaehler (MP-AUD-023); deutsche Planungsart-Bezeichnungen (MP-AUD-022).
 - Tiefziehen rechnet mit ganzen Takten (MP-AUD-019).
-- Historie: Reaktivieren behaelt die FS und funktioniert auch fuer freie FS (MP-AUD-027).
+- Historie: Reaktivieren behaelt die FA und funktioniert auch fuer freie FA (MP-AUD-027).
 - Abmelden loescht die im Browser zwischengespeicherten Plan-/Personaldaten.
 - Personal-Gate ist nur fuer den Admin schaltbar (war fuer Bereichsleitungen sichtbar, aber
   vom Server abgelehnt).
@@ -924,7 +950,7 @@ TESTS (Linux-Testumgebung, Kopie des Live-Stands Rev. 438)
 - tests/test_v1244.py: 60/60 PASS (Migration, Rollenmatrix, Validierung, Protokoll,
   Benutzerverwaltung, Passwort, Concurrency, Backup/WAL, Zeitzonen-Fallback).
 - Chromium-Durchlauf: Login, Wochenplan, Fortsetzungskarten, eingebauter Schedulertest
-  (PASS), Bereichsplanung mit freier FS, Passwortdialog, Logout-Bereinigung, 409-Merge
+  (PASS), Bereichsplanung mit freier FA, Passwortdialog, Logout-Bereinigung, 409-Merge
   zweier Benutzer - ohne JavaScript-Fehler.
 - V12.4.3-Code laeuft auf der migrierten Datenbank (Rollback-faehig).
 - Alle PowerShell-Skripte syntaktisch geprueft (PowerShell 7 Parser).
@@ -935,5 +961,5 @@ TESTS (Linux-Testumgebung, Kopie des Live-Stands Rev. 438)
 OFFEN (fachliche Entscheidung noetig, nicht in diesem Release)
 - Lesezugriff je Bereich (MP-AUD-001), WT als Elternobjekt (007), Vorgaenger terminwirksam (008),
   Personalbedarf je Auftrag Konfektion/Siebdruck (020), Trocknung als Zeitabschnitt (021),
-  PM-Funktion "FS einer AB zuordnen" (006), HTTPS (015), versionierte Snapshots (014),
+  PM-Funktion "FA einer AB zuordnen" (006), HTTPS (015), versionierte Snapshots (014),
   Anzeige erst nach Server-Sync (016).

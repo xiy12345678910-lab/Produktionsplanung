@@ -278,8 +278,8 @@ s, b, _ = cfg_set({"terms": {"roleLabels": {"production_planning": "Planung", "v
 check(s == 200 and b["config"]["terms"]["roleLabels"]["production_planning"] == "Planung", "Rollenbezeichnungen speicherbar")
 check(cfg_set({"terms": {"roleLabels": {"chef": "x"}}})[0] == 400, "unbekannte Rolle in roleLabels abgelehnt")
 check(cfg_set({"terms": {"roleLabels": {"viewer": "x" * 41}}})[0] == 400, "zu langer Rollenname abgelehnt")
-s, b, _ = cfg_set({"terms": {"orderNumber": "FS"}})
-check(s == 200 and b["config"]["terms"]["orderNumber"] == "FS", "Begriff Auftragsnummer speicherbar")
+s, b, _ = cfg_set({"terms": {"orderNumber": "FA"}})
+check(s == 200 and b["config"]["terms"]["orderNumber"] == "FA", "Begriff Auftragsnummer speicherbar")
 
 print(f"\n{sum(RESULTS)}/{len(RESULTS)} bestanden")
 sys.exit(0 if all(RESULTS) else 1)

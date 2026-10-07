@@ -84,18 +84,18 @@ try {
 
   // Grundaufbau: Bereich, Ressource "kf1" (Konfektion) mit n Mitarbeitern, Auftrag "o1" mit h Stunden.
   // cfg: {kind, crew, staffRequired, lanes, laneStaff, effort, crewMax, gate, emps, hours, orders}
-  const setup = cfg => ev(page, c => {
+  const setup = async cfg => { await ev(page, async () => await flushNow()); return ev(page, c => {
     const dep = data.departments.find(d => d.active !== false && String(d.kind || 'production') === 'production');
     data.machines = data.machines.filter(m => m.id !== 'kf1');
     const m = { id: 'kf1', name: 'Konfektion 1', departmentId: dep.id, kind: c.kind || 'line', crew: c.crew || 1, setupMinutes: c.setup || 0, start: dateKey(monday(new Date())) + 'T06:30', committedUntil: '', defaultShiftMode: '1', staffRequired: c.staffRequired || 0, effortScaling: !!c.effort, crewMax: c.crewMax || 0, laneStaff: c.laneStaff || {} };
     if (c.lanes > 1) m.lanes = c.lanes;
     data.machines.push(m);
     data.employees = []; data.personnelAssignments = []; data.personnelAbsences = [];
-    for (let i = 1; i <= (c.emps || 0); i++) data.employees.push({ id: 'e_' + i, name: 'MA ' + i, active: true, departmentId: dep.id, skills: ['kf1'], homeMachineId: 'kf1', homeShift: 'auto', employmentType: 'permanent', weeklyHours: 40, function: '' });
+    for (let i = 1; i <= (c.emps || 0); i++) data.employees.push({ homeLaneIndex:c.lanes>1&&c.laneStaff? (i<=Number(c.laneStaff['1']||1)?1:2):1,id: 'e_' + i, name: 'MA ' + i, active: true, departmentId: dep.id, skills: ['kf1'], homeMachineId: 'kf1', homeShift: 'auto', employmentType: 'permanent', weeklyHours: 40, function: '' });
     data.workSteps = [];
-    (c.orders || [c.hours || 40]).forEach((h, i) => data.workSteps.push({ id: 'o' + (i + 1), projectId: '', sequence: i + 1, departmentId: dep.id, planningType: 'MACHINE', predecessorIds: [], pos: i + 1, machineId: 'kf1', altMachineId: '', allowAlternative: false, fs: 'FS' + (i + 1), ab: '', wt: '', order: 'FS' + (i + 1), articleNo: '', description: '', targetQty: 0, hours: h, status: 'planned', direction: 'forward', anchorMode: 'none', requiredStart: '', requiredFinish: '', dueDate: '' }));
+    (c.orders || [c.hours || 40]).forEach((h, i) => data.workSteps.push({ id: 'o' + (i + 1), projectId: '', sequence: i + 1, departmentId: dep.id, planningType: 'MACHINE', predecessorIds: [], pos: i + 1, machineId: 'kf1', altMachineId: '', allowAlternative: false, fa: 'FA' + (i + 1), ab: '', wt: '', order: 'FA' + (i + 1), articleNo: '', description: '', targetQty: 0, hours: h, status: 'planned', direction: 'forward', anchorMode: 'none', requiredStart: '', requiredFinish: '', dueDate: '' }));
     data.personnelGate = !!c.gate;
-  }, cfg);
+  }, cfg); };
   const plan = (id = 'o1') => ev(page, id => {
     const r = calcSchedule()[id];
     const segs = r.segments || [];
@@ -209,10 +209,10 @@ try {
   await setup({ effort: false, kind: 'machine', staffRequired: 1, lanes: 2, laneStaff: { 1: 1, 2: 2 }, gate: true, emps: 1, orders: [8, 8] });
   const overlap = async () => ev(page, () => { const s = calcSchedule(), a = s.o1, b = s.o2; if (!a.start || !b.start) return 'unplanned:' + !!a.start + !!b.start; return b.start < a.end && a.start < b.end ? 'parallel' : 'seriell'; });
   check(await overlap() === 'seriell', 'Platz 2 braucht 2 Personen: mit 1 MA laufen die Aufträge nacheinander');
-  await ev(page, () => { for (let i = 2; i <= 3; i++) data.employees.push({ id: 'e_' + i, name: 'MA ' + i, active: true, departmentId: machine('kf1').departmentId, skills: ['kf1'], homeMachineId: 'kf1', homeShift: 'auto', employmentType: 'permanent', weeklyHours: 40, function: '' }); });
+  await ev(page, () => { for (let i = 2; i <= 3; i++) data.employees.push({ homeLaneIndex:2,id: 'e_' + i, name: 'MA ' + i, active: true, departmentId: machine('kf1').departmentId, skills: ['kf1'], homeMachineId: 'kf1', homeShift: 'auto', employmentType: 'permanent', weeklyHours: 40, function: '' }); });
   check(await overlap() === 'parallel', 'Bedarf Platz 1 + Platz 2 = 3 Personen: mit 3 MA laufen beide parallel');
   await setup({ effort: false, kind: 'machine', staffRequired: 1, lanes: 2, laneStaff: {}, gate: true, emps: 1, orders: [8, 8] });
-  check(await overlap() === 'parallel', 'Ohne Platz-Personal gilt der Bestand: Bedarf je Ressource, beide parallel mit 1 MA');
+  check(await overlap() === 'seriell', 'Ein Mitarbeiter belegt einen Parallelplatz; zweiter Auftrag läuft danach');
   await setup({ effort: false, kind: 'machine', staffRequired: 1, lanes: 2, laneStaff: { 1: 1, 2: 2 }, gate: true, emps: 1, orders: [8] });
   check((await plan('o1')).start, 'Ein belegter Platz: Bedarf = Bedarf Platz 1 (1 MA genügt)');
 

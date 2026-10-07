@@ -1,4 +1,4 @@
-MASCHINENPLANUNG V12.18.0 - WINDOWS-SERVER (LAN ONLY)
+﻿MASCHINENPLANUNG V12.19.0 - WINDOWS-SERVER (LAN ONLY)
 =====================================================
 
 1. VORAUSSETZUNGEN
@@ -104,7 +104,7 @@ MASCHINENPLANUNG V12.18.0 - WINDOWS-SERVER (LAN ONLY)
    GF                      Gesamtuebersicht; bestaetigt Personalbedarf, KW-Einsaetze, Betriebsferien
    Abteilungsleiter        plant den eigenen Bereich; verwaltet Stellvertretungen und Lesende
    Stellv. Abteilungsleiter plant den eigenen Bereich; verwaltet Lesende
-   Arbeitsvorbereitung     plant Termine und verwaltet die Fertigung: FS anlegen/verknuepfen,
+   Arbeitsvorbereitung     plant Termine und verwaltet die Fertigung: FA anlegen/verknuepfen,
                            Planwochen, Fertigungsprozesse terminieren, eigene Fertigungsablaeufe.
                            Keine Freigabe, keine Fortschrittsmeldung, kein Personal/Einstellungen
    (V12.10.1) GF sieht Wochenplan und Auftragsliste nur lesend.
@@ -124,3 +124,11 @@ MASCHINENPLANUNG V12.18.0 - WINDOWS-SERVER (LAN ONLY)
    - Transport ist HTTP (unverschluesselt). Nur im vertrauenswuerdigen LAN betreiben,
      keine Portweiterleitung/UPnP. HTTPS ist fuer eine spaetere Version vorgesehen.
    - Live-Ordner ist gesperrt: Aenderungen an Programmdateien nur mit Administratorrechten.
+
+ALLGEMEINE ADMIN-UPDATES AB V12.19.0 (BLOCK I 7a)
+- Fuer zukuenftige Softwareversionen: serverseitige Releasepruefung, Admin-Hinweis nur bei neuer
+  freigegebener Version, Update installieren mit Status/Backup/Healthcheck/Rollback.
+- Einmaliger Einstieg von V12.18: weiterhin UPDATE_LIVE.ps1. Quelle und Releasepakete sowie
+  Wartungssperre/Fehlerdiagnose sind in docs/ADMIN_UPDATES.md beschrieben.
+- Windows Server 2019+ ist die Zielplattform. windows-latest-CI ersetzt keinen echten Server-2019-
+  Hostnachweis; dieser ist vor produktivem Einsatz auf dem Zielhost auszufuehren.

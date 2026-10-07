@@ -37,8 +37,8 @@ def state():
     return copy.deepcopy(BASE)
 
 
-def step(sid, fs, mid, dep, **kw):
-    x = {"id": sid, "sequence": 10, "planningType": "MACHINE", "pos": 10, "departmentId": dep, "projectId": "", "predecessorIds": [], "fs": fs, "ab": "", "wt": "", "machineId": mid, "altMachineId": "", "allowAlternative": False, "order": fs, "hours": 2, "status": "planned", "direction": "forward", "anchorMode": "none"}
+def step(sid, fa, mid, dep, **kw):
+    x = {"id": sid, "sequence": 10, "planningType": "MACHINE", "pos": 10, "departmentId": dep, "projectId": "", "predecessorIds": [], "fa": fa, "ab": "", "wt": "", "machineId": mid, "altMachineId": "", "allowAlternative": False, "order": fa, "hours": 2, "status": "planned", "direction": "forward", "anchorMode": "none"}
     x.update(kw)
     return x
 
@@ -100,7 +100,7 @@ p4 = copy.deepcopy(p); p4["departments"] = [d for d in p4["departments"] if d["i
 check(not server.gf_change_allowed(p, p4)[0], "Bereiche: GF löscht keine Bereiche")
 p5 = copy.deepcopy(p); p5["departments"][-1]["active"] = False; p5["departments"][-1]["name"] = "Lack alt"
 check(server.gf_change_allowed(p, p5)[0], "Bereiche: GF benennt um und deaktiviert")
-p6 = copy.deepcopy(p); p6["workSteps"].append(step("ws1", "FS 1", "m_lack", "dep_lack"))
+p6 = copy.deepcopy(p); p6["workSteps"].append(step("ws1", "FA 1", "m_lack", "dep_lack"))
 p7 = copy.deepcopy(p6); p7["departments"][-1]["active"] = False
 check(server.validate_state(p6, p7)[1] == "MP-DEPT-006", "Bereiche: Deaktivieren mit offenen Aufträgen → MP-DEPT-006")
 check(server.production_department_ids(s) == {d["id"] for d in BASE["departments"]}, "Bereiche: Entwicklungsbereich ist kein Fertigungsbereich (AV)")

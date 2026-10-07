@@ -138,7 +138,7 @@ def make_segments(raw,mid,oid):
         q=pair(s.get("start"),s.get("end")) if isinstance(s,dict) else None
         if q:
             out.append({"start":q[0],"end":q[1],"shift":str(s.get("shift") or ""),
-                        "machineId":mid,"orderId":oid})
+                        "machineId":mid,"orderId":oid,"laneIndex":s.get("laneIndex"),"crew":s.get("crew")})
     return out
 
 def baseline_segments(order):
@@ -239,10 +239,35 @@ def effective_dept(state,e,day):
     return str(e.get("departmentId") or "")
 
 def can_staff(state,e,mid,day):
-    if mid in {str(x) for x in (e.get("skills") or [])}:
-        return True
-    eff=effective_dept(state,e,day)
-    return eff!=str(e.get("departmentId") or "") and dept_of(state,mid)==eff
+    return (effective_dept(state,e,day)==dept_of(state,mid)
+            and mid in {str(x) for x in e.get("skills") or []})
+
+
+def daily_hours(e,day):
+    days=e.get("workingDays",[1,2,3,4,5])
+    if day.isoweekday() not in days:
+        return 0.0
+    values=e.get("dailyHours") or {}
+    return float(values.get(str(day.isoweekday()),float(e.get("weeklyHours",40))/max(1,len(days))))
+
+
+def limit_assignment(e,a,day):
+    if not a:
+        return None
+    limit=daily_hours(e,day)*60
+    start,end=clock_minutes(a.get("start")),clock_minutes(a.get("end"))
+    if limit<=0 or start is None or end is None:
+        return None
+    breaks=[(clock_minutes(b.get("start")),clock_minutes(b.get("end"))) for b in a.get("breaks") or []]
+    used=0;stop=start
+    for minute in range(start,end):
+        if not any(x is not None and y is not None and x<=minute<y for x,y in breaks):
+            if used>=limit:
+                break
+            used+=1
+        stop=minute+1
+    return {**a,"end":f"{stop//60:02d}:{stop%60:02d}","breaks":[b for b in a.get("breaks") or [] if clock_minutes(b.get("end")) is not None and clock_minutes(b["end"])<=stop]}
+
 
 def explicit_assignment(state,eid,dk):
     return next((a for a in state.get("personnelAssignments") or []
@@ -295,16 +320,22 @@ def home_assignment(state,e,day,dk):
     ts=state.get("shiftTemplates") or {}
     t=(ts.get("fridaySingle") if day.weekday()==4 else ts.get("single")) if shift=="single" else ts.get(shift)
     t=t or {}
-    return {"employeeId":str(e.get("id")),"date":dk,"machineId":str(m.get("id")),"shift":shift,
+    return {"employeeId":str(e.get("id")),"date":dk,"machineId":str(m.get("id")),"shift":shift,"laneIndex":int(e.get("homeLaneIndex",1)),
             "start":str(t.get("start","")),"end":str(t.get("end","")),"breaks":t.get("breaks") or []}
 
 def personnel_assignment(state,e,day,dk):
-    return explicit_assignment(state,str(e.get("id")),dk) or home_assignment(state,e,day,dk)
+    return limit_assignment(e,explicit_assignment(state,str(e.get("id")),dk) or home_assignment(state,e,day,dk),day)
 
 def personnel_cover(state,seg):
     if not state.get("personnelGate",False):
         return True,0,0
-    req=max(0,int(float(machine(state,seg["machineId"]).get("staffRequired",0) or 0)))
+    m=machine(state,seg["machineId"])
+    lane=seg.get("laneIndex")
+    req=max(0,int(float((m.get("laneStaff") or {}).get(str(lane),m.get("staffRequired",0)) or 0)))
+    if m.get("kind")=="line" or m.get("effortScaling"):
+        req=max(1,req)
+    if seg.get("crew"):
+        req=max(req,int(seg["crew"]))
     if req<=0:
         return True,0,0
     day=seg["start"]
@@ -316,7 +347,7 @@ def personnel_cover(state,seg):
             continue
         eid=str(e.get("id"))
         a=personnel_assignment(state,e,day,dk)
-        if not a or str(a.get("machineId"))!=seg["machineId"] or str(a.get("shift"))!=seg["shift"]:
+        if not a or str(a.get("machineId"))!=seg["machineId"] or str(a.get("shift"))!=seg["shift"] or (lane is not None and a.get("laneIndex",1)!=lane):
             continue
         x,y=on_day(seg["start"],str(a.get("start",""))),on_day(seg["start"],str(a.get("end","")))
         if not x or not y or y<=x:
@@ -384,6 +415,10 @@ def validate_release_feasibility(old,new):
             same=[x for x in fixed if x["orderId"]!=oid and x["machineId"]==seg["machineId"]]
             if max_parallel(seg,same)+1>machine_lanes(new,seg["machineId"]):
                 return False,"MP-PLAN-058",f"Freigabe '{name}' kollidiert mit einer festen Maschinenbelegung."
+            lane=seg.get("laneIndex") or o.get("laneIndex")
+            seg["laneIndex"]=lane
+            if lane is not None and any(x.get("laneIndex")==lane and overlaps(seg,x) for x in same):
+                return False,"MP-PERS-034","Parallelplatz ist bereits belegt."
             ok,count,req=personnel_cover(new,seg)
             if not ok:
                 return False,"MP-PERS-033",f"Freigabe '{name}' ist personell unterdeckt ({count}/{req})."

@@ -1,15 +1,19 @@
 # Produktionsplanung
 
-Maschinenplanung V12.18.0 – Wochen-/Ressourcenplanung je Bereich (Maschinen & Linien), Projekte,
+Maschinenplanung V12.19.0 – Wochen-/Ressourcenplanung je Bereich (Maschinen & Linien), Projekte,
 Formate (Tiefziehen), Personal und Nachrichten. Zentraler Windows-LAN-Server, Browser-Oberfläche.
 
-- `server.py` – Python-Server (nur Standardbibliothek, SQLite), `index.html` – Oberfläche, `release_gates.py` – Freigabeprüfung
+- `server.py` – Python-Server (nur Standardbibliothek, SQLite), `index.html` – Oberfläche, `release_gates.py` – Freigabeprüfung, `app_updates.py` – allgemeine Releaseupdates
 - Windows: `README_Windows.txt` (Installation, Update, Update direkt von GitHub), `BENUTZER_KURZANLEITUNG.txt`
+- A–D: `docs/BLOCKS_A_D.md` · Admin-Updates (I 7a): `docs/ADMIN_UPDATES.md`
 - Änderungen: `RELEASE_NOTES.txt` · Fehlercodes: `FEHLERCODES.txt` · Übergabe: `docs/UEBERGABE.md`
 
 ## Tests
 
 ```
+python tests/test_blocks.py                   # A–D: Migration, Planung, Rechte, atomare Produktion
+python tests/test_updates.py                  # I 7a: Folgeversionen, Paketprüfung, Status, Wiederherstellung
+node tests/e2e_blocks.mjs                    # AV → Bereich → Produktion, Exporte, Admin-Update-UI
 python tests/test_v128.py                     # Server-Regeln Formate/Parallel/Bereiche/PM-Vorplan
 python tests/test_v129.py                     # Nachrichten: Aufbewahrung, Behalten, Erwähnungen
 python tests/make_test_db.py <leerer-ordner>  # künstliche DB, danach:
