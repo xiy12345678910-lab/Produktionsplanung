@@ -1,4 +1,4 @@
-MASCHINENPLANUNG V12.20.0 - WINDOWS-SERVER (LAN ONLY)
+MASCHINENPLANUNG V12.21.0 - WINDOWS-SERVER (LAN ONLY)
 =====================================================
 
 1. VORAUSSETZUNGEN
@@ -14,7 +14,7 @@ MASCHINENPLANUNG V12.20.0 - WINDOWS-SERVER (LAN ONLY)
 2b. UPDATE DIREKT VON GITHUB (Windows-Benutzer, z. B. <Benutzername>) - ab V12.10.2 nur aus Releases
    Normale PowerShell (kein Administrator):
         powershell -ExecutionPolicy Bypass -File C:\ProgramData\Maschinenplanung\Update_von_GitHub.ps1
-   - Nimmt das neueste GitHub-Release; dessen Commit muss in "main" liegen. Bestimmte Version: -Tag v12.20.0
+   - Nimmt das neueste GitHub-Release; dessen Commit muss in "main" liegen. Bestimmte Version: -Tag v12.21.0
    - Installiert wird genau ein fester Commit (Hash wird angezeigt). Mit -Sha256 <hash> wird das ZIP
      zusaetzlich geprueft (Hash steht in den Release-Notizen bzw. wird beim Download angezeigt).
    - Download, Pruefung und Entpacken laufen erst im Administrator-Fenster (UAC) in

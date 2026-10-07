@@ -1,3 +1,20 @@
+MASCHINENPLANUNG V12.21.0 - RELEASE NOTES
+=========================================
+Datum: 07.10.2026 · Basis: V12.20.0 · Update gemäß README_Windows.txt 2b, Daten bleiben erhalten
+
+ANSICHTEN BEI BEDARF UND FA-DIALOG JE ABTEILUNG
+- Die Anwendung baut nur die aktive, für die Rolle und eingeschalteten Module erlaubte Ansicht auf.
+  Personal, Historie und System benötigen ohne Terminbenachrichtigung keinen allgemeinen Planungslauf.
+- Beim Öffnen einer Ansicht werden die aktuellen Serverdaten verwendet. Änderungen an Personal,
+  Ressourcen und Aufträgen führen zur neuen Planung; alte Planungen werden nicht zwischengespeichert.
+- Geöffnete Projekt- und Formatdetails bleiben aktuell. Risiko-Benachrichtigungen und die Prüfung
+  laufender Produktion bleiben erhalten; ohne passende Aufträge entsteht kein zusätzlicher Planungslauf.
+- Rollen-/Bereichswechsel verwenden erst den neuen gefilterten Serverstand. Eine verspätete Antwort
+  aus einer vorherigen Anmeldung wird verworfen; deaktivierte Ansichten und Projektdetails schließen.
+- FA-Erfassung erhält für anlegeberechtigte Rollen einen einheitlichen Dialog je Abteilung.
+  AV-Konfektionsstunden, operative Bereichsplanung und bestehende Schreibrechte bleiben maßgeblich.
+- Block E und die weiteren Blocks bleiben separate Aufgaben. Abnahme: docs/V12_21_0.md.
+
 MASCHINENPLANUNG V12.20.0 - RELEASE NOTES
 =========================================
 Datum: 07.10.2026 · Basis: V12.19.1 · Update gemäß README_Windows.txt 2b, Daten bleiben erhalten

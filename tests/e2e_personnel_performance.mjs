@@ -124,6 +124,7 @@ try {
   });
   check(persistent.after==='07:00' && persistent.breaks===2, 'Dauerhafte persönliche Schichtzeiten und Pausen steuern Stammzuordnung');
   const invalidation = await ev(page, () => {
+    switchView('overview');
     const original=calcSchedule;let calls=0;calcSchedule=function(...args){calls++;return original(...args)};
     data.personnelGate=false;data.personnelAbsences=[];const start=calls;renderAll();const afterRender=calls;
     data.personnelGate=true;renderAll();const afterGate=calls;
@@ -137,6 +138,9 @@ try {
   });
   console.log(`PERF fixture=${perf.orders} planned orders: renderAll ${perf.elapsed.toFixed(1)} ms, calcSchedule calls ${perf.calls}; V12.19.0 source performed 3 calls/renderAll (base + GF + projects)`);
   const expectedCalls=process.env.PERSONNEL_BENCH_BASELINE==='1'?3:1;check(perf.calls===expectedCalls, `${expectedCalls} Schedulerlauf/-läufe für den Vergleich (${perf.calls})`);
+  const personnelPerf=await ev(page,()=>{switchView('personnel');const original=calcSchedule;let calls=0;calcSchedule=function(...args){calls++;return original(...args)};const t=performance.now();renderAll();const elapsed=performance.now()-t;calcSchedule=original;return {calls,elapsed}});
+  console.log(`PERF same ${perf.orders} planned orders: personnel renderAll ${personnelPerf.elapsed.toFixed(1)} ms, calcSchedule calls ${personnelPerf.calls}`);
+  if(process.env.PERSONNEL_BENCH_BASELINE!=='1')check(personnelPerf.calls===0,'Personalansicht baut bei unverändertem Plan keinen versteckten Wochenplan auf');
   await ctx.close();
 } catch (e) {
   check(false, 'Unerwarteter Fehler: ' + (e.stack || e.message));
