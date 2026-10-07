@@ -154,7 +154,7 @@ try {
   check(s2.pn === SEED.terms.projectNumber + ' / Projektnummer' && s2.qLabel === s2.pn, 'Bestand: Begriff wie bisher');
   check(s2.depts.includes('Konfektion 1 – Thomsen') && s2.depts.includes('Konfektion 2 – Keller') && s2.depts.length === 6, 'Bestand: Bereiche unverändert (6, Namen aus der Datenbank)');
   const cfgS = await apiFetch(ps, 'GET', '/api/config');
-  check(cfgS.body.terms.projectNumber === 'WT' && cfgS.body.projectAreas.length === 7 && Object.values(cfgS.body.modules).every(Boolean), 'Bestand: Begriff WT, 7 Projekt-Bereiche, alle Module');
+  check(cfgS.body.terms.projectNumber === 'WT' && cfgS.body.projectAreas.length === 7 && Object.entries(cfgS.body.modules).every(([key, value]) => key === 'palletLabels' ? value === false : value === true), 'Bestand: Begriff WT, 7 Projekt-Bereiche, bisherige Funktionen an und optionale Palettenzettel aus');
   await ps.close();
 
   // ------------------------------------------------------------------ 3. Admin ändert, alle sehen es

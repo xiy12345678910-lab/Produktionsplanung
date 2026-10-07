@@ -1,4 +1,4 @@
-﻿MASCHINENPLANUNG V12.19.0 - KURZANLEITUNG FUER BENUTZER
+﻿MASCHINENPLANUNG V12.19.1 - KURZANLEITUNG FUER BENUTZER
 ======================================================
 
 ANMELDEN
@@ -26,6 +26,15 @@ BENACHRICHTIGUNGEN
 FIRMENPROFIL (nur Admin)
 - System > Firma & System: Name, Logo (⤒ hochladen, ✕ entfernen), Farben, Schrift, Begriff fuer die Projektnummer. Aenderungen sehen alle sofort.
 
+FUNKTIONEN & BEREICHE (nur Admin)
+- System > Funktionen & Bereiche: Funktionen ein-/ausschalten, Bereiche verwalten und bei verknuepften Daten deaktivieren statt loeschen.
+- Palettenzettel sind optional und standardmaessig aus. Dort einschalten und Vorlagen mit Farbe/Barcode gestalten; Ausschalten erhaelt alle Daten.
+- System > Benutzer: Suche sowie Rollen-/Bereichsfilter lassen sich kombinieren und zuruecksetzen.
+
+PERSONALZEITEN
+- Name in der Personalwoche anklicken: Mitarbeiter, geplante Netto-Stunden und dauerhafte Zeiten/Pausen bearbeiten; einzelne Tage separat anpassen.
+- Standard: Mo–Do 8,75 Stunden netto, Freitag 5 Stunden, Woche 40 Stunden. Besetzungshinweise beziehen sich auf den sichtbaren Bereich und die Woche.
+
 DARSTELLUNG
 - Oben rechts ☀ / ☾ / ▣ klicken: Hell -> Dunkel -> Halle (gross, hoher Kontrast). Gilt nur fuer diesen PC.
 - Hallenbildschirm fest einstellen: Adresse mit ?theme=hall&view=overview (Wochenplan) aufrufen.
@@ -39,7 +48,7 @@ ROLLEN
 - Abteilungsleiter / Stellvertretung: planen den eigenen Bereich.
   Leitung legt Stellvertretungen und Lesende an, Stellvertretung nur Lesende.
 - Vertrieb: legt Eingaenge an und meldet Annahme oder Verlust.
-- Arbeitsvorbereitung: legt Projekte und Auftraege (FA) in allen Bereichen mit AV-Termin und Stunden an
+- Arbeitsvorbereitung: legt Projekte und Auftraege (FA) mit Bereichsreihenfolge, AV-Terminen und Konfektionsstunden an
   und verknuepft sie mit AB. Die operative Ressourcen-/Terminplanung uebernimmt der Bereich. Freigabe, Produktion und Fertigmeldung machen die Bereiche.
 - Projektmanagement: pflegt AB-Auftraege.
 - GF: GF-Ansicht (nur GF/Admin), Projekte, bestaetigt den von den Abteilungen gemeldeten Personalbedarf.

@@ -4,6 +4,7 @@
 
 | Reihenfolge | Prompt | Feature | Status |
 |---|---|---|---|
+| Hotfix | #57–#62 | AV-Bereichsübergabe, Personalzeiten/Performance, Benutzerfilter, Funktionen & Bereiche/Palettenzettel, Selbsttest | V12.19.1; Abnahme in `docs/V12_19_1.md`; Lazy Loading und Blocks E–I folgen separat nach Installation |
 | 1 | 5 | Hallenmodus (Hell/Dunkel/Halle) | erledigt V12.11.0 (Kiosk-Schalter optional, nicht umgesetzt) |
 | 2 | 3 | Undo/Redo | erledigt V12.12.0 |
 | 3 | 4 | Browser-Benachrichtigungen | erledigt V12.13.0 (Glocke; Browser-Meldung nur bei https, Erklärtext bewusst weggelassen) |

@@ -102,7 +102,7 @@ p5 = copy.deepcopy(p); p5["departments"][-1]["active"] = False; p5["departments"
 check(server.gf_change_allowed(p, p5)[0], "Bereiche: GF benennt um und deaktiviert")
 p6 = copy.deepcopy(p); p6["workSteps"].append(step("ws1", "FA 1", "m_lack", "dep_lack"))
 p7 = copy.deepcopy(p6); p7["departments"][-1]["active"] = False
-check(server.validate_state(p6, p7)[1] == "MP-DEPT-006", "Bereiche: Deaktivieren mit offenen Aufträgen → MP-DEPT-006")
+check(server.validate_state(p6, p7)[0] and p7["workSteps"] == p6["workSteps"] and p7["machines"] == p6["machines"], "Bereiche: Deaktivieren erhält offene Aufträge und Maschinen")
 check(server.production_department_ids(s) == {d["id"] for d in BASE["departments"]}, "Bereiche: Entwicklungsbereich ist kein Fertigungsbereich (AV)")
 proj_old = copy.deepcopy(s)
 proj_old["projects"] = [{"id": "p1", "number": "P-1", "phase": "accepted", "name": "Test", "customer": "K", "processes": [], "log": []}]

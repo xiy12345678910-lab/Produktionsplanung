@@ -1,4 +1,10 @@
-# Update beim Arbeitgeber: V12.10.1 auf V12.17.0
+# Aktuelles Hotfix-Update V12.19.1
+
+Die Anleitung und Abnahme für V12.19.1 stehen in [V12_19_1.md](V12_19_1.md). Für die bestehende Installation gilt ausschließlich `README_Windows.txt` Abschnitt 2b: Nach Veröffentlichung des GitHub-Releases auf `main` in einer normalen PowerShell `powershell -ExecutionPolicy Bypass -File C:\ProgramData\Maschinenplanung\Update_von_GitHub.ps1 -Tag v12.19.1` starten. Der Updater öffnet per UAC das Administratorfenster, lädt und prüft den festen Release-Commit und startet selbst `UPDATE_LIVE.ps1`. Der Installer übernimmt Backup, Vorabtest, Update und gegebenenfalls Rollback.
+
+Die folgende Anleitung dokumentiert die frühere Umstellung von V12.10.1 auf V12.17.0, einschließlich der damals nötigen einmaligen Firmeneinrichtung.
+
+# Historisches Update beim Arbeitgeber: V12.10.1 auf V12.17.0
 
 Ausgangslage (am Server-PC geprüft): Ordner `C:\ProgramData\Maschinenplanung`, Live V12.10.1, Python `C:\Program Files\Python313\python.exe`, `data.ci` leer (kein Firmenname, kein Logo, keine Farbe), kein `config\firma.json`, Backup-Task läuft, manuelles Backup vom 05.10. erledigt.
 Daraus folgt: Das Firmenprofil muss **vor** dem Update angelegt werden (sonst bricht der Vorabtest mit `MP-CFG-006` ab; Live bliebe dabei unverändert).

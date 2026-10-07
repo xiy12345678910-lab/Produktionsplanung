@@ -28,7 +28,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 MP_DEBUG_ABORTS = os.environ.get('MP_DEBUG_ABORTS') == '1'
-APP_VERSION = "12.19.0"
+APP_VERSION = "12.19.1"
 HOST = os.environ.get("MP_HOST", "0.0.0.0")
 PORT = int(os.environ.get("MP_PORT", "8765"))
 BASE = Path(__file__).resolve().parent
@@ -54,7 +54,8 @@ CONFIG_SCHEMA = 1
 CONFIG_KEEP_BAK = 20
 CONFIG_LOGO_MAX = 420 * 1024
 CONFIG_LOCK = threading.RLock()
-CONFIG_MODULES = ("projects", "formats", "personnel", "chat", "notifications", "postcalc", "kpi")
+CONFIG_MODULES = ("projects", "formats", "personnel", "chat", "notifications", "postcalc", "kpi", "palletLabels")
+CONFIG_MODULE_DEFAULTS = {k: True for k in CONFIG_MODULES} | {"palletLabels": False}
 CONFIG_TEMPLATES = {"werbetechnik", "neutral", "metall_cnc", "leer", "demo"}
 CONFIG_HEX = re.compile(r"^#[0-9a-fA-F]{6}$")
 CONFIG_TENANT = re.compile(r"^[a-z0-9-]{3,32}$")
@@ -83,7 +84,7 @@ def config_defaults() -> dict:
         "locale": {"language": "de", "timezone": "Europe/Berlin", "holidayRegion": ""},
         "terms": {"projectNumber": "Projekt", "orderNumber": "Auftrag", "roleLabels": {}},
         "template": "neutral",
-        "modules": {k: True for k in CONFIG_MODULES},
+        "modules": dict(CONFIG_MODULE_DEFAULTS),
         "projectAreas": [dict(a) for a in CONFIG_PROJECT_AREAS],
         "license": {"file": "lizenz.key"},
         "update": {"channel": "stable", "source": ""},
@@ -630,7 +631,7 @@ def public_config(cfg: dict | None = None) -> dict:
 # die Daten bleiben vollständig erhalten. kpi hängt an postcalc (aus -> auch kpi aus).
 # ---------------------------------------------------------------------------------------------
 MODULE_LABELS = {"projects": "Projekte", "formats": "Formate", "personnel": "Personal", "chat": "Nachrichten",
-                 "notifications": "Benachrichtigungen", "postcalc": "Auswertung", "kpi": "Kennzahlen"}
+                 "notifications": "Benachrichtigungen", "postcalc": "Auswertung", "kpi": "Kennzahlen", "palletLabels": "Palettenetiketten"}
 MODULE_DEPS = {"kpi": ("postcalc",)}
 # Datensammlungen im Datenstand, die ein Modul besitzt (Schreiben nur bei eingeschaltetem Modul).
 MODULE_STATE_KEYS = {
@@ -638,12 +639,13 @@ MODULE_STATE_KEYS = {
     "formats": ("formats", "baseFormats"),
     "personnel": ("employees", "personnelAssignments", "personnelAbsences", "weeklyEmployeeDeployments",
                   "departmentStaffNeeds", "personnelGate"),
+    "palletLabels": ("palletTemplates", "palletLabels"),
 }
 
 
 def modules_effective(cfg: dict | None = None) -> dict:
     cfg = cfg or current_config()
-    m = {**{k: True for k in CONFIG_MODULES}, **{k: v for k, v in (cfg.get("modules") or {}).items() if k in CONFIG_MODULES}}
+    m = {**CONFIG_MODULE_DEFAULTS, **{k: v for k, v in (cfg.get("modules") or {}).items() if k in CONFIG_MODULES}}
     for k, deps in MODULE_DEPS.items():
         if not all(m.get(d, True) for d in deps):
             m[k] = False
@@ -651,7 +653,7 @@ def modules_effective(cfg: dict | None = None) -> dict:
 
 
 def module_on(name: str) -> bool:
-    return bool(modules_effective().get(name, True))
+    return bool(modules_effective().get(name, CONFIG_MODULE_DEFAULTS.get(name, True)))
 
 
 def module_error(name: str) -> dict:
@@ -2291,8 +2293,11 @@ def _personnel_assignment_valid(a: dict) -> tuple[bool, str, str]:
         return False, "MP-PERS-020", "Ungültige Mitarbeiter-Uhrzeit."
     if end <= start:
         return False, "MP-PERS-021", "Mitarbeiter-Ende muss nach Start liegen."
+    breaks = a.get("breaks") or []
+    if not isinstance(breaks, list) or len(breaks) > 2:
+        return False, "MP-PERS-022", "Mitarbeiter-Pausen müssen eine Liste mit höchstens zwei Pausen sein."
     ranges = []
-    for b in (a.get("breaks") or [])[:2]:
+    for b in breaks:
         if not isinstance(b, dict):
             return False, "MP-PERS-022", "Ungültige Mitarbeiter-Pause."
         bs, be = b.get("start", ""), b.get("end", "")
@@ -2646,6 +2651,7 @@ def validate_state(old: dict, new: dict) -> tuple[bool, str, str]:
     dept_ids = set()
     dept_types = {}
     dept_kinds = {}
+    dept_labels = {}
     valid_types = {"MACHINE", "LABOR_HOURS", "PROCESS", "CYCLE"}
     for dep in departments:
         if not isinstance(dep, dict) or not re.fullmatch(r"[A-Za-z0-9_-]{1,40}", str(dep.get("id") or "")):
@@ -2669,18 +2675,29 @@ def validate_state(old: dict, new: dict) -> tuple[bool, str, str]:
         dept_ids.add(did)
         dept_types[did] = ptype
         dept_kinds[did] = kind
+        dept_labels[did] = name
 
     # V12.8.2: Vertrieb/Entwicklung bearbeiten nur Projektaufgaben – keine Maschinen, Aufträge, Formate.
     for name, what in (("machines", "Maschine/Linie"), ("workSteps", "Auftrag"), ("formats", "Format"), ("baseFormats", "Grundformat")):
         for rec in new.get(name) or []:
             if isinstance(rec, dict) and dept_kinds.get(str(rec.get("departmentId") or dd), "production") != "production":
                 return False, "MP-DEPT-004", f"Bereich '{rec.get('departmentId')}' ist kein Produktionsbereich – {what} nicht zulässig."
-    old_inactive = {str(d.get("id")) for d in (old.get("departments") or []) if isinstance(d, dict) and d.get("active") is False}
-    for dep in departments:
-        if dep.get("active") is False and str(dep.get("id")) not in old_inactive:
-            did = str(dep.get("id"))
-            if any(isinstance(x, dict) and str(x.get("departmentId")) == did and str(x.get("status") or "planned") in {"planned", "released", "running", "paused"} for x in work_steps if isinstance(work_steps, list)):
-                return False, "MP-DEPT-006", f"Bereich '{dep.get('name') or did}' hat noch offene Aufträge und kann nicht deaktiviert werden."
+    # Removing a department must not orphan its productive records, even if the
+    # client also removes those records in the same request. Empty setup resources
+    # can still be replaced; current resource references are checked below.
+    removed_depts = {str(d.get("id")) for d in old.get("departments") or [] if isinstance(d, dict)} - dept_ids
+    for did in removed_depts:
+        linked = any(isinstance(x, dict) and str(x.get("departmentId") or "") == did
+                     for state in (old, new)
+                     for key in ("workSteps", "history", "productionEvents", "palletLabels", "inventory", "formats", "baseFormats")
+                     for x in state.get(key) or [])
+        linked = linked or any(isinstance(proc, dict) and str(proc.get("areaId") or "") == did
+                               for state in (old, new) for project in state.get("projects") or []
+                               if isinstance(project, dict) for proc in project.get("processes") or [])
+        if linked:
+            return False, "MP-DEPT-006", f"Bereich '{did}' hat verknüpfte Produktionsdaten. Bitte deaktivieren statt löschen."
+
+    # Deactivation is additive and keeps every linked order/resource/history record intact.
 
     if not isinstance(projects, list):
         return False, "MP-PM-001", "Projekt-/Auftragsstamm ist ungültig."
@@ -2955,6 +2972,14 @@ def validate_state(old: dict, new: dict) -> tuple[bool, str, str]:
                 return False, "MP-PERS-033", f"Leiharbeiter-Anfrage von '{e.get('name') or eid}' ist ungültig (Zeitraum/Status)."
         if str(e.get("departmentId") or "") not in dept_ids:
             return False, "MP-PERS-029", f"Mitarbeiter '{e.get('name') or eid}' verweist auf einen unbekannten Bereich."
+        custom_times = e.get("standardPersonnelTimes")
+        if custom_times is not None:
+            if (not isinstance(custom_times, dict) or set(custom_times) != {"single", "fridaySingle"}
+                    or any(not isinstance(custom_times.get(k), dict)
+                           or not isinstance(custom_times[k].get("breaks", []), list)
+                           or len(custom_times[k].get("breaks", [])) > 2
+                           or not _template_valid(custom_times.get(k)) for k in ("single", "fridaySingle"))):
+                return False, "MP-PERS-035", f"Dauerhafte Mitarbeiterzeiten von '{e.get('name') or eid}' sind ungültig."
         days = e.get("workingDays", [1, 2, 3, 4, 5])
         daily = e.get("dailyHours", {})
         if (not isinstance(days, list) or not days or len(days) != len(set(map(str, days)))
@@ -2964,7 +2989,7 @@ def validate_state(old: dict, new: dict) -> tuple[bool, str, str]:
         weekly = _finite_float(e.get("weeklyHours", 40))
         if weekly is None or weekly < 0 or weekly > 80:
             return False, "MP-PERS-030", f"Wochenstunden von '{e.get('name') or eid}' sind ungültig."
-        if sum(float(daily.get(str(d), weekly/len(days))) for d in days) > weekly+0.001:
+        if sum(float(v) for v in daily.values()) > weekly+0.001:
             return False, "MP-PERS-035", "Tagesstunden überschreiten die Wochenstunden."
     if len(eids) != len(set(eids)):
         return False, "MP-PERS-001", "Doppelte Mitarbeiter-ID."
@@ -3103,7 +3128,13 @@ def validate_state(old: dict, new: dict) -> tuple[bool, str, str]:
 
         mid = str(o.get("machineId", ""))
         alt = str(o.get("altMachineId", "") or "")
-        if mid not in midset:
+        handoff = o.get("handoffUnassigned", False)
+        ptype = str(o.get("planningType") or "")
+        if "handoffUnassigned" in o and not isinstance(handoff, bool):
+            return False, "MP-PLAN-065", f"Auftrag '{o.get('order') or oid}': Bereichsübergabe ist ungültig."
+        if handoff and (ptype != "MACHINE" or str(o.get("status", "planned")) != "planned" or mid or alt or o.get("allowAlternative") or o.get("baselinePlan") is not None or o.get("anchorMode", "none") != "none" or o.get("direction", "forward") != "forward"):
+            return False, "MP-PLAN-065", f"Auftrag '{o.get('order') or oid}': Unzugeordnete Bereichsübergabe darf keine Ressource oder operative Planung enthalten."
+        if not handoff and mid not in midset:
             return False, "MP-PLAN-003", f"Auftrag '{o.get('order') or oid}' verweist auf eine unbekannte Hauptmaschine."
         order_department = str(o.get("departmentId") or next((m.get("departmentId") or dd for m in machines if str(m.get("id")) == mid), dd))
         if order_department not in dept_ids:
@@ -3698,6 +3729,7 @@ def production_planning_change_allowed(old: dict, new: dict) -> tuple[bool, str]
         if key not in allowed_root and canonical(old.get(key)) != canonical(new.get(key)):
             return False, f"Arbeitsvorbereitung darf '{key}' nicht ändern."
     a, b = _record_map(old.get("workSteps")), _record_map(new.get("workSteps"))
+    dep_names = {str(d.get("id")): str(d.get("name") or d.get("id") or "") for d in (new.get("departments") or []) if isinstance(d, dict)}
     for rid in set(a) | set(b):
         if canonical(a.get(rid)) == canonical(b.get(rid)):
             continue
@@ -3705,6 +3737,21 @@ def production_planning_change_allowed(old: dict, new: dict) -> tuple[bool, str]
             if side is not None and str(side.get("status") or "planned") != "planned":
                 return False, f"Arbeitsvorbereitung ändert nur geplante Aufträge ('{side.get('fa') or side.get('order') or rid}' ist {side.get('status')})."
         before, after = a.get(rid), b.get(rid)
+        if before is not None and after is not None and "handoffUnassigned" in before and "handoffUnassigned" not in after:
+            return False, "Die AV-Herkunft einer Bereichsübergabe bleibt erhalten."
+        if before is not None and after is not None and canonical(before.get("handoffUnassigned", False)) != canonical(after.get("handoffUnassigned", False)):
+            return False, "Die Bereichsplanung übernimmt offene AV-Aufträge über die Planen-Aktion."
+        if before is None and after is not None:
+            did = str(after.get("departmentId") or "")
+            is_confection = "konf" in did.casefold() or "konf" in dep_names.get(did, "").casefold()
+            if not after.get("handoffUnassigned") or str(after.get("machineId") or "") or str(after.get("altMachineId") or "") or after.get("allowAlternative") or after.get("baselinePlan") is not None or after.get("planningWeek") or str(after.get("direction") or "forward") != "forward" or str(after.get("anchorMode") or "none") != "none" or after.get("requiredStart") or after.get("requiredFinish") or after.get("laneIndex"):
+                return False, "Neue AV-Aufträge müssen ohne Ressource und Terminanker an die Bereichsplanung gehen."
+            if not is_confection and (_finite_float(after.get("hours", 0)) or 0) > 0:
+                return False, "Arbeitsvorbereitung darf Stunden nur für Konfektion vorgeben."
+        if after is not None and canonical((before or {}).get("hours", 0)) != canonical(after.get("hours", 0)):
+            dept = str(after.get("departmentId") or "")
+            if ("konf" not in dept.casefold() and "konf" not in dep_names.get(dept, "").casefold()) and (_finite_float(after.get("hours", 0)) or 0) > 0:
+                return False, "Arbeitsvorbereitung darf Stunden nur für Konfektion vorgeben."
         if before and after:
             for field in ("machineId", "altMachineId", "allowAlternative", "laneIndex", "pos", "direction", "anchorMode", "requiredStart", "requiredFinish", "planningWeek", "baselinePlan"):
                 if canonical(before.get(field)) != canonical(after.get(field)):
@@ -3799,10 +3846,31 @@ def department_change_allowed(old: dict, new: dict, department_id: str) -> tuple
         if did != department_id:
             return False, "Arbeitsgang gehört nicht zum eigenen Bereich."
     old_steps = _record_map(old.get("workSteps"))
-    for rid, rec in _record_map(new.get("workSteps")).items():
+    new_steps = _record_map(new.get("workSteps"))
+    if any("handoffUnassigned" in before and rid not in new_steps for rid, before in old_steps.items()):
+        return False, "AV-Aufträge können nicht durch Löschen aus der Bereichsplanung entfernt werden."
+    for rid, rec in new_steps.items():
         before = old_steps.get(rid)
+        if before is not None:
+            if rec.get("handoffUnassigned") is True and (str(rec.get("machineId") or "") or str(rec.get("status") or "planned") != "planned"):
+                return False, "Unzugeordnete AV-Aufträge bleiben ohne Ressource und Freigabe."
+            if canonical(before.get("handoffUnassigned", False)) != canonical(rec.get("handoffUnassigned", False)):
+                if before.get("handoffUnassigned") is not True or rec.get("handoffUnassigned") is not False:
+                    return False, "Eine Bereichsübergabe kann nur einmal übernommen werden."
+                mid = str(rec.get("machineId") or "")
+                machine = next((m for m in (new.get("machines") or []) if str(m.get("id")) == mid), None)
+                if not machine or machine_dept.get(mid, "") != department_id or _finite_float(rec.get("hours", 0)) is None or _finite_float(rec.get("hours", 0)) <= 0:
+                    return False, "Zum Einplanen braucht der Bereich eine eigene Ressource und Maschinenlaufzeit."
+            if "handoffUnassigned" in before:
+                if "handoffUnassigned" not in rec:
+                    return False, "Die AV-Herkunft einer Bereichsübergabe bleibt erhalten."
+                for field in ("fa", "faNumber", "projectId", "ab", "wt", "targetQty", "sequence", "predecessorIds"):
+                    if canonical(before.get(field)) != canonical(rec.get(field)):
+                        return False, "FA, Projekt, Menge und Vorgänger pflegt die Arbeitsvorbereitung."
         resource = next((m for m in old.get("machines") or [] if m.get("id") == (before or {}).get("machineId")), {})
-        if before is not None and (resource.get("kind") == "line" or resource.get("effortScaling")) and canonical(before.get("hours")) != canonical(rec.get("hours")):
+        dep = str((before or rec).get("departmentId") or "")
+        dep_name = next((str(d.get("name") or "") for d in (old.get("departments") or []) if str(d.get("id")) == dep), "")
+        if before is not None and ("konf" in dep.casefold() or "konf" in dep_name.casefold() or resource.get("kind") == "line" or resource.get("effortScaling")) and canonical(before.get("hours")) != canonical(rec.get("hours")):
             return False, "Konfektionsstunden pflegt die Arbeitsvorbereitung."
         if before is not None and before.get("planningType") == "LABOR_HOURS" and canonical(before.get("requiredHours")) != canonical(rec.get("requiredHours")):
             return False, "Konfektionsstunden pflegt die Arbeitsvorbereitung."
@@ -4657,7 +4725,7 @@ def template_apply(user: dict, body: dict) -> tuple[int, dict]:
         changed = canonical({k: v for k, v in new.items() if k != "meta"}) != canonical({k: v for k, v in old.items() if k != "meta"})
         cfg_now = current_config()
         tmods = tpl.get("modules") if isinstance(tpl.get("modules"), dict) else {}
-        mod_changes = {k: bool(v) for k, v in tmods.items() if k in CONFIG_MODULES and (cfg_now.get("modules") or {}).get(k, True) != bool(v)} if want_modules else {}
+        mod_changes = {k: bool(v) for k, v in tmods.items() if k in CONFIG_MODULES and (cfg_now.get("modules") or {}).get(k, CONFIG_MODULE_DEFAULTS[k]) != bool(v)} if want_modules else {}
         summary["modules"] = mod_changes
         # V12.17.0: Projektbereiche der Vorlage werden nur ergänzt (nie entfernt oder umbenannt).
         have_pa = cfg_now.get("projectAreas") or CONFIG_PROJECT_AREAS
@@ -5156,6 +5224,8 @@ class Handler(BaseHTTPRequestHandler):
             user = self.require_user(["admin", *DEPARTMENT_ROLES, "production"])
             if not user or not self.require_current_client():
                 return
+            if production_path.group(2) == "label" and not module_on("palletLabels"):
+                return self.json_response(403, module_error("palletLabels"))
             request_id = body.get("requestId")
             if not isinstance(request_id, str) or not re.fullmatch(r"[A-Za-z0-9_-]{8,100}", request_id):
                 return self.json_response(400, mp_error("MP-PROD-050", "Stabile Request-ID erforderlich."))
@@ -5446,6 +5516,9 @@ class Handler(BaseHTTPRequestHandler):
             normalize_fa_state(incoming)
             unredact_incoming(old, incoming, user)
             strip_archived_history(con, old, incoming)
+            if user["role"] != "admin" and canonical(old.get("palletTemplates")) != canonical(incoming.get("palletTemplates")):
+                con.execute("ROLLBACK")
+                return self.json_response(403, mp_error("MP-AUTH-002", "Etikettenvorlagen dürfen nur Admins verwalten."))
             for key in ("productionEvents", "palletLabels", "inventory"):
                 if canonical(old.get(key)) != canonical(incoming.get(key)):
                     return self.json_response(403, mp_error("MP-PROD-041", "Produktionsbuchungen erfolgen über die Produktionsaktionen."))

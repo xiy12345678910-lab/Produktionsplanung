@@ -88,6 +88,7 @@ try {
 
   // Parallelplätze in den Einstellungen auf 1 → alles nacheinander
   await page.click('#navSystem');
+  await page.click('[data-systab="machines"]');
   await page.waitForTimeout(300);
   const lanes = page.locator('[data-m="k1"][data-f="lanes"]');
   check(await lanes.inputValue() === '2', 'Einstellungen: Spalte "Parallel" zeigt 2');
@@ -100,6 +101,7 @@ try {
   check(new Set([p['FA 8001']?.start, p['FA 8002']?.start, p['FA 8003']?.start]).size === 3, 'Ohne Parallelplätze: drei Aufträge nacheinander');
 
   await page.click('#navSystem');
+  await page.click('[data-systab="machines"]');
   await page.waitForTimeout(300);
   await lanes.fill('2');
   await lanes.press('Tab');
@@ -141,6 +143,7 @@ try {
   check(denied[0] === 400 && denied[1] === 'MP-PLAN-058', `Dritte überlappende Freigabe abgelehnt (${denied.join(' ')})`);
 
   await page.click('#navSystem');
+  await page.click('[data-systab="machines"]');
   await page.waitForTimeout(300);
   await lanes.fill('1');
   await lanes.press('Tab');

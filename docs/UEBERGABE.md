@@ -1,11 +1,12 @@
 # Übergabe – Produktionsplanung (Stand 07.10.2026)
 
-Branch: `codex/blocks-a-d` · Stand: **V12.19.0** · Abnahme A–D: `docs/BLOCKS_A_D.md` · ausschließlich I 7a: `docs/ADMIN_UPDATES.md` (echter Windows-Server-Hostnachweis separat ausstehend)
+Stand: **V12.19.1** · Hotfix-Abnahme #57–#62: `docs/V12_19_1.md` · Abnahme A–D: `docs/BLOCKS_A_D.md` · ausschließlich I 7a: `docs/ADMIN_UPDATES.md` (echter Windows-Server-Hostnachweis separat ausstehend)
 
 ## 1. Fertig und getestet (per `UPDATE_LIVE.ps1` einspielbar)
 
 | Version | Thema | Test |
 |---|---|---|
+| 12.19.1 | AV-Bereichsübergabe und Planvorrat, Personalzeiten/Performance, Benutzerfilter, Funktionen & Bereiche mit optionalen Palettenzetteln, isolierter Selbsttest | `test_av_handoff.py`, `test_personnel_times.py`, `test_admin_v12191.py`, vier Browserregressionen; Gesamtergebnis in `docs/V12_19_1.md` |
 | 12.8.0 | Formatplanung Tiefziehen (Ansicht „Formate“): Grundformate, Takte je Maschine, Werkzeuge, Layout, Einplanen als Format-Auftrag, Einlagern/Suche WKZ/FA | `tests/e2e_formats.mjs` 35/35 |
 | 12.8.1 | Parallelbelegung: Spalte „Parallel“ je Maschine/Linie, Scheduler + Server (MP-PROD-010, MP-PLAN-058) spurfähig | `tests/e2e_parallel.mjs` 15/15 |
 | 12.8.2 | GF legt Bereiche an (Produktion/Vertrieb/Entwicklung), erste Maschine/Linie mit Schichtmodell/Umrüstzeit | `tests/e2e_departments.mjs` 18/18 |
@@ -52,7 +53,6 @@ Testhinweis: E2E-Tests setzen die Browser-Zeitzone auf Europe/Berlin (wie `relea
 ## 4. Betrieb
 
 - Ab V12.19.0: Admin-Updatehinweis nur bei neuem freigegebenem Release, siehe `docs/ADMIN_UPDATES.md`.
-- Einmaliger Einstieg / manuelles IT-Update als normaler Windows-Benutzer (z. B. boensch): `Update_von_GitHub.ps1` (siehe README_Windows.txt 2b) – lädt das Paket, startet `UPDATE_LIVE.ps1` per UAC als Administrator.
-- Alternativ (Admin-PowerShell): Paket-ZIP des Branches laden, entpacken, `.\UPDATE_LIVE.ps1`.
+- Windows-Updates ausschließlich gemäß `README_Windows.txt` 2b: `Update_von_GitHub.ps1` aus normaler PowerShell – veröffentlichtes Release mit festem Commit auf `main`, Download und Prüfung nach UAC, anschließend `UPDATE_LIVE.ps1` durch den Updater.
 - Gelöschte Chat-Nachrichten bleiben bis zu 30 Tage in den Backups (60 Sicherungen).
 - Danach alle Browser mit Strg+F5 neu laden.

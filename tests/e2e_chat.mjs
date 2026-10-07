@@ -161,7 +161,7 @@ try {
   await lena.click('#chatNewDirect');
   await lena.selectOption('#chatDUser', 'gast');
   await lena.click('#chatDCreate');
-  await lena.waitForTimeout(500);
+  await lena.waitForFunction(() => document.querySelector('#chatTitle')?.textContent.trim() === 'gast', null, { timeout: 8000 });
   check((await lena.textContent('#chatTitle')) === 'gast', 'Direktnachricht an gast geöffnet');
   const again = await lena.evaluate(async () => (await (await fetch('/api/chat/channels', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-MP-Client-Version': (await (await fetch('/api/health')).json()).version }, body: JSON.stringify({ kind: 'direct', members: ['gast'] }) })).json()).channel.id);
   const chans = await lena.evaluate(async () => (await (await fetch('/api/chat/channels')).json()).channels.filter(c => c.kind === 'direct').length);

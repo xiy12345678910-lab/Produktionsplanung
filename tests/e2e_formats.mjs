@@ -238,7 +238,7 @@ try {
   await av.waitForTimeout(300);
   await av.click('#addOrder2');
   await av.waitForTimeout(300);
-  await av.selectOption('#qDept', 'thermoforming');
+  await av.selectOption('#qAvDepartments', 'thermoforming');
   await av.waitForTimeout(200);
   check(!(await av.locator('#qToFormat').isVisible()), 'AV: kein Knopf "Anlegen & auf Format"');
   await av.keyboard.press('Escape');
