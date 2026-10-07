@@ -1,0 +1,1000 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Produktionsplanung V12.19.1 · GitHub-aligned UI Design Goal</title>
+<style>
+:root{
+  --bg:#f4f7fb;--panel:#fff;--panel2:#f8fafc;--text:#142033;--muted:#5f6f84;
+  --line:#d9e2ec;--accent:#1f5eff;--brand:#1f5eff;--brand2:#eaf0ff;
+  --ok:#14865c;--okbg:#e8f7f0;--warn:#b36a00;--warnbg:#fff3d8;
+  --danger:#bd3343;--dangerbg:#fdecef;--violet:#6d48aa;--violetbg:#f1ebff;
+  --shadow:0 10px 35px rgba(24,42,74,.08);--radius:18px;
+}
+*{box-sizing:border-box}
+html,body{margin:0;min-height:100%;font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:var(--text);background:var(--bg)}
+button,input,select{font:inherit}button{cursor:pointer}
+.app{display:grid;grid-template-columns:260px 1fr;min-height:100vh}
+.sidebar{background:#10213d;color:#fff;padding:20px 15px;display:flex;flex-direction:column;gap:14px}
+.brand{display:flex;align-items:center;gap:12px;padding:4px 8px 12px}
+.brandMark{width:40px;height:40px;border-radius:12px;background:linear-gradient(135deg,#5aa2ff,#6d5dfc);display:grid;place-items:center;font-weight:900}
+.brand h1{font-size:17px;margin:0}.brand small{color:#aebbd0}
+.nav{display:grid;gap:6px}.nav button{border:0;background:transparent;color:#bac7da;padding:11px 12px;border-radius:11px;text-align:left;display:flex;align-items:center;gap:10px;font-weight:700}
+.nav button:hover,.nav button.active{background:#1b3153;color:#fff}.nav .ico{width:22px;text-align:center}
+.sidebarFoot{margin-top:auto;border-top:1px solid #2b4060;padding:14px 8px 0;color:#b9c7dc;font-size:11px;line-height:1.5}.saveDot{width:8px;height:8px;border-radius:50%;background:#33d49d;display:inline-block;margin-right:6px}
+.main{min-width:0;padding:26px 30px 50px}
+.topbar{display:flex;justify-content:space-between;gap:18px;align-items:center;margin-bottom:22px}
+.title h2{font-size:27px;margin:0 0 4px}.title p{margin:0;color:var(--muted)}
+.actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.btn{border:1px solid var(--line);background:#fff;color:var(--text);padding:9px 13px;border-radius:10px;font-weight:800}
+.btn.primary{background:var(--brand);color:#fff;border-color:var(--brand)}
+.btn.warn{background:var(--warnbg);color:#805000;border-color:#efd18c}
+.badge{display:inline-flex;align-items:center;padding:4px 8px;border-radius:999px;font-size:10px;font-weight:850;background:#eef3fa}
+.badge.blue{background:var(--brand2);color:#224ab8}.badge.warn{background:var(--warnbg);color:#8a5800}.badge.violet{background:var(--violetbg);color:#5d3a99}
+.userBadge{display:flex;align-items:center;gap:7px;border:1px solid var(--line);background:#fff;border-radius:11px;padding:6px 8px;font-size:11px}
+.view{display:none}.view.active{display:block}
+.cards{display:grid;grid-template-columns:repeat(5,minmax(150px,1fr));gap:14px;margin-bottom:18px}
+.card,.panel,.tableCard{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow)}
+.card{padding:17px}.metricLabel{font-size:11px;color:var(--muted);font-weight:850;text-transform:uppercase;letter-spacing:.06em}.metric{font-size:29px;font-weight:900;margin:5px 0 0}.metricSub{font-size:11px;color:var(--muted);margin-top:4px}
+.sectionHead{display:flex;align-items:center;justify-content:space-between;gap:14px;margin:21px 0 11px}.sectionHead h3{margin:0;font-size:18px}.hint{font-size:12px;color:var(--muted)}
+.weekbar{display:flex;align-items:center;gap:7px}.kwBadge{padding:8px 11px;border-radius:10px;background:var(--brand2);color:#224ab8;font-weight:900;border:1px solid #cfd9ff}
+.boardWrap{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);overflow:auto;box-shadow:var(--shadow)}
+.board{min-width:1260px;display:grid;grid-template-columns:160px repeat(5,1fr)}.bh,.machineLabel,.dayCell{border-right:1px solid var(--line);border-bottom:1px solid var(--line)}
+.bh{background:#f7f9fc;padding:12px;font-size:12px;font-weight:850;text-align:center}.bh:first-child{text-align:left}
+.machineLabel{padding:13px 11px;background:#fbfcfe;font-weight:850;min-height:92px;display:flex;flex-direction:column;justify-content:center}.machineLabel small{font-weight:500;color:var(--muted);margin-top:4px}
+.dayCell{min-height:92px;padding:7px;background:linear-gradient(to bottom,transparent 49.5%,#edf1f6 50%,transparent 50.5%)}
+.jobchip{padding:7px 8px;border-radius:9px;margin-bottom:5px;background:var(--brand2);border:1px solid #ced9ff;font-size:10.5px;line-height:1.28}.jobchip strong{display:block;font-size:11.5px}.jobchip.warn{background:var(--warnbg);border-color:#efd18c}.jobchip.violet{background:var(--violetbg);border-color:#d6c7f3}
+.panel{padding:17px}.panel h3{margin:0 0 4px}.panel p{color:var(--muted);font-size:12px;margin:0 0 14px}
+.taskList{display:grid;gap:7px}.task{display:grid;grid-template-columns:70px 110px 1.2fr 100px 100px 120px;gap:8px;align-items:center;padding:9px 10px;border:1px solid var(--line);border-radius:10px;background:#fff;font-size:11px}.task.blocked{background:#fffaf0}
+.tableCard{overflow:hidden}.tableTools{padding:13px;display:flex;gap:10px;align-items:center;justify-content:space-between;border-bottom:1px solid var(--line);background:#fbfcfe}
+.tableTools input,.tableTools select,.field input,.field select{padding:9px 10px;border:1px solid var(--line);border-radius:9px;background:#fff}
+table{width:100%;border-collapse:collapse}th,td{padding:10px 9px;border-bottom:1px solid #edf1f5;text-align:left;font-size:12px;vertical-align:middle}th{font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:#67758b;background:#f8fafc}
+.tabBar{display:flex;gap:6px;margin:4px 0 12px}.tabBtn{border:1px solid var(--line);background:#fff;border-radius:10px;padding:9px 16px;font-weight:850;color:#4c5d73}.tabBtn.active{background:var(--brand);border-color:var(--brand);color:#fff}
+.nameLink{border:0;background:none;color:#2455c3;font-weight:850;padding:0}.personGrid{display:grid;grid-template-columns:repeat(3,minmax(220px,1fr));gap:12px}.personCard{border:1px solid var(--line);border-radius:14px;padding:13px;background:#fff}.personCard:hover{border-color:#aabcf5}.personCard h4{margin:0 0 4px}.personMeta{font-size:11px;color:var(--muted)}.hours{font-size:22px;font-weight:900;margin-top:10px}
+.detailGrid{display:grid;grid-template-columns:1.2fr .8fr;gap:14px}.detailBlock{border:1px solid var(--line);border-radius:12px;padding:12px;background:#fff}
+.pBoard{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(185px,1fr);gap:12px;overflow-x:auto;padding-bottom:8px}.pCol{background:var(--panel2);border:1px solid var(--line);border-radius:14px;padding:10px;display:flex;flex-direction:column;gap:8px;min-height:200px}.pColHead{font-weight:850;font-size:11px;color:var(--muted);text-transform:uppercase}.pCard{background:#fff;border:1px solid var(--line);border-radius:12px;padding:10px;display:grid;gap:6px}.pCard strong{font-size:12px}.pCard small{color:var(--muted)}
+.sysTabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}.sysTab{border:1px solid var(--line);background:#fff;border-radius:9px;padding:8px 11px;font-weight:800}.sysTab.active{background:var(--brand);border-color:var(--brand);color:#fff}
+.settingsGrid{display:grid;grid-template-columns:1fr 1fr;gap:15px}.settingsWide{grid-column:1/-1}
+.userForm{display:grid;grid-template-columns:1.1fr 1fr 1fr 1fr auto;gap:8px;align-items:end}.field{display:grid;gap:5px}.field label{font-size:11px;font-weight:850;color:#536176}
+.modules{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}.module{border:1px solid var(--line);border-radius:12px;padding:12px;background:#fff}.moduletop{display:flex;justify-content:space-between;gap:10px}.switch{width:38px;height:22px;background:#d9dee7;border-radius:99px;position:relative}.switch:after{content:"";position:absolute;width:16px;height:16px;background:#fff;border-radius:50%;top:3px;left:3px}.switch.on{background:var(--brand)}.switch.on:after{left:19px}
+.hidden{display:none!important}
+@media(max-width:1100px){.app{grid-template-columns:1fr}.sidebar{min-height:auto}.nav{grid-template-columns:repeat(3,1fr)}.cards{grid-template-columns:1fr 1fr}.detailGrid,.settingsGrid{grid-template-columns:1fr}.personGrid,.modules{grid-template-columns:1fr 1fr}.main{padding:18px}.userForm{grid-template-columns:1fr 1fr}}
+@media(max-width:650px){.nav{grid-template-columns:1fr 1fr}.cards,.personGrid,.modules,.userForm{grid-template-columns:1fr}}
+
+.jobchip{width:100%;text-align:left;color:inherit;cursor:pointer}
+.jobchip:hover{transform:translateY(-1px);box-shadow:0 5px 14px rgba(20,32,51,.08)}
+.modalBack{position:fixed;inset:0;background:rgba(10,18,32,.45);display:none;align-items:center;justify-content:center;padding:24px;z-index:999}
+.modalBack.open{display:flex}
+.orderModal{width:min(920px,96vw);max-height:92vh;overflow:auto;background:#fff;border:1px solid var(--line);border-radius:20px;box-shadow:0 24px 70px rgba(10,18,32,.25);padding:20px}
+.modalHead{display:flex;justify-content:space-between;gap:14px;align-items:flex-start;margin-bottom:14px}
+.modalHead h3{margin:0;font-size:20px}.modalHead p{margin:4px 0 0;color:var(--muted);font-size:12px}
+.modalClose{width:34px;height:34px;border:1px solid var(--line);background:#fff;border-radius:9px;font-size:18px}
+.orderFacts{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:14px}
+.fact{border:1px solid var(--line);border-radius:11px;padding:10px;background:var(--panel2)}
+.fact b{display:block;font-size:10px;text-transform:uppercase;color:var(--muted);margin-bottom:4px}.fact span{font-weight:850}
+.modalProgress{height:8px;background:#e9eef5;border-radius:999px;overflow:hidden}.modalProgress i{display:block;height:100%;background:var(--brand)}
+.prodActionGrid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-top:14px}
+.prodActionGrid .btn{width:100%}
+.modalSection{border-top:1px solid var(--line);padding-top:14px;margin-top:14px}
+.qtyGrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.qtyGrid .field{margin:0}
+@media(max-width:700px){.orderFacts,.prodActionGrid,.qtyGrid{grid-template-columns:1fr 1fr}}
+
+
+.empModalBack,.chatDemoBack{position:fixed;inset:0;background:rgba(10,18,32,.45);display:none;align-items:center;justify-content:center;padding:22px;z-index:1100}
+.empModalBack.open,.chatDemoBack.open{display:flex}
+.empModal{width:min(1050px,96vw);max-height:92vh;overflow:auto;background:#fff;border:1px solid var(--line);border-radius:20px;box-shadow:0 24px 70px rgba(10,18,32,.25);padding:20px}
+.empHead{display:flex;justify-content:space-between;gap:14px;align-items:flex-start}.empHead h3{margin:0}.empHead p{margin:4px 0 0;color:var(--muted);font-size:12px}
+.empTabs{display:flex;gap:6px;flex-wrap:wrap;margin:14px 0}.empTab{border:1px solid var(--line);background:#fff;border-radius:9px;padding:8px 11px;font-weight:800}.empTab.active{background:var(--brand);color:#fff;border-color:var(--brand)}
+.empPane{display:none}.empPane.active{display:block}
+.workWeek{display:grid;grid-template-columns:100px repeat(5,1fr);border:1px solid var(--line);border-radius:12px;overflow:auto;min-width:760px}
+.wwh,.wwc{padding:9px;border-right:1px solid var(--line);border-bottom:1px solid var(--line);font-size:11px}.wwh{font-weight:850;background:var(--panel2);text-align:center}.wwc strong{display:block}
+.chatFabDemo{position:fixed;right:22px;bottom:22px;width:54px;height:54px;border-radius:50%;border:0;background:var(--brand);color:#fff;font-size:24px;box-shadow:0 10px 26px rgba(19,35,62,.28);z-index:1000}
+.chatBadgeDemo{position:absolute;top:-3px;right:-3px;min-width:20px;height:20px;border-radius:10px;background:var(--danger);color:#fff;font-size:11px;font-weight:800;line-height:20px}
+.chatDemo{position:fixed;right:22px;bottom:86px;width:390px;height:min(560px,calc(100vh - 110px));background:#fff;border:1px solid var(--line);border-radius:16px;box-shadow:0 18px 50px rgba(19,35,62,.25);z-index:1001;display:none;flex-direction:column;overflow:hidden}.chatDemo.open{display:flex}
+.chatHeadDemo{display:flex;align-items:center;gap:6px;padding:10px 12px;border-bottom:1px solid var(--line);background:#f7f9fc}.chatHeadDemo b{flex:1}.chatBodyDemo{display:flex;flex:1;min-height:0;flex-direction:column}
+.chatListDemo{padding:8px;display:grid;gap:5px;overflow:auto}.chatRow{border:0;background:none;border-radius:10px;padding:8px;display:grid;grid-template-columns:38px 1fr auto;gap:8px;align-items:center;text-align:left}.chatRow:hover{background:#f1f5fb}.chatAvDemo{width:36px;height:36px;border-radius:10px;background:#62718b;color:#fff;display:grid;place-items:center;font-weight:850}
+.chatComposeDemo{margin-top:auto;border-top:1px solid var(--line);padding:8px;display:flex;gap:7px}.chatComposeDemo input{flex:1;border:1px solid var(--line);border-radius:9px;padding:9px}
+.groupPicker{padding:10px;display:none;gap:8px;overflow:auto}.groupPicker.open{display:grid}.pickerSection{border:1px solid var(--line);border-radius:11px;padding:9px}.pickerSection b{display:block;margin-bottom:7px}.pickRow{display:grid;grid-template-columns:20px 1fr;gap:8px;align-items:center;padding:6px 4px;text-align:left}.pickRow input{margin:0;justify-self:start}.pickRow span{justify-self:start}
+
+/* V5 · GitHub-aligned additions */
+:root{--navy:#10213d;--blue:#1f5eff;--blueSoft:#eef3ff;--amber:#a76300;--amberSoft:#fff4df;--red:#b82f42;--redSoft:#fff0f2;--slate:#eef2f7}.toolbar{display:flex;gap:8px;align-items:end;flex-wrap:wrap}.toolbar .field{min-width:150px}.toolbar .search{min-width:250px}.inlineStatus{display:flex;gap:6px;align-items:center;flex-wrap:wrap}.dot{width:8px;height:8px;border-radius:50%;background:#8d9aab;display:inline-block}.dot.live{background:#1f5eff}.dot.warn{background:#d18a22}.dot.danger{background:#c63d4e}.poolFilters{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.poolFilters input,.poolFilters select{padding:9px 10px;border:1px solid var(--line);border-radius:9px;background:#fff}.faPool{display:grid;gap:8px}.faPoolRow{display:grid;grid-template-columns:78px 115px minmax(180px,1.5fr) 110px 115px 145px 110px;gap:8px;align-items:center;padding:10px;border:1px solid var(--line);border-radius:12px;background:#fff;font-size:11px}.faPoolRow:hover{border-color:#aebcf3;box-shadow:0 5px 16px rgba(24,42,74,.05)}.progressMini{height:6px;background:#e8edf4;border-radius:999px;overflow:hidden}.progressMini i{display:block;height:100%;background:var(--brand)}.avShell{display:grid;grid-template-columns:minmax(280px,.8fr) minmax(520px,1.7fr);gap:14px}.avHead{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px}.avStep{border:1px solid var(--line);border-radius:13px;padding:12px;background:#fff;display:grid;gap:9px}.avStepHead{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}.avStepHead b{font-size:13px}.seq{width:28px;height:28px;border-radius:9px;display:grid;place-items:center;background:var(--brand2);color:#234bb9;font-weight:900}.stepFields{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}.readOnlyBox{padding:9px 10px;border:1px solid #e0e6ee;border-radius:9px;background:#f7f9fc;font-size:12px;font-weight:750}.kpiGrid{display:grid;grid-template-columns:repeat(3,minmax(220px,1fr));gap:14px}.kpiPanel{padding:16px;border:1px solid var(--line);border-radius:16px;background:#fff}.kpiPanel h4{margin:0 0 12px}.barRow{display:grid;grid-template-columns:95px 1fr 45px;gap:9px;align-items:center;font-size:11px;margin:9px 0}.barTrack{height:9px;background:#edf1f6;border-radius:99px;overflow:hidden}.barTrack i{display:block;height:100%;background:var(--brand)}.notice{border:1px solid #e7c783;background:#fff8e9;border-radius:12px;padding:11px 12px;font-size:12px}.notice.danger{border-color:#efb5bd;background:#fff3f5}.notice.info{border-color:#bfd0ff;background:#f3f6ff}.notice b{display:block;margin-bottom:3px}.settingSection{border:1px solid var(--line);border-radius:14px;background:#fff;padding:14px}.settingSection+.settingSection{margin-top:12px}.settingHead{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:10px}.settingHead h4{margin:0}.permissionGrid{display:grid;grid-template-columns:1.35fr repeat(3,110px);border:1px solid var(--line);border-radius:12px;overflow:hidden}.permCell{padding:9px;border-right:1px solid var(--line);border-bottom:1px solid var(--line);font-size:11px}.permCell.head{background:#f8fafc;font-weight:850;color:#5d6a7c}.permCell.center{text-align:center}.paletteDesigner{display:grid;grid-template-columns:1fr 320px;gap:14px}.labelPreview{border:1px dashed #8897aa;border-radius:10px;padding:16px;min-height:220px;background:#fff;display:flex;flex-direction:column;justify-content:space-between}.barcode{height:42px;background:repeating-linear-gradient(90deg,#142033 0 2px,transparent 2px 4px,#142033 4px 5px,transparent 5px 8px)}.systemHealth{display:grid;grid-template-columns:repeat(4,minmax(150px,1fr));gap:10px}.healthTile{border:1px solid var(--line);border-radius:12px;padding:12px;background:#fff}.healthTile strong{display:block;font-size:12px}.healthTile small{color:var(--muted)}.planModalBack{position:fixed;inset:0;background:rgba(10,18,32,.45);display:none;align-items:center;justify-content:center;padding:22px;z-index:1200}.planModalBack.open{display:flex}.planModal{width:min(980px,96vw);max-height:92vh;overflow:auto;background:#fff;border:1px solid var(--line);border-radius:20px;box-shadow:0 24px 70px rgba(10,18,32,.25);padding:20px}.planGrid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.timelinePreview{display:grid;grid-template-columns:110px 1fr;gap:8px;align-items:center}.timelineTrack{height:34px;border-radius:9px;background:#eef2f7;position:relative;overflow:hidden}.timelineBlock{position:absolute;top:5px;height:24px;border-radius:7px;background:var(--brand2);border:1px solid #cfd9ff;padding:4px 8px;font-size:10px;font-weight:800}.ghostBtn{border:0;background:none;color:#2455c3;font-weight:850;padding:2px 0}.subtle{color:var(--muted);font-size:11px}.split2{display:grid;grid-template-columns:1fr 1fr;gap:14px}.miniTable{display:grid;gap:7px}.miniRow{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center;padding:8px 0;border-bottom:1px solid #edf1f5;font-size:12px}.iconBtn{width:34px;height:34px;border:1px solid var(--line);background:#fff;border-radius:9px;display:grid;place-items:center;font-weight:900}.dangerText{color:var(--danger)}@media(max-width:1100px){.avShell,.paletteDesigner{grid-template-columns:1fr}.kpiGrid{grid-template-columns:1fr 1fr}.faPoolRow{grid-template-columns:75px 105px 1fr 100px 110px}.faPoolRow>*:nth-child(6){display:none}.avHead{grid-template-columns:1fr 1fr}.systemHealth{grid-template-columns:1fr 1fr}}@media(max-width:700px){.kpiGrid,.planGrid,.split2,.avHead,.stepFields,.systemHealth{grid-template-columns:1fr}.faPoolRow{grid-template-columns:70px 1fr auto}.faPoolRow>*:nth-child(3),.faPoolRow>*:nth-child(4),.faPoolRow>*:nth-child(5),.faPoolRow>*:nth-child(6){display:none}.permissionGrid{grid-template-columns:1fr 70px 70px 70px}.toolbar .search{min-width:100%;width:100%}}
+
+
+/* V7 · Updates + Stundenauswertung */
+.updateHero{display:grid;grid-template-columns:1.2fr .8fr;gap:14px;align-items:stretch}.updateState{border:1px solid var(--line);border-radius:16px;padding:18px;background:#fff}.updateState.available{border-color:#bfd0ff;background:#f5f7ff}.updateState h4{margin:0 0 6px;font-size:18px}.updateMeta{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:12px}.updateMeta>div{border:1px solid var(--line);border-radius:10px;padding:10px;background:#fff}.updateMeta small{display:block;color:var(--muted);margin-bottom:3px}.updateSteps{display:grid;gap:7px}.updateStep{display:grid;grid-template-columns:26px 1fr auto;gap:8px;align-items:center;border:1px solid var(--line);border-radius:10px;padding:9px;background:#fff}.stepDot{width:24px;height:24px;border-radius:50%;display:grid;place-items:center;background:#eef2f7;font-size:11px;font-weight:900}.calcToolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:end}.calcToolbar .field{min-width:145px}.calcSummary{display:grid;grid-template-columns:repeat(4,minmax(150px,1fr));gap:10px;margin:12px 0}.calcSummary .card{box-shadow:none}.deltaGood{color:#2455c3;font-weight:900}.deltaBad{color:#a76300;font-weight:900}.hoursDetail{display:none}.hoursDetail.open{display:table-row}.hoursDetail td{background:#f8fafc;padding:0}.hoursDetailBox{padding:12px 14px;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}.hoursDetailBox>div{border:1px solid var(--line);background:#fff;border-radius:10px;padding:10px}.hoursDetailBox small{display:block;color:var(--muted);margin-bottom:4px}.updateNavBadge{margin-left:auto;background:#fff3d8;color:#8a5800;padding:2px 6px;border-radius:999px;font-size:9px;font-weight:900;display:none}@media(max-width:900px){.updateHero,.hoursDetailBox{grid-template-columns:1fr}.updateMeta,.calcSummary{grid-template-columns:1fr 1fr}}@media(max-width:600px){.updateMeta,.calcSummary{grid-template-columns:1fr}}
+
+/* V8 System / Bestand / Einrichtung */
+.systemHero{display:grid;grid-template-columns:repeat(4,minmax(150px,1fr));gap:10px;margin-bottom:14px}.systemHero .miniStat{border:1px solid var(--line);border-radius:13px;padding:12px;background:var(--panel2)}.miniStat b{display:block;font-size:20px;margin-top:4px}.inventoryGrid{display:grid;grid-template-columns:repeat(3,minmax(220px,1fr));gap:10px}.inventoryCard{border:1px solid var(--line);border-radius:13px;padding:12px;background:#fff}.inventoryCard .top{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}.inventoryCard h4{margin:0 0 3px}.inventoryCard small{color:var(--muted)}.codeTag{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:10px;background:#eef3fa;border-radius:7px;padding:3px 6px;color:#4e5f75}.setupFlow{display:grid;grid-template-columns:220px 1fr;gap:14px}.setupSteps{display:grid;gap:6px;align-content:start}.setupStep{border:1px solid var(--line);background:#fff;border-radius:10px;padding:10px;text-align:left;font-weight:800}.setupStep.active{border-color:var(--brand);background:var(--brand2);color:#224ab8}.setupStep.done:before{content:'✓ ';}.setupScreen{display:none}.setupScreen.active{display:block}.formGrid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}.resourceBuilder{display:grid;grid-template-columns:1fr 1fr 1fr 1fr auto;gap:8px;align-items:end}.ruleBuilderDemo{display:grid;grid-template-columns:1fr 1fr 1fr 1fr auto;gap:8px;align-items:end}.inlineActions{display:flex;gap:6px;flex-wrap:wrap}.dangerLink{color:var(--danger);border-color:#f0bdc4}.softBox{border:1px solid var(--line);border-radius:12px;padding:12px;background:var(--panel2)}.moduleState{font-size:10px;font-weight:850;padding:4px 7px;border-radius:999px;background:#eef3fa}.moduleState.fixed{background:#edf2ff;color:#3156b7}.configSummary{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}.configSummary>div{border:1px solid var(--line);border-radius:10px;padding:10px;background:#fff}.setupFooter{display:flex;justify-content:space-between;gap:8px;margin-top:14px}.emptyRow td{text-align:center;color:var(--muted);padding:18px}.editorPanel{border:1px solid var(--line);border-radius:14px;padding:14px;background:#fbfcfe;margin-top:12px}.statusDot{display:inline-block;width:8px;height:8px;border-radius:50%;background:#1f5eff;margin-right:5px}
+@media(max-width:1000px){.inventoryGrid{grid-template-columns:1fr 1fr}.setupFlow{grid-template-columns:1fr}.setupSteps{grid-template-columns:repeat(3,1fr)}.resourceBuilder,.ruleBuilderDemo,.formGrid3{grid-template-columns:1fr 1fr}.systemHero{grid-template-columns:1fr 1fr}}
+@media(max-width:650px){.inventoryGrid,.resourceBuilder,.ruleBuilderDemo,.formGrid3,.configSummary{grid-template-columns:1fr}.setupSteps{grid-template-columns:1fr 1fr}}
+
+
+.roleManager{display:grid;grid-template-columns:300px 1fr;gap:14px}.roleListPane,.roleEditorPane{border:1px solid var(--line);border-radius:14px;background:#fff;padding:13px}.roleList{display:grid;gap:7px;max-height:590px;overflow:auto}.roleItem{border:1px solid var(--line);background:#fff;border-radius:11px;padding:10px;text-align:left;display:grid;gap:3px}.roleItem:hover,.roleItem.active{border-color:#9bb3ff;background:var(--brand2)}.roleItem b{font-size:12px}.roleItem small{color:var(--muted)}.roleEditorHead{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}.permissionTableWrap{overflow:auto;border:1px solid var(--line);border-radius:12px}.permissionTable select{min-width:150px}.permissionTable td:first-child{min-width:230px}.permExtra{display:flex;align-items:center;gap:7px}.permExtra input{width:auto}.roleProtected{opacity:.65}.keyHint{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:10px;color:var(--muted)}
+@media(max-width:900px){.roleManager{grid-template-columns:1fr}.roleList{max-height:230px}}
+
+</style>
+
+<style id="v6-functional-demo-css">
+.toastStack{position:fixed;right:22px;top:22px;z-index:3000;display:grid;gap:8px;pointer-events:none}
+.toast{min-width:280px;max-width:420px;background:#fff;border:1px solid var(--line);border-radius:12px;box-shadow:0 16px 45px rgba(10,18,32,.18);padding:11px 13px;font-size:12px;animation:toastIn .18s ease-out}
+.toast b{display:block;margin-bottom:2px}.toast.ok{border-left:4px solid var(--brand)}.toast.warn{border-left:4px solid #d18a16}.toast.danger{border-left:4px solid var(--danger)}
+@keyframes toastIn{from{opacity:0;transform:translateY(-7px)}to{opacity:1;transform:none}}
+.demoToolbar{position:fixed;left:278px;bottom:18px;z-index:950;display:flex;gap:7px;background:rgba(255,255,255,.96);border:1px solid var(--line);box-shadow:var(--shadow);padding:7px;border-radius:12px}
+.demoToolbar .btn{font-size:11px;padding:7px 9px}
+.jobchip.done{background:#eef1f5;border-color:#d6dde7;color:#5d697a}.jobchip.running{background:var(--warnbg);border-color:#efd18c}.jobchip.paused{background:var(--violetbg);border-color:#d6c7f3}
+.rowFlash{animation:rowFlash .7s ease}@keyframes rowFlash{0%{background:#dfe9ff}100%{background:transparent}}
+.clickable{cursor:pointer}.clickable:hover{box-shadow:0 5px 18px rgba(20,32,51,.08);transform:translateY(-1px)}
+.demoDirty:after{content:" • geändert";color:#8a5800;font-weight:800}
+@media(max-width:1100px){.demoToolbar{left:18px}}
+</style>
+
+</head>
+<body>
+<div class="app">
+<aside class="sidebar">
+  <div class="brand"><div class="brandMark">PP</div><div><h1>Produktionsplanung</h1><small>V12.19.1 · Functional Demo v7</small></div></div>
+  <nav class="nav">
+    <button class="active" data-view="planning"><span class="ico">▦</span><span>Planung & Produktion</span></button>
+    <button data-view="orders"><span class="ico">☰</span><span>Aufträge</span></button>
+    <button data-view="projects"><span class="ico">▤</span><span>Projekte</span></button>
+    <button data-view="framework"><span class="ico">◩</span><span>Rahmenaufträge</span></button>
+    <button data-view="personnel"><span class="ico">👥</span><span>Personal</span></button>
+    <button data-view="gf"><span class="ico">◫</span><span>GF</span></button>
+    <button data-view="system"><span class="ico">⚙</span><span>System</span><span class="updateNavBadge" id="updateNavBadge">UPDATE</span></button>
+  </nav>
+  <div class="sidebarFoot"><span class="saveDot"></span>Server verbunden<br>v12.19.0 Basis · offene V12.19.1 Issues eingearbeitet</div>
+</aside>
+
+<main class="main">
+  <div class="topbar">
+    <div class="title"><h2 id="pageTitle">Planung & Produktion</h2><p id="pageSub">Wochenplan, ungeplante FA und operative Produktion in einem Arbeitsbereich.</p></div>
+    <div class="actions"><div class="field" style="min-width:190px"><label>Bereich</label><select><option>Konfektion 1</option><option>Konfektion 2</option><option>Konfektion 3</option><option>Tiefziehen</option><option>Siebdruck</option><option>CNC</option><option>Alle Bereiche</option></select></div><div class="userBadge">👤 Jonas <span class="badge">Admin</span><span class="badge blue">online</span></div></div>
+  </div>
+
+  <section class="view active" id="planning">
+    <div class="cards">
+      <div class="card"><div class="metricLabel">Aktive Aufträge</div><div class="metric">18</div><div class="metricSub">geplant · freigegeben · laufend</div></div>
+      <div class="card"><div class="metricLabel">Offene Sollstunden</div><div class="metric">126 h</div><div class="metricSub">sichtbarer Bereich</div></div>
+      <div class="card"><div class="metricLabel">In Produktion</div><div class="metric">5</div><div class="metricSub">laufend / pausiert</div></div>
+      <div class="card"><div class="metricLabel">Termin gefährdet</div><div class="metric">3</div><div class="metricSub">Vorgänger / Personal</div></div>
+      <div class="card"><div class="metricLabel">Auslastung KW</div><div class="metric">79%</div><div class="metricSub">Konfektion</div></div>
+    </div>
+
+    <div class="sectionHead"><div><h3>Wochenplan</h3><div class="hint">Planung und Produktionsstatus gemeinsam – kein separater Moduswechsel.</div></div><div class="weekbar"><span class="kwBadge">KW 41</span><button class="btn">‹</button><button class="btn">Heute</button><button class="btn">›</button><button class="btn">🖨 PDF</button></div></div>
+    <div class="boardWrap">
+      <div class="board">
+        <div class="bh">Ressource</div><div class="bh">Mo 05.10.</div><div class="bh">Di 06.10.</div><div class="bh">Mi 07.10.</div><div class="bh">Do 08.10.</div><div class="bh">Fr 09.10.</div>
+        <div class="machineLabel">Konfektion 1<small>Max. 4 Pers.</small></div>
+        <div class="dayCell"><button class="jobchip" data-fa="FA-000178"><strong>FA-000178</strong>08:00–12:00 · geplant</button></div>
+        <div class="dayCell"><button class="jobchip warn" data-fa="FA-000184"><strong>FA-000184</strong>08:00–13:30 · läuft<br>1 / 2 Pers.</button></div>
+        <div class="dayCell"><button class="jobchip" data-fa="FA-000181"><strong>FA-000181</strong>07:00–10:30 · freigegeben</button></div>
+        <div class="dayCell"></div><div class="dayCell"></div>
+        <div class="machineLabel">Konfektion 2<small>Max. 6 Pers.</small></div>
+        <div class="dayCell"><button class="jobchip violet" data-fa="FA-000176"><strong>FA-000176</strong>13:00–16:00 · pausiert</button></div>
+        <div class="dayCell"></div>
+        <div class="dayCell"><button class="jobchip" data-fa="FA-000183"><strong>FA-000183</strong>09:00–14:00 · geplant</button></div>
+        <div class="dayCell"></div><div class="dayCell"></div>
+      </div>
+    </div>
+
+    <div class="sectionHead"><div><h3>FA-Vorrat · noch nicht eingeplant</h3><div class="hint">AV-Vorgaben bleiben geschützt. Bereichsleitung übernimmt Ressource, Start, Besetzung und Feinplanung.</div></div><span class="badge blue">#57</span></div>
+    <div class="tableCard"><div class="tableTools"><div class="poolFilters"><input id="faPoolSearch" placeholder="FA, Projekt, Kunde suchen …"><select id="faPoolPred"><option value="all">Alle Vorgänger</option><option value="free">Vorgänger frei</option><option value="blocked">Vorgänger offen</option></select><select><option>Alle Prioritäten</option><option>Hoch</option><option>Mittel</option><option>Niedrig</option></select><button class="btn" id="faPoolReset">Zurücksetzen</button></div><span class="subtle"><b id="faPoolCount">3</b> sichtbar</span></div><div class="faPool" style="padding:10px"><div class="faPoolRow" data-pool-row data-pred="free" data-search="fa-000186 prj-000083 kunde muster gmbh"><span class="badge warn">HOCH</span><b>FA-000186</b><span><b>Kunde Muster GmbH</b><br><small>PRJ-000083 · 25.000 Stk. · Konfektion 14 h</small></span><span>14.10.2026</span><span><span class="dot live"></span> Vorgänger frei</span><span>noch ohne Ressource</span><button class="btn primary" data-plan-fa="FA-000186">Planen</button></div><div class="faPoolRow" data-pool-row data-pred="blocked" data-search="fa-000179 prj-000079 kunde beta"><span class="badge">MITTEL</span><b>FA-000179</b><span><b>Kunde Beta</b><br><small>PRJ-000079 · 8.500 Stk. · Konfektion 7 h</small></span><span>13.10.2026</span><span><span class="dot warn"></span> Tiefziehen offen</span><span>blockiert bis Vorgänger</span><button class="btn" disabled>Planen</button></div><div class="faPoolRow" data-pool-row data-pred="free" data-search="fa-000190 prj-000088 kunde gamma"><span class="badge">NORMAL</span><b>FA-000190</b><span><b>Kunde Gamma</b><br><small>PRJ-000088 · 4.200 Stk. · Konfektionsstunden fehlen</small></span><span>16.10.2026</span><span><span class="dot live"></span> Vorgänger frei</span><span class="dangerText">AV-Vorgabe fehlt</span><button class="btn" disabled title="Konfektionsstunden fehlen">Planen</button></div></div></div>
+  </section>
+
+  <section class="view" id="orders">
+    <div class="sectionHead"><div><h3>Auftragsliste</h3><div class="hint">Bestehende Listenlogik bleibt. FA, Maschine/Linie, Sollstunden, AV-Termin und Status.</div></div><button class="btn primary">+ Neuer Auftrag</button></div>
+    <div class="tableCard"><div class="tableTools"><div class="actions"><input placeholder="Auftrag suchen …"><select><option>Alle Maschinen</option></select><select><option>Alle Status</option></select></div></div>
+    <table><thead><tr><th>Prio</th><th>FA</th><th>Maschine / Linie</th><th>Soll h</th><th>Menge</th><th>AV-Termin</th><th>Plan</th><th>Status</th><th>Aktion</th></tr></thead>
+    <tbody><tr><td>1</td><td><b>FA-000184</b></td><td>Konfektion 1</td><td>14 h</td><td>12.000</td><td>08.10.</td><td>Di 08:00–13:30</td><td><span class="badge warn">läuft</span></td><td><button class="btn">Öffnen</button></td></tr></tbody></table></div>
+  </section>
+
+  <section class="view" id="projects">
+    <div class="sectionHead"><div><h3>Projekte</h3><div class="hint">Projektmanagement → AV → FA → Bereiche → Produktion.</div></div><div class="actions"><input placeholder="Suche Projekt, AB, Kunde …"><button class="btn primary">+ Neues Projekt</button></div></div>
+    <div class="pBoard">
+      <div class="pCol"><div class="pColHead">Neu</div><div class="pCard"><strong>PRJ-000086</strong><small>Kunde A · AB-48234</small><span class="badge">AV offen</span></div></div>
+      <div class="pCol"><div class="pColHead">AV</div><div class="pCard"><strong>PRJ-000083</strong><small>25.000 Stk. · 3 Bereiche</small><span class="badge blue">2 / 3 FA bereit</span></div></div>
+      <div class="pCol"><div class="pColHead">Produktion</div><div class="pCard"><strong>PRJ-000081</strong><small>Konfektion läuft</small><span class="badge warn">Terminrisiko</span></div></div>
+      <div class="pCol"><div class="pColHead">Fertig</div><div class="pCard"><strong>PRJ-000074</strong><small>Produktion abgeschlossen</small></div></div>
+    </div>
+    <div class="panel" style="margin-top:14px"><div class="sectionHead" style="margin-top:0"><div><h3>AV · Fertigungsauftrag anlegen / bearbeiten</h3><div class="hint">Projektkopf einmal erfassen, darunter Abteilungen in Reihenfolge. Operative Maschine/Linie wird erst im Bereich geplant.</div></div><div class="inlineStatus"><span class="badge blue">FA-000186</span><span class="badge">Entwurf</span></div></div><div class="avHead"><div class="field"><label>Projekt</label><input value="PRJ-000083"></div><div class="field"><label>AB-Nummer</label><input value="AB-48211"></div><div class="field"><label>Kunde</label><input value="Kunde Muster GmbH"></div><div class="field"><label>Menge</label><input value="25.000"></div><div class="field"><label>FA-Nummer</label><input value="FA-000186" readonly></div><div class="field"><label>Projekt-Fertigstellung</label><input type="date" value="2026-10-16"></div><div class="field"><label>Planungsart</label><select><option>Fertig bis fix</option><option>Fertig bis Wunsch</option><option>Auto frühestmöglich</option><option>Startwunsch</option><option>Start fix</option></select></div><div class="field"><label>Priorität</label><select><option>Hoch</option><option>Normal</option><option>Niedrig</option></select></div></div><div class="sectionHead"><div><h3 style="font-size:15px">Abteilungsfolge</h3><div class="hint">Stabile Vorgängerbezüge; Termin je Abteilung. Stunden nur bei Konfektion.</div></div><button class="btn">+ Abteilung</button></div><div class="avShell"><div class="settingSection"><b>Übergabe-Status</b><div class="miniTable" style="margin-top:8px"><div class="miniRow"><span>Siebdruck</span><span class="badge blue">bereit</span></div><div class="miniRow"><span>Tiefziehen</span><span class="badge">wartet auf Vorgänger</span></div><div class="miniRow"><span>Konfektion</span><span class="badge warn">14 h gesetzt</span></div></div><div class="notice info" style="margin-top:12px"><b>Trennung der Verantwortung</b>AV setzt Reihenfolge, Solltermine und bei Konfektion die Sollstunden. Bereichsleitung setzt Ressource, Besetzung und operative Lage.</div></div><div style="display:grid;gap:9px"><div class="avStep"><div class="avStepHead"><div style="display:flex;gap:8px"><span class="seq">1</span><div><b>Siebdruck</b><div class="subtle">FA-000184-SD · Vorgänger: keiner</div></div></div><button class="iconBtn">↕</button></div><div class="stepFields"><div class="field"><label>Fertig bis</label><input type="date" value="2026-10-09"></div><div class="field"><label>Vorgänger</label><div class="readOnlyBox">—</div></div><div class="field"><label>AV-Stunden</label><div class="readOnlyBox">nicht erforderlich</div></div></div></div><div class="avStep"><div class="avStepHead"><div style="display:flex;gap:8px"><span class="seq">2</span><div><b>Tiefziehen</b><div class="subtle">FA-000185-TZ · Vorgänger: Siebdruck</div></div></div><button class="iconBtn">↕</button></div><div class="stepFields"><div class="field"><label>Fertig bis</label><input type="date" value="2026-10-12"></div><div class="field"><label>Vorgänger</label><select><option>Siebdruck</option></select></div><div class="field"><label>Format</label><button class="btn" type="button">Formatplanung öffnen</button></div></div></div><div class="avStep"><div class="avStepHead"><div style="display:flex;gap:8px"><span class="seq">3</span><div><b>Konfektion</b><div class="subtle">FA-000186 · Vorgänger: Tiefziehen</div></div></div><button class="iconBtn">↕</button></div><div class="stepFields"><div class="field"><label>Fertig bis</label><input type="date" value="2026-10-14"></div><div class="field"><label>Vorgänger</label><select><option>Tiefziehen</option></select></div><div class="field"><label>Konfektionsstunden *</label><input value="14,0"></div></div></div></div></div><div class="actions" style="justify-content:flex-end;margin-top:12px"><button class="btn">Entwurf speichern</button><button class="btn primary">An Bereiche übergeben</button></div></div>
+  </section>
+
+  <section class="view" id="framework">
+    <div class="sectionHead"><div><h3>Rahmenaufträge</h3><div class="hint">Bleibt eigener Menüpunkt. Bedarf/Abruf erzeugt FA, danach derselbe Planungs- und Produktionskern.</div></div><button class="btn primary">+ Rahmenauftrag</button></div>
+    <div class="cards">
+      <div class="card"><div class="metricLabel">Aktive Rahmenaufträge</div><div class="metric">12</div></div>
+      <div class="card"><div class="metricLabel">Offene Abrufe</div><div class="metric">8</div></div>
+      <div class="card"><div class="metricLabel">Reserviert</div><div class="metric">42.500</div></div>
+      <div class="card"><div class="metricLabel">Produktionsbedarf</div><div class="metric">4.800</div></div>
+      <div class="card"><div class="metricLabel">Erzeugte FA</div><div class="metric">3</div></div>
+    </div>
+    <div class="tableCard">
+      <table><thead><tr><th>Rahmenauftrag</th><th>Kunde</th><th>Artikel</th><th>Gesamt</th><th>Abgerufen</th><th>Reserviert</th><th>Verfügbar</th><th>Fehlmenge</th><th>Aktion</th></tr></thead>
+      <tbody>
+        <tr><td><b>RA-000021</b></td><td>Kunde A</td><td>ART-1048</td><td>120.000</td><td>75.000</td><td>12.000</td><td>7.200</td><td><span class="badge warn">4.800</span></td><td><button class="btn primary">FA öffnen</button></td></tr>
+        <tr><td><b>RA-000019</b></td><td>Kunde B</td><td>ART-0821</td><td>80.000</td><td>32.000</td><td>5.000</td><td>18.400</td><td>0</td><td><button class="btn">Details</button></td></tr>
+      </tbody></table>
+    </div>
+  </section>
+
+  <section class="view" id="personnel">
+    <div class="sectionHead"><div><h3>Personal</h3><div class="hint">Nicht mehr erst separate Auswertung suchen: Person anklicken → Stunden, Urlaub, Krankheit, Plan und Ist direkt öffnen.</div></div><div class="weekbar"><span class="kwBadge">KW 41</span><button class="btn">‹</button><button class="btn">Heute</button><button class="btn">›</button></div></div>
+    <div class="cards">
+      <div class="card"><div class="metricLabel">Aktive Mitarbeiter</div><div class="metric">34</div></div>
+      <div class="card"><div class="metricLabel">Verfügbar heute</div><div class="metric">29</div></div>
+      <div class="card"><div class="metricLabel">Urlaub</div><div class="metric">3</div></div>
+      <div class="card"><div class="metricLabel">Krank</div><div class="metric">2</div></div>
+      <div class="card"><div class="metricLabel">Besetzungslücken</div><div class="metric">1</div></div>
+    </div>
+    
+    <div class="tableCard">
+      <div class="tableTools">
+        <div style="display:flex;gap:7px;flex-wrap:wrap;align-items:center;width:100%">
+          <input id="personSearch" placeholder="Mitarbeiter suchen …" style="min-width:230px">
+          <select><option>Alle Bereiche</option><option>Konfektion</option><option>Tiefziehen</option><option>CNC</option></select>
+          <select><option>Alle Status</option><option>Verfügbar</option><option>Urlaub</option><option>Krank</option><option>Teilzeit</option></select>
+        </div>
+      </div>
+      <div style="overflow:auto">
+        <table>
+          <thead><tr><th>Mitarbeiter</th><th>Stammabteilung</th><th>Einsatz KW 41</th><th>Wochenstunden</th><th>Abwesenheit</th><th>Status</th><th>Aktion</th></tr></thead>
+          <tbody>
+            <tr><td><button type="button" class="nameLink" data-person="anna">Anna Beispiel</button></td><td>Konfektion</td><td>Konfektion</td><td><b>40,0 h</b></td><td>—</td><td><span class="badge blue">verfügbar</span></td><td><button type="button" class="btn" data-person="anna">Bearbeiten / Auswertung</button></td></tr>
+            <tr><td><button type="button" class="nameLink" data-person="max">Max Teilzeit</button></td><td>Konfektion</td><td>Konfektion</td><td><b>20,0 h</b></td><td>—</td><td><span class="badge">Teilzeit</span></td><td><button type="button" class="btn" data-person="max">Bearbeiten / Auswertung</button></td></tr>
+            <tr><td><button type="button" class="nameLink" data-person="lea">Lea Muster</button></td><td>Konfektion</td><td>CNC</td><td><b>31,25 h</b></td><td>Mi · Urlaub</td><td><span class="badge violet">temporär versetzt</span></td><td><button type="button" class="btn" data-person="lea">Bearbeiten / Auswertung</button></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="panel" style="margin-top:14px">
+      <h3>Besetzungshinweis</h3>
+      <p><b>Dienstag 10:30–12:00 · Konfektion 1:</b> 1 Person verfügbar, 2 erforderlich. Die Warnung benennt Tag, Zeitlücke, Ressource und Ist/Soll-Besetzung direkt.</p>
+    </div>
+</section>
+
+  <section class="view" id="gf"><div class="sectionHead"><div><h3>Geschäftsführung · Steuerung</h3><div class="hint">Ein Faktenstand für Termine, Kapazität, Personal und Produktionsfortschritt.</div></div><div class="weekbar"><span class="kwBadge">KW 41</span><button class="btn">‹</button><button class="btn">Heute</button><button class="btn">›</button></div></div><div class="cards"><div class="card"><div class="metricLabel">Termintreue Prognose</div><div class="metric">91%</div><div class="metricSub">3 Projekte gefährdet</div></div><div class="card"><div class="metricLabel">Auslastung gesamt</div><div class="metric">78%</div><div class="metricSub">KW 41</div></div><div class="card"><div class="metricLabel">Offene Personenstunden</div><div class="metric">412 h</div><div class="metricSub">aktive FA</div></div><div class="card"><div class="metricLabel">In Produktion</div><div class="metric">11</div><div class="metricSub">alle Bereiche</div></div><div class="card"><div class="metricLabel">Besetzungslücken</div><div class="metric">2</div><div class="metricSub">konkrete Zeitfenster</div></div></div><div class="kpiGrid"><div class="kpiPanel"><h4>Auslastung nach Bereich</h4><div class="barRow"><span>Konfektion</span><div class="barTrack"><i style="width:82%"></i></div><b>82%</b></div><div class="barRow"><span>Tiefziehen</span><div class="barTrack"><i style="width:74%"></i></div><b>74%</b></div><div class="barRow"><span>Siebdruck</span><div class="barTrack"><i style="width:66%"></i></div><b>66%</b></div><div class="barRow"><span>CNC</span><div class="barTrack"><i style="width:89%"></i></div><b>89%</b></div></div><div class="kpiPanel"><h4>Terminrisiken</h4><div class="miniTable"><div class="miniRow"><span><b>PRJ-000081</b><br><small>Konfektion · Personallücke</small></span><span class="badge warn">+ 1 Tag</span></div><div class="miniRow"><span><b>PRJ-000083</b><br><small>Tiefziehen · Vorgänger</small></span><span class="badge warn">Risiko</span></div><div class="miniRow"><span><b>RA-000021</b><br><small>Bestandsbedarf 4.800</small></span><span class="badge">offen</span></div></div></div><div class="kpiPanel"><h4>Personalbewegung KW 41</h4><div class="miniTable"><div class="miniRow"><span>Lea Muster<br><small>Konfektion → CNC</small></span><button class="btn">Öffnen</button></div><div class="miniRow"><span>4 Leiharbeiter<br><small>Konfektion</small></span><button class="btn">Details</button></div><div class="miniRow"><span>3 Urlaub · 2 krank</span><button class="btn">Personal</button></div></div></div></div><div class="panel" style="margin-top:14px"><div class="sectionHead" style="margin-top:0"><div><h3>Projektlage</h3><div class="hint">Projektfortschritt wird aus realen FA-/Produktionsdaten abgeleitet.</div></div></div><table><thead><tr><th>Projekt</th><th>Kunde</th><th>FA</th><th>Fortschritt</th><th>Plan-Ende</th><th>Prognose</th><th>Risiko</th></tr></thead><tbody><tr><td><b>PRJ-000081</b></td><td>Kunde Muster GmbH</td><td>3 / 4</td><td><div class="progressMini"><i style="width:54%"></i></div><small>54 %</small></td><td>09.10.</td><td>10.10.</td><td><span class="badge warn">Personal</span></td></tr><tr><td><b>PRJ-000083</b></td><td>Kunde A</td><td>1 / 3</td><td><div class="progressMini"><i style="width:18%"></i></div><small>18 %</small></td><td>16.10.</td><td>16.10.</td><td><span class="badge blue">im Plan</span></td></tr></tbody></table></div>
+<div class="panel" style="margin-top:14px" id="hoursCalcPanel">
+  <div class="sectionHead" style="margin-top:0"><div><h3>Stundenauswertung für Kalkulation</h3><div class="hint">Kalkulationsbasis aus Soll-, Plan- und erfassten Iststunden. Keine automatische Preis-/Nachkalkulation.</div></div><span class="badge blue">Demo-Daten</span></div>
+  <div class="calcToolbar">
+    <div class="field"><label>Zeitraum</label><select id="hoursPeriod"><option>KW 41</option><option>Oktober 2026</option><option>Q4 2026</option></select></div>
+    <div class="field"><label>Bereich</label><select id="hoursDept"><option value="all">Alle Bereiche</option><option>Konfektion</option><option>Tiefziehen</option><option>Siebdruck</option><option>CNC</option></select></div>
+    <div class="field"><label>Status</label><select id="hoursStatus"><option value="all">Alle Status</option><option>fertig</option><option>läuft</option><option>pausiert</option></select></div>
+    <div class="field" style="flex:1"><label>Suche</label><input id="hoursSearch" placeholder="FA, Projekt, Kunde …"></div>
+    <button class="btn" id="hoursCsv">CSV exportieren</button>
+  </div>
+  <div class="calcSummary">
+    <div class="card"><div class="metricLabel">Soll-/AV-Stunden</div><div class="metric" id="sumAvHours">86,0 h</div><div class="metricSub">fachliche Vorgabe</div></div>
+    <div class="card"><div class="metricLabel">Geplante Personenstunden</div><div class="metric" id="sumPlanHours">84,5 h</div><div class="metricSub">operative Planung</div></div>
+    <div class="card"><div class="metricLabel">Ist-Personenstunden</div><div class="metric" id="sumActualPerson">79,3 h</div><div class="metricSub">erfasste Produktion</div></div>
+    <div class="card"><div class="metricLabel">Ist-Maschinenstunden</div><div class="metric" id="sumActualMachine">52,4 h</div><div class="metricSub">erfasste Laufzeit</div></div>
+  </div>
+  <div class="tableCard"><div style="overflow:auto"><table id="hoursTable">
+    <thead><tr><th>FA</th><th>Projekt / Kunde</th><th>Bereich</th><th>Status</th><th>Soll / AV h</th><th>Plan Pers.-h</th><th>Ist Pers.-h</th><th>Ist Maschine h</th><th>Δ Ist vs Soll</th><th></th></tr></thead>
+    <tbody>
+      <tr data-hours-row data-dept="Konfektion" data-status="läuft" data-search="fa-000184 prj-000081 kunde muster gmbh"><td><b>FA-000184</b></td><td>PRJ-000081<br><small>Kunde Muster GmbH</small></td><td>Konfektion</td><td><span class="badge warn">läuft</span></td><td data-av="14">14,0</td><td data-plan="14">14,0</td><td data-person="11.8">11,8</td><td data-machine="6.2">6,2</td><td class="deltaGood">-2,2 h</td><td><button class="btn hoursOpen">Details</button></td></tr>
+      <tr class="hoursDetail"><td colspan="10"><div class="hoursDetailBox"><div><small>AV-Vorgabe</small><b>14,0 Personenstunden</b></div><div><small>Planung</small><b>2 Pers. · 7,0 h</b></div><div><small>Ist bisher</small><b>11,8 Pers.-h · 6,2 Maschinen-h</b></div><div><small>Mengenbezug</small><b>6.420 gut · 38 Ausschuss</b></div></div></td></tr>
+      <tr data-hours-row data-dept="Konfektion" data-status="pausiert" data-search="fa-000176 prj-000077 kunde c"><td><b>FA-000176</b></td><td>PRJ-000077<br><small>Kunde C</small></td><td>Konfektion</td><td><span class="badge violet">pausiert</span></td><td data-av="20">20,0</td><td data-plan="20">20,0</td><td data-person="18.4">18,4</td><td data-machine="5.1">5,1</td><td class="deltaGood">-1,6 h</td><td><button class="btn hoursOpen">Details</button></td></tr>
+      <tr class="hoursDetail"><td colspan="10"><div class="hoursDetailBox"><div><small>AV-Vorgabe</small><b>20,0 Personenstunden</b></div><div><small>Planung</small><b>4 Pers. · 5,0 h</b></div><div><small>Ist bisher</small><b>18,4 Pers.-h · 5,1 Maschinen-h</b></div><div><small>Status</small><b>pausiert · 72 %</b></div></div></td></tr>
+      <tr data-hours-row data-dept="Tiefziehen" data-status="fertig" data-search="fa-000172 prj-000074 kunde a"><td><b>FA-000172</b></td><td>PRJ-000074<br><small>Kunde A</small></td><td>Tiefziehen</td><td><span class="badge blue">fertig</span></td><td data-av="18">18,0</td><td data-plan="17.5">17,5</td><td data-person="19.1">19,1</td><td data-machine="17.2">17,2</td><td class="deltaBad">+1,1 h</td><td><button class="btn hoursOpen">Details</button></td></tr>
+      <tr class="hoursDetail"><td colspan="10"><div class="hoursDetailBox"><div><small>Sollbasis</small><b>18,0 h</b></div><div><small>Planung</small><b>17,5 h</b></div><div><small>Ist</small><b>19,1 Pers.-h · 17,2 Maschinen-h</b></div><div><small>Abweichung</small><b>+1,1 h gegen Soll</b></div></div></td></tr>
+      <tr data-hours-row data-dept="Siebdruck" data-status="fertig" data-search="fa-000170 prj-000074 kunde a"><td><b>FA-000170</b></td><td>PRJ-000074<br><small>Kunde A</small></td><td>Siebdruck</td><td><span class="badge blue">fertig</span></td><td data-av="16">16,0</td><td data-plan="15">15,0</td><td data-person="14.6">14,6</td><td data-machine="13.8">13,8</td><td class="deltaGood">-1,4 h</td><td><button class="btn hoursOpen">Details</button></td></tr>
+      <tr class="hoursDetail"><td colspan="10"><div class="hoursDetailBox"><div><small>Sollbasis</small><b>16,0 h</b></div><div><small>Planung</small><b>15,0 h</b></div><div><small>Ist</small><b>14,6 Pers.-h · 13,8 Maschinen-h</b></div><div><small>Abweichung</small><b>-1,4 h gegen Soll</b></div></div></td></tr>
+      <tr data-hours-row data-dept="CNC" data-status="fertig" data-search="fa-000169 prj-000073 kunde d"><td><b>FA-000169</b></td><td>PRJ-000073<br><small>Kunde D</small></td><td>CNC</td><td><span class="badge blue">fertig</span></td><td data-av="18">18,0</td><td data-plan="18">18,0</td><td data-person="15.4">15,4</td><td data-machine="10.1">10,1</td><td class="deltaGood">-2,6 h</td><td><button class="btn hoursOpen">Details</button></td></tr>
+      <tr class="hoursDetail"><td colspan="10"><div class="hoursDetailBox"><div><small>Sollbasis</small><b>18,0 h</b></div><div><small>Planung</small><b>18,0 h</b></div><div><small>Ist</small><b>15,4 Pers.-h · 10,1 Maschinen-h</b></div><div><small>Abweichung</small><b>-2,6 h gegen Soll</b></div></div></td></tr>
+    </tbody>
+  </table></div></div>
+  <div class="notice info" style="margin-top:10px"><b>Für spätere Kalkulation</b>Stundensätze oder Materialkosten sind hier bewusst noch nicht gerechnet. Die Ansicht liefert die belastbare Stundenbasis je FA: Soll/AV, operative Planung, Ist-Personenstunden und Ist-Maschinenstunden.</div>
+</div>
+</section>
+
+  <section class="view" id="system">
+    <div class="sectionHead"><div><h3>System</h3><div class="hint">Benutzerverwaltung ist jetzt vollständig hier integriert.</div></div></div>
+    <div class="sysTabs">
+      <button class="sysTab active" data-sys="machines">Maschinen & Linien</button>
+      <button class="sysTab" data-sys="users">Benutzer</button><button class="sysTab" data-sys="roles">Rollen & Rechte</button>
+      <button class="sysTab" data-sys="modules">Funktionen & Bereiche</button>
+      <button class="sysTab" data-sys="setup">Einrichtung & Bestand</button>
+      <button class="sysTab" data-sys="company">Firmenprofil</button>
+      <button class="sysTab" data-sys="shifts">Schichten</button>
+      <button class="sysTab" data-sys="updates">Updates</button>
+      <button class="sysTab" data-sys="checks">Systemcheck</button>
+    </div>
+
+    <div class="panel sysPane" id="sys-machines">
+      <div class="sectionHead" style="margin-top:0"><div><h3>Maschinen & Linien</h3><div class="hint">Produktivlogik: Jede Ressource gehört stabil zu einem Bereich. Linie = Personenstunden ÷ Besetzung; Maschine = Maschinenzeit.</div></div><button class="btn primary" id="addResourceBtn">+ Maschine / Linie</button></div>
+      <div class="systemHero">
+        <div class="miniStat"><span class="metricLabel">Ressourcen</span><b id="resourceCount">5</b><small>Demo-Bestand</small></div>
+        <div class="miniStat"><span class="metricLabel">Bereiche</span><b>6</b><small>Produktionsbereiche</small></div>
+        <div class="miniStat"><span class="metricLabel">Planungsarten</span><b>4</b><small>Machine · Labor · Process · Cycle</small></div>
+        <div class="miniStat"><span class="metricLabel">Personal-Gate</span><b>AUS</b><small>optional harte Ressource</small></div>
+      </div>
+      <div class="tableCard"><table id="resourceTable"><thead><tr><th>Bereich</th><th>Ressource</th><th>Ressourcentyp</th><th>Berechnung</th><th>Max. Besetzung</th><th>Schicht</th><th>Aktion</th></tr></thead><tbody>
+        <tr data-resource><td>CNC</td><td><b>Maschine 1</b><br><small class="codeTag">m1</small></td><td>Maschine</td><td>MACHINE</td><td>1</td><td>1-Schicht</td><td><button class="btn" data-edit-resource>Bearbeiten</button></td></tr>
+        <tr data-resource><td>CNC</td><td><b>Maschine 2</b><br><small class="codeTag">m2</small></td><td>Maschine</td><td>MACHINE</td><td>1</td><td>1-Schicht</td><td><button class="btn" data-edit-resource>Bearbeiten</button></td></tr>
+        <tr data-resource><td>CNC</td><td><b>Maschine 3</b><br><small class="codeTag">m3</small></td><td>Maschine</td><td>MACHINE</td><td>1</td><td>1-Schicht</td><td><button class="btn" data-edit-resource>Bearbeiten</button></td></tr>
+        <tr data-resource><td>Konfektion 1</td><td><b>Konfektion Linie 1</b></td><td>Linie</td><td>LABOR_HOURS</td><td>4</td><td>1-Schicht</td><td><button class="btn" data-edit-resource>Bearbeiten</button></td></tr>
+        <tr data-resource><td>Tiefziehen</td><td><b>Tiefziehen 1</b></td><td>Format / Maschine</td><td>CYCLE / FORMAT</td><td>2</td><td>1-Schicht</td><td><button class="btn" data-edit-resource>Bearbeiten</button></td></tr>
+      </tbody></table></div>
+      <div class="editorPanel hidden" id="resourceEditor">
+        <div class="sectionHead" style="margin-top:0"><div><h3 id="resourceEditorTitle">Ressource anlegen</h3><div class="hint">Demo speichert nur im Browserzustand dieser Datei.</div></div><button class="modalClose" type="button" id="closeResourceEditor">×</button></div>
+        <div class="resourceBuilder">
+          <div class="field"><label>Bereich</label><select id="resDept"><option>CNC</option><option>Konfektion 1</option><option>Konfektion 2</option><option>Konfektion 3</option><option>Siebdruck</option><option>Tiefziehen</option></select></div>
+          <div class="field"><label>Name</label><input id="resName" placeholder="z. B. CNC 4"></div>
+          <div class="field"><label>Ressourcentyp</label><select id="resType"><option>Maschine</option><option>Linie</option><option>Arbeitsplatz / Prozessplatz</option></select><span class="hint">Was ist die Ressource physisch?</span></div>
+          <div class="field"><label>Berechnungsart</label><select id="resPlanning"><option value="MACHINE">Maschinenzeit</option><option value="LABOR_HOURS">Personenstunden</option><option value="PROCESS">Prozessdauer</option><option value="CYCLE">Takt / Menge</option></select><span class="hint">Wie wird Dauer und Kapazität berechnet?</span></div>
+          <button class="btn primary" id="saveResourceBtn">Speichern</button>
+        </div>
+        <div class="formGrid3" style="margin-top:9px"><div class="field"><label>Max. Besetzung</label><input id="resCrew" type="number" min="1" value="1"></div><div class="field"><label>Standardbetrieb</label><select id="resShift"><option>1-Schicht</option><option>2-Schicht</option><option>Betriebsfrei</option></select></div><div class="field"><label>Parallelplätze</label><input id="resLanes" type="number" min="1" value="1"></div></div>
+      </div>
+      <div class="notice info" style="margin-top:12px"><b>Produktivcode</b>Grundformate für Tiefziehen, Schichtabweichungen, Maschinenstillstände und Personal je Schicht hängen an diesen Ressourcen. Bestehende IDs dürfen bei produktiven Daten nicht beliebig ersetzt werden.</div>
+    </div>
+
+    <div class="panel sysPane hidden" id="sys-users">
+      <h3>Benutzerverwaltung</h3><p>Kein eigener Hauptmenüpunkt mehr.</p>
+      <div class="userForm">
+        <div class="field"><label>Name</label><input placeholder="Vor- und Nachname"></div>
+        <div class="field"><label>Login</label><input placeholder="login"></div>
+        <div class="field"><label>Rolle</label><select id="roleSel"><option>Arbeitsvorbereitung</option><option>Abteilungsleiter</option><option>Stellv. Abteilungsleiter</option><option>Projektmanagement</option><option>Vertrieb</option><option>Produktion</option><option>Lesend</option><option>GF</option><option>Admin</option></select></div>
+        <div class="field" id="deptSelWrap"><label>Bereich</label><select><option>Konfektion</option><option>Tiefziehen</option><option>CNC</option></select></div>
+        <button class="btn primary">Anlegen</button>
+      </div>
+      <div class="tableTools" style="margin:12px -17px 0"><div class="actions"><input placeholder="Benutzer suchen"><select><option>Alle Rollen</option></select><select><option>Alle Bereiche</option></select><button class="btn">Zurücksetzen</button></div></div>
+      <table><thead><tr><th>Benutzer</th><th>Rolle</th><th>Bereich</th><th>Status</th><th></th></tr></thead><tbody>
+        <tr><td>Admin</td><td>Admin</td><td>—</td><td><span class="badge blue">aktiv</span></td><td><button class="btn">Bearbeiten</button></td></tr>
+        <tr><td>AV Beispiel</td><td>Arbeitsvorbereitung</td><td>—</td><td><span class="badge blue">aktiv</span></td><td><button class="btn">Bearbeiten</button> <button class="btn warn" data-user-delete="AV Beispiel">Löschen</button></td></tr>
+        <tr><td>Leitung Konfektion</td><td>Abteilungsleiter</td><td>Konfektion</td><td><span class="badge blue">aktiv</span></td><td><button class="btn">Bearbeiten</button> <button class="btn warn" data-user-delete="Leitung Konfektion">Löschen</button></td></tr>
+      </tbody></table>
+    </div>
+
+    <div class="panel sysPane hidden" id="sys-modules">
+      <div class="sectionHead" style="margin-top:0"><div><h3>Funktionen & Bereiche</h3><div class="hint">Produktfunktionen und Produktionsbereiche getrennt verwalten. Deaktivieren löscht keine Produktionshistorie.</div></div><button class="btn primary" id="addDepartmentBtn">+ Produktionsbereich</button></div>
+      <h4 style="margin:0 0 8px">Konfigurierbare Produktmodule</h4>
+      <div class="modules" id="realModules">
+        <div class="module"><div class="moduletop"><div><b>Projekte</b><div class="hint">projects</div></div><div class="switch on"></div></div></div>
+        <div class="module"><div class="moduletop"><div><b>Formate</b><div class="hint">formats · Tiefziehen</div></div><div class="switch on"></div></div></div>
+        <div class="module"><div class="moduletop"><div><b>Personal</b><div class="hint">personnel</div></div><div class="switch on"></div></div></div>
+        <div class="module"><div class="moduletop"><div><b>Chat</b><div class="hint">chat</div></div><div class="switch on"></div></div></div>
+        <div class="module"><div class="moduletop"><div><b>Benachrichtigungen</b><div class="hint">notifications</div></div><div class="switch on"></div></div></div>
+        <div class="module"><div class="moduletop"><div><b>Report / Nachkalkulationsbasis</b><div class="hint">postcalc</div></div><div class="switch on"></div></div></div>
+        <div class="module"><div class="moduletop"><div><b>GF-KPI</b><div class="hint">kpi</div></div><div class="switch on"></div></div></div>
+        <div class="module"><div class="moduletop"><div><b>Planung & Produktion</b><div class="hint">Produktkern · nicht als Config-Modul geführt</div></div><span class="moduleState fixed">Kern</span></div></div>
+        <div class="module"><div class="moduletop"><div><b>Rahmenaufträge / Bedarf</b><div class="hint">Produktionsmodell · Block E</div></div><span class="moduleState fixed">Kernmodell</span></div></div>
+      </div>
+      <div class="settingSection" style="margin-top:14px"><div class="settingHead"><div><h4>Palettenzettel</h4><div class="hint">Issue #61 · optionales Admin-Modul, Standard AUS im Zielbild.</div></div><div class="switch" id="palletSwitch"></div></div><div class="paletteDesigner hidden" id="palletDesigner"><div><div class="toolbar"><div class="field"><label>Vorlage</label><select><option>Standard 100 × 150 mm</option></select></div><div class="field"><label>MHD-Regel</label><select><option>Produktionsdatum + Haltbarkeit</option><option>manuell</option></select></div><div class="field"><label>Barcode</label><select><option>Code 128</option><option>QR</option></select></div></div></div><div class="labelPreview"><div><b>ART-1048 · Musterteil</b><div class="subtle">Palette 000184-03 · 1.200 Stk.</div></div><div class="barcode"></div></div></div></div>
+
+      <h4 style="margin:18px 0 8px">Produktionsbereiche · Bestand Werbetechnik-Vorlage</h4>
+      <div class="tableCard"><table id="departmentTable"><thead><tr><th>ID</th><th>Bereich</th><th>Planungsart</th><th>Besonderheit</th><th>Status</th><th>Aktion</th></tr></thead><tbody>
+        <tr data-dept><td><span class="codeTag">cnc</span></td><td><b>CNC</b></td><td>MACHINE</td><td>geteilte Bediener</td><td><span class="badge blue">aktiv</span></td><td><button class="btn" data-edit-dept>Bearbeiten</button> <button class="btn warn" data-toggle-dept>Deaktivieren</button></td></tr>
+        <tr data-dept><td><span class="codeTag">konf1</span></td><td><b>Konfektion 1</b></td><td>LABOR_HOURS</td><td>Personenstunden</td><td><span class="badge blue">aktiv</span></td><td><button class="btn" data-edit-dept>Bearbeiten</button> <button class="btn warn" data-toggle-dept>Deaktivieren</button></td></tr>
+        <tr data-dept><td><span class="codeTag">konf2</span></td><td><b>Konfektion 2</b></td><td>LABOR_HOURS</td><td>Personenstunden</td><td><span class="badge blue">aktiv</span></td><td><button class="btn" data-edit-dept>Bearbeiten</button> <button class="btn warn" data-toggle-dept>Deaktivieren</button></td></tr>
+        <tr data-dept><td><span class="codeTag">konf3</span></td><td><b>Konfektion 3</b></td><td>LABOR_HOURS</td><td>Personenstunden</td><td><span class="badge blue">aktiv</span></td><td><button class="btn" data-edit-dept>Bearbeiten</button> <button class="btn warn" data-toggle-dept>Deaktivieren</button></td></tr>
+        <tr data-dept><td><span class="codeTag">screenprint</span></td><td><b>Siebdruck</b></td><td>PROCESS</td><td>Prozessbereich</td><td><span class="badge blue">aktiv</span></td><td><button class="btn" data-edit-dept>Bearbeiten</button> <button class="btn warn" data-toggle-dept>Deaktivieren</button></td></tr>
+        <tr data-dept><td><span class="codeTag">thermoforming</span></td><td><b>Tiefziehen</b></td><td>CYCLE</td><td>Formatplanung</td><td><span class="badge blue">aktiv</span></td><td><button class="btn" data-edit-dept>Bearbeiten</button> <button class="btn warn" data-toggle-dept>Deaktivieren</button></td></tr>
+      </tbody></table></div>
+      <div class="editorPanel hidden" id="deptEditor"><div class="formGrid3"><div class="field"><label>ID</label><input id="deptId" placeholder="z. B. montage"></div><div class="field"><label>Name</label><input id="deptName" placeholder="Montage"></div><div class="field"><label>Planungsart</label><select id="deptPlanning"><option>MACHINE</option><option>LABOR_HOURS</option><option>PROCESS</option><option>CYCLE</option></select></div></div><div class="inlineActions"><button class="btn primary" id="saveDeptBtn">Bereich speichern</button><button class="btn" id="cancelDeptBtn">Abbrechen</button></div></div>
+      <div class="notice warn" style="margin-top:10px"><b>Datenerhalt</b>Bei Produktionsdaten: nicht hart löschen. Deaktivieren, stabile ID und Historie erhalten.</div>
+
+      <h4 style="margin:18px 0 8px">Projektbereiche · Firmenkonfiguration</h4>
+      <div class="inventoryGrid" id="projectAreaGrid">
+        <div class="inventoryCard"><div class="top"><div><h4>Vertrieb</h4><small>sales</small></div><button class="btn">Bearbeiten</button></div></div>
+        <div class="inventoryCard"><div class="top"><div><h4>Projektmanagement</h4><small>pm</small></div><button class="btn">Bearbeiten</button></div></div>
+        <div class="inventoryCard"><div class="top"><div><h4>Konstruktion / Entwicklung</h4><small>engineering</small></div><button class="btn">Bearbeiten</button></div></div>
+        <div class="inventoryCard"><div class="top"><div><h4>Kalkulation</h4><small>calculation</small></div><button class="btn">Bearbeiten</button></div></div>
+        <div class="inventoryCard"><div class="top"><div><h4>Einkauf</h4><small>purchasing</small></div><button class="btn">Bearbeiten</button></div></div>
+        <div class="inventoryCard"><div class="top"><div><h4>Qualitätssicherung</h4><small>quality</small></div><button class="btn">Bearbeiten</button></div></div>
+        <div class="inventoryCard"><div class="top"><div><h4>Arbeitsvorbereitung</h4><small>av</small></div><button class="btn">Bearbeiten</button></div></div>
+      </div>
+      <div class="inlineActions" style="margin-top:10px"><button class="btn" id="addProjectAreaBtn">+ Projektbereich</button><span class="hint">Projektbereiche sind nicht automatisch Produktionsbereiche.</span></div>
+
+      <h4 style="margin:18px 0 8px">Future</h4><div class="modules"><div class="module"><div class="moduletop"><div><b>Lagerplätze & Inventur</b><div class="hint">Regale · Plätze · Höhen · QR/Barcode · Doppelbelegung</div></div><span class="badge">#54</span></div></div><div class="module"><div class="moduletop"><div><b>Eigene Rollen</b><div class="hint">granulare Modul-/Aktionsrechte</div></div><span class="badge">#55</span></div></div></div>
+    </div>
+
+    <div class="panel sysPane hidden" id="sys-setup">
+      <div class="sectionHead" style="margin-top:0"><div><h3>Einrichtung & Bestand</h3><div class="hint">Orientiert am verbindlichen Einrichtungs-Prototyp (#53), aber mit dem realen V12.19.0-Bestand.</div></div><button class="btn" id="validateConfigBtn">Konfiguration prüfen</button></div>
+      <div class="setupFlow">
+        <div class="setupSteps">
+          <button class="setupStep active" data-setup-step="company">1 · Firma</button><button class="setupStep" data-setup-step="modules">2 · Funktionen</button><button class="setupStep" data-setup-step="departments">3 · Bereiche</button><button class="setupStep" data-setup-step="machines">4 · Maschinen/Linien</button><button class="setupStep" data-setup-step="shifts">5 · Schichten</button><button class="setupStep" data-setup-step="users">6 · Benutzer</button><button class="setupStep" data-setup-step="finish">7 · Systemcheck</button>
+        </div>
+        <div class="softBox">
+          <div class="setupScreen active" data-setup-screen="company"><h3>Firma</h3><div class="formGrid3"><div class="field"><label>Firmenname *</label><input value="Muster Produktion GmbH"></div><div class="field"><label>Programmname</label><input value="Produktionsplanung"></div><div class="field"><label>Tenant-ID</label><input value="firma"></div><div class="field"><label>Zeitzone</label><input value="Europe/Berlin"></div><div class="field"><label>Projektnummer-Begriff</label><input value="Projekt"></div><div class="field"><label>Auftragsnummer-Begriff</label><input value="FA"></div></div></div>
+          <div class="setupScreen" data-setup-screen="modules"><h3>Funktionen</h3><p class="hint">Reale Config-Module auswählen; Kernfunktionen bleiben Kern.</p><div class="modules"><div class="module"><b>Projekte</b><div class="switch on"></div></div><div class="module"><b>Formate</b><div class="switch on"></div></div><div class="module"><b>Personal</b><div class="switch on"></div></div><div class="module"><b>Chat</b><div class="switch on"></div></div><div class="module"><b>Benachrichtigungen</b><div class="switch on"></div></div><div class="module"><b>Postcalc</b><div class="switch on"></div></div><div class="module"><b>KPI</b><div class="switch on"></div></div></div></div>
+          <div class="setupScreen" data-setup-screen="departments"><h3>Produktionsbereiche</h3><p class="hint">Kein Branchenzwang. CNC ist Bereich, Werbetechnik keine Branche.</p><div class="inventoryGrid"><div class="inventoryCard"><b>CNC</b><small>MACHINE</small></div><div class="inventoryCard"><b>Konfektion 1–3</b><small>LABOR_HOURS</small></div><div class="inventoryCard"><b>Siebdruck</b><small>PROCESS</small></div><div class="inventoryCard"><b>Tiefziehen</b><small>CYCLE + Formate</small></div></div></div>
+          <div class="setupScreen" data-setup-screen="machines"><h3>Maschinen / Linien</h3><p class="hint">Vorhandener Vorlagenbestand: Maschine 1–3 im CNC-Bereich. Weitere Ressourcen können anschließend unter System angelegt werden.</p><div class="configSummary"><div><b>Maschine 1</b><br><small>CNC · m1</small></div><div><b>Maschine 2</b><br><small>CNC · m2</small></div><div><b>Maschine 3</b><br><small>CNC · m3</small></div><div><button class="btn" id="setupAddResource">+ Ressource ergänzen</button></div></div></div>
+          <div class="setupScreen" data-setup-screen="shifts"><h3>Schichten</h3><div class="configSummary"><div><b>Mo–Do</b><br><small>06:30–16:00 · 8,75 h netto</small></div><div><b>Freitag</b><br><small>06:30–11:45 · 5,00 h netto</small></div><div><b>2-Schicht Früh</b><br><small>06:00–14:30</small></div><div><b>2-Schicht Spät</b><br><small>14:30–22:30</small></div></div></div>
+          <div class="setupScreen" data-setup-screen="users"><h3>Erster Benutzer</h3><div class="formGrid3"><div class="field"><label>Benutzer</label><input value="admin"></div><div class="field"><label>Rolle</label><select><option>Admin</option></select></div><div class="field"><label>Bereich</label><input value="— global —" disabled></div></div><div class="notice info"><b>Produktiv</b>Passwörter werden serverseitig gehasht gespeichert; der Einrichtungsassistent darf keine Klartext-Passwörter persistieren.</div></div>
+          <div class="setupScreen" data-setup-screen="finish"><h3>Systemcheck</h3><div class="configSummary"><div><span class="statusDot"></span><b>Konfiguration</b><br><small>Schema / Pflichtfelder</small></div><div><span class="statusDot"></span><b>Ressourcen</b><br><small>Bereichszuordnung</small></div><div><span class="statusDot"></span><b>Schichten</b><br><small>Vorwärts / Rückwärts</small></div><div><span class="statusDot"></span><b>Server</b><br><small>Login / Revision / Schreibschutz</small></div></div><button class="btn primary" id="finishSetupBtn" style="margin-top:12px">Einrichtung abschließen</button></div>
+          <div class="setupFooter"><button class="btn" id="setupPrev">‹ Zurück</button><span class="hint" id="setupProgressText">Schritt 1 von 7</span><button class="btn primary" id="setupNext">Weiter ›</button></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel sysPane hidden" id="sys-roles">
+      <div class="sectionHead" style="margin-top:0">
+        <div><h3>Rollen & Rechte</h3><div class="hint">Demo-Zielbild für #55: Rollen bearbeiten, duplizieren und Rechte je Funktion/Aktion festlegen.</div></div>
+        <div class="actions"><button class="btn" id="duplicateRoleBtn">Rolle duplizieren</button><button class="btn primary" id="newRoleBtn">+ Eigene Rolle</button></div>
+      </div>
+      <div class="roleManager">
+        <div class="roleListPane">
+          <div class="field"><label>Rollen suchen</label><input id="roleSearch" placeholder="Rolle suchen …"></div>
+          <div id="roleList" class="roleList"></div>
+        </div>
+        <div class="roleEditorPane">
+          <div class="roleEditorHead">
+            <div><h3 id="roleEditorTitle" style="margin:0">Arbeitsvorbereitung</h3><div class="hint" id="roleEditorMeta">Systemrolle · global</div></div>
+            <span class="badge" id="roleSystemBadge">Systemrolle</span>
+          </div>
+          <div class="formGrid3" style="margin-top:12px">
+            <div class="field"><label>Rollenname</label><input id="roleNameInput"></div>
+            <div class="field"><label>Gültigkeit</label><select id="roleScopeInput"><option value="global">Unternehmensweit</option><option value="department">Eigener Bereich</option></select></div>
+            <div class="field"><label>Status</label><select id="roleActiveInput"><option value="true">Aktiv</option><option value="false">Inaktiv</option></select></div>
+          </div>
+          <div class="field"><label>Beschreibung</label><input id="roleDescriptionInput" placeholder="Wofür wird diese Rolle verwendet?"></div>
+          <div class="sectionHead"><div><h3 style="font-size:15px">Rechte</h3><div class="hint">Kein Zugriff / Lesen / Bearbeiten. Kritische Aktionen können zusätzlich gesperrt werden.</div></div><button class="btn" id="resetRoleRightsBtn">Standard laden</button></div>
+          <div class="permissionTableWrap">
+            <table class="permissionTable"><thead><tr><th>Funktion / Aktion</th><th>Zugriff</th><th>Zusatzrecht</th></tr></thead><tbody id="rolePermissionRows"></tbody></table>
+          </div>
+          <div class="notice info" style="margin-top:12px"><b>Demo-Regel</b> Die Oberfläche zeigt das Zielbild. In Produktion müssen diese Rechte immer serverseitig geprüft werden; Buttons ausblenden allein reicht nicht.</div>
+          <div class="actions" style="justify-content:flex-end;margin-top:12px"><button class="btn danger" id="deleteRoleBtn">Rolle löschen</button><button class="btn primary" id="saveRoleBtn">Rolle speichern</button></div>
+        </div>
+      </div>
+    </div>
+
+<div class="panel sysPane hidden" id="sys-company"><div class="sectionHead" style="margin-top:0"><div><h3>Firmenprofil & Konfiguration</h3><div class="hint">Entspricht config/firma.json: Unternehmen, Begriffe, Darstellung, Locale, Lizenz- und Updatekanal.</div></div><button class="btn primary" id="saveCompanyConfig">Speichern</button></div><div class="formGrid3"><div class="field"><label>Firmenname</label><input value="Muster Produktion GmbH"></div><div class="field"><label>Programmname</label><input value="Produktionsplanung"></div><div class="field"><label>Tenant-ID</label><input value="firma"></div><div class="field"><label>Begriff Projektnummer</label><input value="Projekt"></div><div class="field"><label>Begriff Auftragsnummer</label><input value="FA"></div><div class="field"><label>Sprache</label><select><option>de</option></select></div><div class="field"><label>Zeitzone</label><input value="Europe/Berlin"></div><div class="field"><label>Feiertagsregion</label><input value="SH" placeholder="z. B. SH"></div><div class="field"><label>Schrift</label><input value="Arial"></div><div class="field"><label>Akzentfarbe</label><input type="color" value="#1f5eff"></div><div class="field"><label>Updatekanal</label><select><option>stable</option><option>preview</option></select></div><div class="field"><label>Lizenzdatei</label><input value="lizenz.key"></div></div><div class="field"><label>Adresse / Kontaktzeile</label><input placeholder="Straße · PLZ Ort · Kontakt"></div><div class="field"><label>Fußzeile</label><input placeholder="Dokument-Fußzeile"></div><div class="notice info"><b>Updates</b>Updatequelle und -kanal sind Firmenkonfiguration. Der Demo-Status selbst liegt im Reiter „Updates“.</div></div><div class="panel sysPane hidden" id="sys-shifts"><div class="sectionHead" style="margin-top:0"><div><h3>Schichten, Kalender & Stillstände</h3><div class="hint">Produktivbestand: Schichtvorlagen global; Abweichungen und Stillstände separat.</div></div><button class="btn primary" id="addShiftBtn">+ Schichtvorlage</button></div>
+<div class="tableCard"><table><thead><tr><th>Vorlage</th><th>Start</th><th>Ende</th><th>Pausen</th><th>Netto</th><th></th></tr></thead><tbody><tr><td><b>1-Schicht Mo–Do</b></td><td>06:30</td><td>16:00</td><td>09:00–09:15 · 12:00–12:30</td><td><b>8,75 h</b></td><td><button class="btn">Bearbeiten</button></td></tr><tr><td><b>1-Schicht Freitag</b></td><td>06:30</td><td>11:45</td><td>09:00–09:15</td><td><b>5,00 h</b></td><td><button class="btn">Bearbeiten</button></td></tr><tr><td><b>2-Schicht · Früh</b></td><td>06:00</td><td>14:30</td><td>09:00–09:15 · 12:00–12:15</td><td>8,0 h</td><td><button class="btn">Bearbeiten</button></td></tr><tr><td><b>2-Schicht · Spät</b></td><td>14:30</td><td>22:30</td><td>17:00–17:15 · 19:00–19:15</td><td>7,5 h</td><td><button class="btn">Bearbeiten</button></td></tr></tbody></table></div>
+<div class="settingsGrid" style="margin-top:12px"><div class="detailBlock"><h3>Schichtkalender · Abweichung</h3><div class="ruleBuilderDemo"><div class="field"><label>Ressource</label><select id="ruleRes"><option>Maschine 1</option><option>Maschine 2</option><option>Konfektion Linie 1</option></select></div><div class="field"><label>Gilt für</label><select><option>eine KW</option><option>ganzes Jahr</option></select></div><div class="field"><label>KW</label><input type="number" value="41" min="1" max="53"></div><div class="field"><label>Betrieb</label><select><option>1-schichtig</option><option>2-schichtig</option><option>Betriebsfrei</option></select></div><button class="btn primary" id="saveScheduleRule">Speichern</button></div><div id="scheduleRuleDemo" class="taskList" style="margin-top:8px"></div></div>
+<div class="detailBlock"><h3>Feiertage & Betriebsferien</h3><div class="ruleBuilderDemo"><div class="field"><label>Datum</label><input id="excDateV8" type="date" value="2026-12-24"></div><div class="field"><label>Bezeichnung</label><input id="excLabelV8" value="Betriebsferien"></div><div class="field"><label>Betrieb</label><select id="excModeV8"><option>Betriebsfrei</option><option>1-schichtig</option></select></div><div></div><button class="btn primary" id="addExcV8">+ Tag</button></div><div id="excListV8" class="taskList" style="margin-top:8px"></div></div>
+<div class="detailBlock"><h3>Maschinenstillstand / Wartung</h3><div class="formGrid3"><div class="field"><label>Ressource</label><select id="blockResV8"><option>Maschine 1</option><option>Maschine 2</option><option>Tiefziehen 1</option></select></div><div class="field"><label>Von</label><input id="blockFromV8" type="datetime-local" value="2026-10-08T08:00"></div><div class="field"><label>Bis</label><input id="blockToV8" type="datetime-local" value="2026-10-08T12:00"></div></div><div class="field"><label>Grund</label><input id="blockLabelV8" value="Wartung"></div><button class="btn primary" id="addBlockV8">+ Sperrzeit</button><div id="blockListV8" class="taskList" style="margin-top:8px"></div></div>
+<div class="detailBlock"><h3>CNC-Bediener je Schicht</h3><p class="hint">Produktivcode führt finite Bedienerkapazität gesondert für CNC.</p><div class="formGrid3"><div class="field"><label>1-Schicht</label><input type="number" value="2" min="1"></div><div class="field"><label>Früh</label><input type="number" value="2" min="1"></div><div class="field"><label>Spät</label><input type="number" value="1" min="1"></div></div><button class="btn">Speichern</button></div></div></div>
+<div class="panel sysPane hidden" id="sys-updates">
+  <div class="sectionHead" style="margin-top:0"><div><h3>Updates</h3><div class="hint">Demo des Admin-Updateflows. Der produktive Knopf erscheint nur bei bestätigter neuer Version.</div></div><span class="badge blue">Admin</span></div>
+  <div class="updateHero">
+    <div class="updateState" id="updateStateCard">
+      <div class="inlineStatus"><span class="dot" id="updateDot"></span><span class="badge" id="updateStatusBadge">Kein Update verfügbar</span></div>
+      <h4 id="updateHeadline" style="margin-top:10px">System ist aktuell</h4>
+      <div class="subtle" id="updateDescription">Installiert: v12.19.0 · Updatekanal: Stable</div>
+      <div class="updateMeta">
+        <div><small>Installiert</small><b>v12.19.0</b></div>
+        <div><small>Verfügbar</small><b id="availableVersion">—</b></div>
+        <div><small>Letzte Prüfung</small><b id="lastUpdateCheck">07.10.2026 · 10:47</b></div>
+      </div>
+      <div class="actions" style="margin-top:14px">
+        <button class="btn" id="checkUpdateBtn">Jetzt prüfen</button>
+        <button class="btn" id="demoMakeUpdate">Demo: Update verfügbar</button>
+        <button class="btn primary" id="installUpdateBtn" disabled>Update installieren</button>
+      </div>
+    </div>
+    <div class="settingSection">
+      <div class="settingHead"><div><h4>Installationsablauf</h4><div class="hint">Produktiver Zielablauf aus Backup, Preflight, Update und Rollbackfähigkeit.</div></div></div>
+      <div class="updateSteps">
+        <div class="updateStep"><span class="stepDot">1</span><span>Vorprüfung / Version</span><span class="badge blue" id="updStep1">bereit</span></div>
+        <div class="updateStep"><span class="stepDot">2</span><span>Backup erstellen</span><span class="badge" id="updStep2">wartet</span></div>
+        <div class="updateStep"><span class="stepDot">3</span><span>Update installieren</span><span class="badge" id="updStep3">wartet</span></div>
+        <div class="updateStep"><span class="stepDot">4</span><span>Healthcheck / Rollback-Gate</span><span class="badge" id="updStep4">wartet</span></div>
+      </div>
+      <button class="btn" id="resetUpdateDemo" style="margin-top:12px">Demo zurücksetzen</button>
+    </div>
+  </div>
+</div>
+
+<div class="panel sysPane hidden" id="sys-checks"><div class="sectionHead" style="margin-top:0"><div><h3>Systemcheck</h3><div class="hint">#62 · isolierte Testdaten, keine Live-Daten-/Audit-Änderung.</div></div><button class="btn primary" id="runChecks">Tests ausführen</button></div><div class="systemHealth"><div class="healthTile"><strong>Server</strong><small><span class="dot live"></span> erreichbar</small></div><div class="healthTile"><strong>Datenbank</strong><small><span class="dot live"></span> verbunden</small></div><div class="healthTile"><strong>Backup</strong><small>letzter Lauf 02:00</small></div><div class="healthTile"><strong>Scheduler-Test</strong><small id="schedulerCheck">nicht gestartet</small></div></div><div id="checkResults" class="hidden" style="margin-top:12px"><table><thead><tr><th>Test</th><th>Testdaten</th><th>Ergebnis</th></tr></thead><tbody><tr><td>8,75 h vorwärts</td><td>06:30–16:00 + Pausen</td><td><span class="badge blue">PASS</span></td></tr><tr><td>Freitag netto</td><td>06:30–11:45 + 15 min</td><td><span class="badge blue">PASS</span></td></tr><tr><td>Rückwärtsplanung</td><td>isolierter Standardkalender</td><td><span class="badge blue">PASS</span></td></tr><tr><td>Bedienerkapazität</td><td>Gate EIN/AUS</td><td><span class="badge blue">PASS</span></td></tr></tbody></table></div></div>
+  </section>
+
+<div class="modalBack" id="faModal" aria-hidden="true">
+  <div class="orderModal" role="dialog" aria-modal="true" aria-labelledby="faModalTitle">
+    <div class="modalHead">
+      <div>
+        <h3 id="faModalTitle">FA-000184 · Konfektion 1</h3>
+        <p id="faModalSub">Projekt PRJ-000081 · Kunde Muster GmbH · 12.000 Stk.</p>
+      </div>
+      <button class="modalClose" id="faModalClose" aria-label="Schließen">×</button>
+    </div>
+
+    <div class="orderFacts">
+      <div class="fact"><b>Status</b><span id="faStatus">läuft</span></div>
+      <div class="fact"><b>Plan</b><span id="faPlan">Di 08:00–13:30</span></div>
+      <div class="fact"><b>Besetzung</b><span id="faCrew">1 / 2 Pers.</span></div>
+      <div class="fact"><b>AV-Termin</b><span id="faDue">08.10.2026</span></div>
+    </div>
+
+    <div class="modalSection" style="border-top:0;padding-top:0;margin-top:0">
+      <div style="display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:7px">
+        <b>Produktionsfortschritt</b><span id="faProgressText">54 %</span>
+      </div>
+      <div class="modalProgress"><i id="faProgressBar" style="width:54%"></i></div>
+      <div class="qtyGrid" style="margin-top:12px">
+        <div class="field"><label>Gutmenge</label><input id="faGood" type="number" value="6420"></div>
+        <div class="field"><label>Ausschuss</label><input id="faScrap" type="number" value="38"></div>
+        <div class="field"><label>Restmenge</label><input id="faRest" type="number" value="5542" readonly></div>
+      </div>
+    </div>
+
+    <div class="modalSection">
+      <b>Produktion</b>
+      <div class="prodActionGrid">
+        <button class="btn primary" id="faStartBtn">Start</button>
+        <button class="btn warn" id="faPauseBtn">Pause</button>
+        <button class="btn" id="faPartialBtn">Teilfertigung</button>
+        <button class="btn primary" id="faFinishBtn">Fertig melden</button>
+      </div>
+    </div>
+
+    <div class="modalSection">
+      <b>Planungsdetails</b>
+      <table style="margin-top:8px">
+        <tbody>
+          <tr><th>FA</th><td id="faNo">FA-000184</td></tr>
+          <tr><th>Ressource</th><td id="faMachine">Konfektion 1</td></tr>
+          <tr><th>Sollstunden</th><td id="faHours">14 h</td></tr>
+          <tr><th>Vorgänger</th><td id="faPred">abgeschlossen</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+
+<div class="planModalBack" id="planModal"><div class="planModal" role="dialog" aria-modal="true"><div class="modalHead"><div><h3 id="planTitle">FA-000186 einplanen</h3><p>AV-Vorgaben read-only; operative Feinplanung im Bereich.</p></div><button class="modalClose" id="planClose">×</button></div><div class="orderFacts"><div class="fact"><b>FA</b><span>FA-000186</span></div><div class="fact"><b>Bereich</b><span>Konfektion</span></div><div class="fact"><b>AV-Soll</b><span>14,0 h</span></div><div class="fact"><b>Fertig bis</b><span>14.10.2026</span></div></div><div class="planGrid"><div class="settingSection"><h4 style="margin-top:0">Ressource & Besetzung</h4><div class="field"><label>Ressource</label><select><option>Konfektion 1</option><option>Konfektion 2</option></select></div><div class="split2" style="margin-top:8px"><div class="field"><label>Start</label><input type="datetime-local" value="2026-10-08T07:00"></div><div class="field"><label>Geplante Besetzung</label><input type="number" value="2" min="1" max="4"></div></div><div class="notice info" style="margin-top:10px"><b>Besetzung</b>Max. 4 = Obergrenze, nicht Mindestbesetzung.</div></div><div class="settingSection"><h4 style="margin-top:0">Vorschau</h4><div class="timelinePreview"><b>Do 08.10.</b><div class="timelineTrack"><div class="timelineBlock" style="left:8%;width:56%">07:00–14:00 · FA-000186</div></div></div><div class="miniTable" style="margin-top:10px"><div class="miniRow"><span>AV-Sollstunden</span><b>14,0 h</b></div><div class="miniRow"><span>Besetzung</span><b>2 Pers.</b></div><div class="miniRow"><span>Kalenderdauer</span><b>7,0 h</b></div><div class="miniRow"><span>Vorgänger</span><span class="badge blue">frei</span></div></div></div></div><div class="actions" style="justify-content:flex-end;margin-top:14px"><button class="btn" id="planCancel">Abbrechen</button><button class="btn primary" id="planSave">Einplanung übernehmen</button></div></div></div>
+
+<div class="empModalBack" id="empModal">
+  <div class="empModal" role="dialog" aria-modal="true">
+    <div class="empHead">
+      <div><h3 id="empModalName">Anna Beispiel</h3><p id="empModalMeta">Konfektion · Maschinenführerin · 40 h/Woche</p></div>
+      <button class="modalClose" id="empModalClose">×</button>
+    </div>
+    <div class="empTabs">
+      <button class="empTab active" data-emp-tab="summary">Übersicht & Auswertung</button>
+      <button class="empTab" data-emp-tab="week">Wochenplan & Arbeitszeit</button>
+      <button class="empTab" data-emp-tab="absence">Abwesenheit</button>
+    </div>
+
+    <div class="empPane active" id="emp-summary">
+      <div class="cards" style="grid-template-columns:repeat(4,minmax(140px,1fr))">
+        <div class="card"><div class="metricLabel">Planstunden KW 41</div><div class="metric" id="epPlan">40,0 h</div></div>
+        <div class="card"><div class="metricLabel">Effektiv gearbeitet</div><div class="metric" id="epActual">36,5 h</div></div>
+        <div class="card"><div class="metricLabel">Urlaub</div><div class="metric" id="epVacation">0</div></div>
+        <div class="card"><div class="metricLabel">Krank</div><div class="metric" id="epSick">0</div></div>
+      </div>
+      <div class="panel"><h3>Auswertung</h3><p>Istzeiten nur anzeigen, wenn real erfasst. Keine erfundenen Iststunden.</p>
+        <table><thead><tr><th>Zeitraum</th><th>Plan</th><th>Ist</th><th>Abweichung</th></tr></thead><tbody>
+          <tr><td>KW 41</td><td id="epPlanRow">40,0 h</td><td id="epActualRow">36,5 h</td><td id="epDelta">-3,5 h</td></tr>
+        </tbody></table>
+      </div>
+    </div>
+
+    <div class="empPane" id="emp-week">
+      <div class="sectionHead" style="margin-top:0"><div><h3>Wochenplan & Arbeitszeit</h3><div class="hint">Dauerhafte Arbeitszeit oder einzelne Tagesabweichung direkt hier bearbeiten.</div></div><button class="btn primary">Arbeitszeit bearbeiten</button></div>
+      <div style="overflow:auto">
+        <div class="workWeek">
+          <div class="wwh">Tag</div><div class="wwh">Mo</div><div class="wwh">Di</div><div class="wwh">Mi</div><div class="wwh">Do</div><div class="wwh">Fr</div>
+          <div class="wwh">Zeit</div><div class="wwc"><strong>06:30–16:00</strong>8,75 h netto</div><div class="wwc"><strong>06:30–16:00</strong>8,75 h netto</div><div class="wwc"><strong>06:30–16:00</strong>8,75 h netto</div><div class="wwc"><strong>06:30–16:00</strong>8,75 h netto</div><div class="wwc"><strong>06:30–11:45</strong>5,0 h netto</div>
+          <div class="wwh">Einsatz</div><div class="wwc">Konfektion 1</div><div class="wwc">Konfektion 1</div><div class="wwc">Konfektion 2</div><div class="wwc">Konfektion 1</div><div class="wwc">Konfektion 1</div>
+        </div>
+      </div>
+      <div class="panel" style="margin-top:12px"><h3>Pausen</h3><p>Mo–Do: 09:00–09:15 und 12:00–12:30 · Freitag: 09:00–09:15. Woche = 40,0 Netto-Stunden.</p></div><div class="split2" style="margin-top:12px"><div class="settingSection"><h4 style="margin-top:0">Dauerhafte Arbeitszeit</h4><div class="split2"><div class="field"><label>Wochenstunden</label><input value="40,0"></div><div class="field"><label>Modell</label><select><option>Individuelle Tage</option><option>Standard Vollzeit</option><option>Teilzeit</option></select></div></div><button class="btn" style="margin-top:8px">Arbeitszeit ändern</button></div><div class="settingSection"><h4 style="margin-top:0">Einzelne Tagesabweichung</h4><div class="split2"><div class="field"><label>Datum</label><input type="date" value="2026-10-08"></div><div class="field"><label>Netto-Stunden</label><input value="6,0"></div></div><button class="btn" style="margin-top:8px">Für diesen Tag speichern</button></div></div>
+    </div>
+
+    <div class="empPane" id="emp-absence">
+      <div class="sectionHead" style="margin-top:0"><div><h3>Abwesenheit</h3><div class="hint">Urlaub, Krankheit oder sonstige Abwesenheit derselben Person.</div></div><button class="btn primary">+ Abwesenheit</button></div>
+      <div class="userForm" style="grid-template-columns:1fr 1fr 1fr auto">
+        <div class="field"><label>Art</label><select><option>Urlaub</option><option>Krank</option><option>Sonstiges</option></select></div>
+        <div class="field"><label>Von</label><input type="date" value="2026-10-07"></div>
+        <div class="field"><label>Bis</label><input type="date" value="2026-10-07"></div>
+        <button class="btn primary">Eintragen</button>
+      </div>
+      <div class="tableCard" style="margin-top:12px">
+        <table><thead><tr><th>Art</th><th>Von</th><th>Bis</th><th>Auswirkung</th><th></th></tr></thead><tbody id="absenceRows">
+          <tr><td>Urlaub</td><td>07.10.2026</td><td>07.10.2026</td><td>8,75 h nicht verfügbar</td><td><button class="btn">Bearbeiten</button></td></tr>
+        </tbody></table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<button type="button" class="chatFabDemo" id="chatFabDemo" title="Nachrichten">💬<span class="chatBadgeDemo">3</span></button>
+<section class="chatDemo" id="chatDemo">
+  <div class="chatHeadDemo"><b id="chatDemoTitle">Nachrichten</b><button class="btn" id="newGroupBtn">+ Gruppe</button><button class="modalClose" id="chatDemoClose">×</button></div>
+  <div class="chatBodyDemo">
+    <div class="chatListDemo" id="chatListDemo">
+      <button class="chatRow"><span class="chatAvDemo">AV</span><span><b>Arbeitsvorbereitung</b><small style="display:block;color:var(--muted)">FA-000186 ist bereit.</small></span><span class="badge blue">2</span></button>
+      <button class="chatRow"><span class="chatAvDemo">K1</span><span><b>Konfektion</b><small style="display:block;color:var(--muted)">Besetzung morgen prüfen.</small></span><span class="badge">1</span></button>
+      <button class="chatRow"><span class="chatAvDemo">JM</span><span><b>Jonas / Max</b><small style="display:block;color:var(--muted)">Direktnachricht</small></span><span></span></button>
+    </div>
+    <div id="chatThread" class="hidden" style="padding:10px;overflow:auto;display:grid;gap:8px"><button class="ghostBtn" id="chatBack" style="justify-self:start">← Gespräche</button><div class="notice info"><b>Arbeitsvorbereitung · FA-000186</b>Automatischer Verweis auf Fertigungsauftrag und Projekt.</div><div class="pCard" style="max-width:80%"><strong>AV Beispiel</strong><small>09:42</small><span>FA-000186 ist bereit. Konfektionsstunden sind mit 14 h hinterlegt.</span></div><div class="pCard" style="max-width:80%;justify-self:end"><strong>Jonas</strong><small>09:45</small><span>Ich plane ihn auf Konfektion 1 ein.</span></div></div>
+    <div class="groupPicker" id="groupPicker">
+      <div class="field"><label>Gruppenname</label><input value="Projekt PRJ-000083"></div>
+      <div class="pickerSection"><b>Personen</b>
+        <label class="pickRow"><input type="checkbox"><span>Anna Beispiel</span></label>
+        <label class="pickRow"><input type="checkbox"><span>Max Teilzeit</span></label>
+        <label class="pickRow"><input type="checkbox"><span>Lea Muster</span></label>
+      </div>
+      <div class="pickerSection"><b>Abteilungen</b>
+        <label class="pickRow"><input type="checkbox"><span>Arbeitsvorbereitung</span></label>
+        <label class="pickRow"><input type="checkbox"><span>Konfektion</span></label>
+        <label class="pickRow"><input type="checkbox"><span>Tiefziehen</span></label>
+      </div>
+      <div class="actions"><button class="btn" id="cancelGroupBtn">Abbrechen</button><button class="btn primary">Gruppe erstellen</button></div>
+    </div>
+    <div class="chatComposeDemo"><input placeholder="Nachricht schreiben …  / FA, Projekt, Format · @ Person"><button class="btn primary">➤</button></div>
+  </div>
+</section>
+
+</main>
+</div>
+
+<script>
+const views={
+ planning:["Planung & Produktion","Wochenplan, ungeplante FA und operative Produktion in einem Arbeitsbereich."],
+ orders:["Aufträge","Bestehende Auftragsliste, nah am aktuellen V12.19.0-Stand."],
+ projects:["Projekte","Projektmanagement und AV-Fertigungsaufträge."],
+ framework:["Rahmenaufträge","Abrufe, Bestand, Reservierung und Produktionsbedarf."],
+ personnel:["Personal","Mitarbeiter anklicken und direkt Stunden, Urlaub, Krankheit und Auswertung sehen."],
+ gf:["GF","Gesamtübersicht Bereiche, Personal und Risiken."],
+ system:["System","Maschinen, Benutzer, Funktionen, Bereiche, Rollen, Rechte und technische Einstellungen."]
+};
+document.querySelectorAll(".nav button").forEach(b=>b.onclick=()=>{
+ document.querySelectorAll(".nav button").forEach(x=>x.classList.remove("active"));b.classList.add("active");
+ const id=b.dataset.view;document.querySelectorAll(".view").forEach(v=>v.classList.remove("active"));document.getElementById(id).classList.add("active");
+ pageTitle.textContent=views[id][0];pageSub.textContent=views[id][1];
+});
+document.querySelectorAll(".sysTab").forEach(b=>b.onclick=()=>{
+ document.querySelectorAll(".sysTab").forEach(x=>x.classList.remove("active"));b.classList.add("active");
+ document.querySelectorAll(".sysPane").forEach(x=>x.classList.add("hidden"));document.getElementById("sys-"+b.dataset.sys).classList.remove("hidden");
+});
+document.querySelectorAll(".switch").forEach(s=>s.onclick=()=>s.classList.toggle("on"));
+function roleField(){const global=["Admin","Geschäftsführung","Arbeitsvorbereitung"].includes(roleSel.value);deptSelWrap.style.opacity=global?".35":"1";deptSelWrap.querySelector("select").disabled=global}
+roleSel.onchange=roleField;roleField();
+
+const faData={
+ "FA-000178":{machine:"Konfektion 1",status:"geplant",plan:"Mo 08:00–12:00",crew:"2 Pers.",due:"07.10.2026",progress:0,good:0,scrap:0,rest:8000,hours:"8 h",project:"PRJ-000078",customer:"Kunde A",qty:"8.000 Stk.",pred:"abgeschlossen"},
+ "FA-000184":{machine:"Konfektion 1",status:"läuft",plan:"Di 08:00–13:30",crew:"1 / 2 Pers.",due:"08.10.2026",progress:54,good:6420,scrap:38,rest:5542,hours:"14 h",project:"PRJ-000081",customer:"Kunde Muster GmbH",qty:"12.000 Stk.",pred:"abgeschlossen"},
+ "FA-000181":{machine:"Konfektion 1",status:"freigegeben",plan:"Mi 07:00–10:30",crew:"3 Pers.",due:"09.10.2026",progress:0,good:0,scrap:0,rest:9500,hours:"10,5 h",project:"PRJ-000080",customer:"Kunde B",qty:"9.500 Stk.",pred:"abgeschlossen"},
+ "FA-000176":{machine:"Konfektion 2",status:"pausiert",plan:"Mo 13:00–16:00",crew:"4 Pers.",due:"07.10.2026",progress:72,good:14220,scrap:61,rest:5719,hours:"12 h",project:"PRJ-000077",customer:"Kunde C",qty:"20.000 Stk.",pred:"abgeschlossen"},
+ "FA-000183":{machine:"Konfektion 2",status:"geplant",plan:"Mi 09:00–14:00",crew:"2 Pers.",due:"10.10.2026",progress:0,good:0,scrap:0,rest:11000,hours:"10 h",project:"PRJ-000082",customer:"Kunde D",qty:"11.000 Stk.",pred:"abgeschlossen"}
+};
+function openFa(no){
+ const d=faData[no]; if(!d)return;
+ faModalTitle.textContent=no+" · "+d.machine;
+ faModalSub.textContent="Projekt "+d.project+" · "+d.customer+" · "+d.qty;
+ faStatus.textContent=d.status; faPlan.textContent=d.plan; faCrew.textContent=d.crew; faDue.textContent=d.due;
+ faProgressText.textContent=d.progress+" %"; faProgressBar.style.width=d.progress+"%";
+ faGood.value=d.good; faScrap.value=d.scrap; faRest.value=d.rest;
+ faNo.textContent=no; faMachine.textContent=d.machine; faHours.textContent=d.hours; faPred.textContent=d.pred;
+ faStartBtn.textContent=d.status==="pausiert"?"Fortsetzen":"Start";
+ faStartBtn.disabled=d.status==="läuft";
+ faPauseBtn.disabled=d.status!=="läuft";
+ faPartialBtn.disabled=!["läuft","pausiert"].includes(d.status);
+ faFinishBtn.disabled=!["läuft","pausiert"].includes(d.status);
+ faModal.classList.add("open"); faModal.setAttribute("aria-hidden","false");
+}
+document.querySelectorAll("[data-fa]").forEach(b=>b.addEventListener("click",()=>openFa(b.dataset.fa)));
+faModalClose.onclick=()=>{faModal.classList.remove("open");faModal.setAttribute("aria-hidden","true")};
+faModal.addEventListener("click",e=>{if(e.target===faModal)faModalClose.click()});
+document.addEventListener("keydown",e=>{if(e.key==="Escape"&&faModal.classList.contains("open"))faModalClose.click()});
+
+
+const empPeople={
+ anna:{name:"Anna Beispiel",meta:"Konfektion · Maschinenführerin · 40 h/Woche",plan:"40,0 h",actual:"36,5 h",vac:"0",sick:"0",delta:"-3,5 h"},
+ max:{name:"Max Teilzeit",meta:"Konfektion · Teilzeit · 20 h/Woche",plan:"20,0 h",actual:"19,5 h",vac:"0",sick:"0",delta:"-0,5 h"},
+ lea:{name:"Lea Muster",meta:"Konfektion → CNC · temporärer Einsatz",plan:"31,25 h",actual:"30,0 h",vac:"1",sick:"0",delta:"-1,25 h"}
+};
+document.querySelectorAll("[data-person]").forEach(b=>b.addEventListener("click",()=>{
+ const p=empPeople[b.dataset.person]; if(!p)return;
+ empModalName.textContent=p.name;
+ empModalMeta.textContent=p.meta;
+ epPlan.textContent=p.plan;
+ epActual.textContent=p.actual;
+ epVacation.textContent=p.vac;
+ epSick.textContent=p.sick;
+ epPlanRow.textContent=p.plan;
+ epActualRow.textContent=p.actual;
+ epDelta.textContent=p.delta;
+ document.querySelectorAll(".empTab").forEach(x=>x.classList.remove("active"));
+ document.querySelectorAll(".empPane").forEach(x=>x.classList.remove("active"));
+ const firstTab=document.querySelector('.empTab[data-emp-tab="summary"]');
+ if(firstTab) firstTab.classList.add("active");
+ const firstPane=document.getElementById("emp-summary");
+ if(firstPane) firstPane.classList.add("active");
+ empModal.classList.add("open");
+}));
+empModalClose.onclick=()=>empModal.classList.remove("open");
+empModal.addEventListener("click",e=>{if(e.target===empModal)empModal.classList.remove("open")});
+document.querySelectorAll(".empTab").forEach(b=>b.addEventListener("click",()=>{
+ document.querySelectorAll(".empTab").forEach(x=>x.classList.remove("active"));b.classList.add("active");
+ document.querySelectorAll(".empPane").forEach(x=>x.classList.remove("active"));document.getElementById("emp-"+b.dataset.empTab).classList.add("active");
+}));
+chatFabDemo.onclick=()=>{
+ const opening=!chatDemo.classList.contains("open");
+ chatDemo.classList.toggle("open");
+ if(opening && !groupPicker.classList.contains("open")){
+   chatListDemo.style.display="grid";
+   chatDemoTitle.textContent="Nachrichten";
+ }
+};
+chatDemoClose.onclick=()=>chatDemo.classList.remove("open");
+newGroupBtn.onclick=()=>{chatListDemo.style.display="none";groupPicker.classList.add("open");chatDemoTitle.textContent="Neue Gruppe"};
+cancelGroupBtn.onclick=()=>{groupPicker.classList.remove("open");chatListDemo.style.display="grid";chatDemoTitle.textContent="Nachrichten"};
+
+// V5 interactions
+const planModalEl=document.getElementById("planModal");document.querySelectorAll("[data-plan-fa]").forEach(b=>b.addEventListener("click",()=>{document.getElementById("planTitle").textContent=b.dataset.planFa+" einplanen";planModalEl.classList.add("open")}));function closePlan(){planModalEl.classList.remove("open")}planClose.onclick=closePlan;planCancel.onclick=closePlan;planModalEl.addEventListener("click",e=>{if(e.target===planModalEl)closePlan()});planSave.onclick=()=>{planSave.textContent="Gespeichert ✓";setTimeout(()=>{planSave.textContent="Einplanung übernehmen";closePlan()},650)};function filterFaPool(){const q=(faPoolSearch.value||"").toLowerCase().trim(),pred=faPoolPred.value;let n=0;document.querySelectorAll("[data-pool-row]").forEach(r=>{const okQ=!q||(r.dataset.search||"").includes(q),okP=pred==="all"||r.dataset.pred===pred,show=okQ&&okP;r.style.display=show?"grid":"none";if(show)n++});faPoolCount.textContent=n}faPoolSearch.addEventListener("input",filterFaPool);faPoolPred.addEventListener("change",filterFaPool);faPoolReset.onclick=()=>{faPoolSearch.value="";faPoolPred.value="all";filterFaPool()};document.querySelectorAll("[data-user-delete]").forEach(b=>b.addEventListener("click",()=>{const name=b.dataset.userDelete;if(confirm(name+" deaktivieren/löschen? Audit-Daten bleiben erhalten.")){b.closest("tr").style.opacity=".45";b.textContent="deaktiviert";b.disabled=true}}));const rc=document.getElementById("runChecks");if(rc)rc.onclick=()=>{schedulerCheck.innerHTML='<span class="dot warn"></span> läuft isoliert …';rc.disabled=true;setTimeout(()=>{schedulerCheck.innerHTML='<span class="dot live"></span> 4/4 PASS';checkResults.classList.remove("hidden");rc.disabled=false;rc.textContent="Erneut testen"},700)};const firstChatRow=document.querySelector(".chatRow");if(firstChatRow)firstChatRow.addEventListener("click",()=>{chatListDemo.style.display="none";groupPicker.classList.remove("open");chatThread.classList.remove("hidden");chatThread.style.display="grid";chatDemoTitle.textContent="Arbeitsvorbereitung"});if(window.chatBack)chatBack.onclick=()=>{chatThread.classList.add("hidden");chatThread.style.display="none";chatListDemo.style.display="grid";chatDemoTitle.textContent="Nachrichten"};const oldNewGroup=newGroupBtn.onclick;newGroupBtn.onclick=()=>{chatThread.classList.add("hidden");chatThread.style.display="none";oldNewGroup()};const oldCancel=cancelGroupBtn.onclick;cancelGroupBtn.onclick=()=>{oldCancel();chatThread.classList.add("hidden");chatThread.style.display="none"};const demoUpdateAvailable=false;if(demoUpdateAvailable)updateBtn.style.display="inline-flex";
+
+</script>
+
+<div class="toastStack" id="toastStack"></div>
+<div class="demoToolbar"><button class="btn" id="demoReset">Demo zurücksetzen</button><button class="btn" id="demoToggleUpdate">Update simulieren</button><span class="badge blue">Functional Demo</span></div>
+
+
+<script id="v6-functional-demo-js">
+(()=>{
+  const $=(s,r=document)=>r.querySelector(s), $$=(s,r=document)=>[...r.querySelectorAll(s)];
+  const state={currentFa:null, currentPerson:null, planned:new Set(), userSeq:4};
+  function toast(title,msg='',kind='ok'){
+    const stack=$('#toastStack'); if(!stack)return;
+    const el=document.createElement('div'); el.className='toast '+kind;
+    el.innerHTML=`<b>${title}</b><span>${msg}</span>`; stack.appendChild(el);
+    setTimeout(()=>el.remove(),2600);
+  }
+  function markDirty(){const el=$('.sidebarFoot');if(el&&!el.classList.contains('demoDirty'))el.classList.add('demoDirty')}
+  function setView(id){const b=$(`.nav button[data-view="${id}"]`); if(b)b.click()}
+  function bindClickOnce(el,key,fn){if(!el||el.dataset[key])return;el.dataset[key]='1';el.addEventListener('click',fn)}
+
+  // ---------- production runtime ----------
+  const oldOpenFa=window.openFa;
+  if(oldOpenFa){
+    window.openFa=function(no){state.currentFa=no;oldOpenFa(no)};
+    $$('[data-fa]').forEach(b=>{b.onclick=null;bindClickOnce(b,'v6fa',()=>window.openFa(b.dataset.fa))});
+  }
+  function renderFa(no){
+    const d=window.faData?.[no]||faData?.[no]; if(!d)return;
+    const chip=$(`[data-fa="${no}"]`);
+    if(chip){
+      chip.classList.remove('warn','violet','done','running','paused');
+      if(d.status==='läuft')chip.classList.add('running');
+      if(d.status==='pausiert')chip.classList.add('paused');
+      if(d.status==='fertig')chip.classList.add('done');
+      const crew=d.crew?`<br>${d.crew}`:'';
+      chip.innerHTML=`<strong>${no}</strong>${d.plan.replace(/^[A-Za-zÄÖÜäöü]{2}\s/,'')} · ${d.status}${crew}`;
+    }
+    if($('#faStatus'))$('#faStatus').textContent=d.status;
+    if($('#faProgressText'))$('#faProgressText').textContent=d.progress+' %';
+    if($('#faProgressBar'))$('#faProgressBar').style.width=d.progress+'%';
+    if($('#faGood'))$('#faGood').value=d.good;
+    if($('#faScrap'))$('#faScrap').value=d.scrap;
+    if($('#faRest'))$('#faRest').value=d.rest;
+    if($('#faStartBtn')){ $('#faStartBtn').textContent=d.status==='pausiert'?'Fortsetzen':'Start'; $('#faStartBtn').disabled=['läuft','fertig'].includes(d.status); }
+    if($('#faPauseBtn'))$('#faPauseBtn').disabled=d.status!=='läuft';
+    if($('#faPartialBtn'))$('#faPartialBtn').disabled=!['läuft','pausiert'].includes(d.status);
+    if($('#faFinishBtn'))$('#faFinishBtn').disabled=!['läuft','pausiert'].includes(d.status);
+  }
+  function currentFa(){return state.currentFa && faData[state.currentFa] ? faData[state.currentFa] : null}
+  bindClickOnce($('#faStartBtn'),'v6',()=>{const d=currentFa();if(!d)return;d.status='läuft';toast(state.currentFa,d.status==='läuft'?'Produktion läuft.':'Gestartet.');renderFa(state.currentFa);markDirty()});
+  bindClickOnce($('#faPauseBtn'),'v6',()=>{const d=currentFa();if(!d)return;d.status='pausiert';toast(state.currentFa,'Produktion pausiert.','warn');renderFa(state.currentFa);markDirty()});
+  bindClickOnce($('#faPartialBtn'),'v6',()=>{const d=currentFa();if(!d)return;const add=Math.min(Math.max(1,Math.round(d.rest*.2)),d.rest);d.good+=add;d.rest=Math.max(0,d.rest-add);const total=d.good+d.scrap+d.rest;d.progress=Math.min(99,Math.round((d.good+d.scrap)/Math.max(1,total)*100));toast('Teilfertigung gebucht',`${add.toLocaleString('de-DE')} Stk. Gutmenge`);renderFa(state.currentFa);markDirty()});
+  bindClickOnce($('#faFinishBtn'),'v6',()=>{const d=currentFa();if(!d)return;d.good+=d.rest;d.rest=0;d.progress=100;d.status='fertig';toast(state.currentFa,'Fertigmeldung übernommen.');renderFa(state.currentFa);markDirty()});
+  ['faGood','faScrap'].forEach(id=>{const el=$('#'+id);if(el)el.addEventListener('input',()=>{const d=currentFa();if(!d)return;const good=Math.max(0,+$('#faGood').value||0),scrap=Math.max(0,+$('#faScrap').value||0);const total=Math.max(good+scrap+d.rest, good+scrap);d.good=good;d.scrap=scrap;d.rest=Math.max(0,total-good-scrap);d.progress=Math.min(100,Math.round((good+scrap)/Math.max(1,total)*100));renderFa(state.currentFa)})});
+
+  // ---------- planning modal: real transfer to week board ----------
+  const planModal=$('#planModal'); let pendingPlanFa=null;
+  $$('[data-plan-fa]').forEach(b=>{b.addEventListener('click',()=>{pendingPlanFa=b.dataset.planFa;state.currentFa=pendingPlanFa})});
+  const planResource=$('.settingSection select',planModal), planStart=$('input[type="datetime-local"]',planModal), planCrew=$('input[type="number"]',planModal);
+  function updatePlanPreview(){
+    if(!planModal)return; const block=$('.timelineBlock',planModal); if(!block)return;
+    const dt=planStart?.value?new Date(planStart.value):null; const crew=Math.max(1,+planCrew?.value||1); const hours=14/crew;
+    if(dt&&!isNaN(dt)){const end=new Date(dt.getTime()+hours*3600000);const f=x=>String(x).padStart(2,'0');block.textContent=`${f(dt.getHours())}:${f(dt.getMinutes())}–${f(end.getHours())}:${f(end.getMinutes())} · ${pendingPlanFa||'FA'}`}
+    const rows=$$('.miniRow',planModal); if(rows[1])$('b',rows[1]).textContent=crew+' Pers.'; if(rows[2])$('b',rows[2]).textContent=hours.toFixed(1).replace('.',',')+' h';
+  }
+  planStart?.addEventListener('input',updatePlanPreview); planCrew?.addEventListener('input',updatePlanPreview);
+  const planSave=$('#planSave'); if(planSave){planSave.onclick=()=>{
+    if(!pendingPlanFa)return; const res=planResource?.value||'Konfektion 1', crew=Math.max(1,+planCrew?.value||1), dt=new Date(planStart.value), weekday=dt.getDay();
+    if(isNaN(dt)){toast('Einplanung nicht möglich','Startzeit fehlt.','danger');return}
+    const machineIndex=res.includes('2')?1:0; const dayIndex=Math.max(0,Math.min(4,weekday===0?4:weekday-1));
+    const machineLabels=$$('.machineLabel'); const board=$('.board');
+    // board layout: header 6 cells, then each machine label + 5 day cells
+    const all=[...board.children]; const offset=6 + machineIndex*6 + 1 + dayIndex; const cell=all[offset];
+    const f=x=>String(x).padStart(2,'0'), hours=14/crew, end=new Date(dt.getTime()+hours*3600000);
+    const chip=document.createElement('button');chip.className='jobchip';chip.dataset.fa=pendingPlanFa;chip.innerHTML=`<strong>${pendingPlanFa}</strong>${f(dt.getHours())}:${f(dt.getMinutes())}–${f(end.getHours())}:${f(end.getMinutes())} · geplant<br>${crew} Pers.`;
+    chip.addEventListener('click',()=>window.openFa(pendingPlanFa)); if(cell)cell.appendChild(chip);
+    faData[pendingPlanFa]={machine:res,status:'geplant',plan:`${['So','Mo','Di','Mi','Do','Fr','Sa'][weekday]} ${f(dt.getHours())}:${f(dt.getMinutes())}–${f(end.getHours())}:${f(end.getMinutes())}`,crew:`${crew} Pers.`,due:'14.10.2026',progress:0,good:0,scrap:0,rest:25000,hours:'14 h',project:'PRJ-000083',customer:'Kunde Muster GmbH',qty:'25.000 Stk.',pred:'abgeschlossen'};
+    const row=$(`[data-plan-fa="${pendingPlanFa}"]`)?.closest('[data-pool-row]'); if(row)row.remove(); if(window.filterFaPool)filterFaPool();
+    $('#planModal').classList.remove('open'); toast('Einplanung übernommen',`${pendingPlanFa} → ${res}`); markDirty(); pendingPlanFa=null;
+  }}
+
+  // ---------- orders ----------
+  const orders=$('#orders'); if(orders){
+    const openBtn=$('tbody .btn',orders); bindClickOnce(openBtn,'v6',()=>window.openFa('FA-000184'));
+    const search=$('.tableTools input',orders), statusSel=$$('.tableTools select',orders)[1];
+    function filterOrders(){const q=(search?.value||'').toLowerCase(),st=(statusSel?.value||'').toLowerCase();$$('tbody tr',orders).forEach(r=>{const txt=r.textContent.toLowerCase();r.style.display=(!q||txt.includes(q))&&(!st||st.includes('alle')||txt.includes(st))?'':'none'})}
+    search?.addEventListener('input',filterOrders);statusSel?.addEventListener('change',filterOrders);
+    bindClickOnce($('.sectionHead .btn.primary',orders),'v6',()=>{setView('projects');toast('Neue Auftragsanlage','Projekt-/AV-Bereich geöffnet.')});
+  }
+
+  // ---------- project / AV ----------
+  const projects=$('#projects'); if(projects){
+    $$('.pCard',projects).forEach(c=>{c.classList.add('clickable');c.addEventListener('click',()=>{const id=$('strong',c)?.textContent||'Projekt';toast(id,'Projekt ausgewählt – AV-Details darunter.')})});
+    const avPanel=$('.panel',projects); const avBtns=$$('.actions .btn',avPanel);
+    if(avBtns[0])avBtns[0].addEventListener('click',()=>{toast('Entwurf gespeichert','Nur Demo-Zustand, keine Serveränderung.');markDirty()});
+    if(avBtns[1])avBtns[1].addEventListener('click',()=>{toast('An Bereiche übergeben','FA-000186 ist im FA-Vorrat sichtbar.');setView('planning');const row=$('[data-plan-fa="FA-000186"]')?.closest('[data-pool-row]');if(row){row.classList.add('rowFlash');setTimeout(()=>row.classList.remove('rowFlash'),900)}});
+    const addDept=$('.sectionHead .btn',avPanel); if(addDept)addDept.addEventListener('click',()=>toast('Abteilung hinzufügen','Demo: neue Abteilungszeile wäre hier editierbar.'));
+    const fmtBtn=$$('.avStep .btn',avPanel).find(b=>/Formatplanung/i.test(b.textContent)); if(fmtBtn)fmtBtn.addEventListener('click',()=>toast('Formatplanung','Tiefziehen-V13-Editor als nächster integrierter Screen.'));
+  }
+
+  // ---------- framework order demo ----------
+  const fw=$('#framework'); if(fw){
+    bindClickOnce($('.sectionHead .btn.primary',fw),'v6',()=>toast('Rahmenauftrag anlegen','Formular-Demo geöffnet – Daten würden Bedarf/Bestand speisen.'));
+    $$('tbody .btn',fw).forEach(b=>b.addEventListener('click',()=>{const tr=b.closest('tr');const ra=tr?.cells[0]?.textContent.trim();if(/FA öffnen/i.test(b.textContent)){setView('planning');toast(ra,'Bedarf-FA nutzt denselben Planungskern.')}else toast(ra,'Details ausgewählt.')}));
+  }
+
+  // ---------- personnel filters + edit + absence ----------
+  const pers=$('#personnel'); if(pers){
+    const search=$('#personSearch'), sels=$$('.tableTools select',pers), rows=()=>$$('tbody tr',pers);
+    function filterPeople(){const q=(search?.value||'').toLowerCase(),dept=sels[0]?.value||'',st=sels[1]?.value||'';rows().forEach(r=>{const txt=r.textContent.toLowerCase();const ok=(!q||txt.includes(q))&&(!dept||dept.includes('Alle')||txt.includes(dept.toLowerCase()))&&(!st||st.includes('Alle')||txt.includes(st.toLowerCase()));r.style.display=ok?'':'none'})}
+    search?.addEventListener('input',filterPeople); sels.forEach(s=>s.addEventListener('change',filterPeople));
+  }
+  const empWeek=$('#emp-week'); if(empWeek){
+    const editBtn=$('.sectionHead .btn.primary',empWeek); bindClickOnce(editBtn,'v6',()=>{const v=prompt('Wochenstunden setzen (Demo):','40');if(v!==null&&!isNaN(+v)){const p=empPeople[state.currentPerson]||empPeople.anna;p.plan=(+v).toFixed(1).replace('.',',')+' h';$('#epPlan').textContent=p.plan;$('#epPlanRow').textContent=p.plan;toast('Arbeitszeit geändert',p.plan);markDirty()}});
+    const secBtns=$$('.settingSection .btn',empWeek); if(secBtns[0])secBtns[0].addEventListener('click',()=>{const inp=$('.settingSection input',empWeek);toast('Arbeitszeit gespeichert',`${inp.value} h/Woche`);markDirty()});
+    if(secBtns[1])secBtns[1].addEventListener('click',()=>{const inputs=$$('.settingSection',empWeek)[1].querySelectorAll('input');toast('Tagesabweichung gespeichert',`${inputs[0].value}: ${inputs[1].value} h`);markDirty()});
+  }
+  $$('[data-person]').forEach(b=>b.addEventListener('click',()=>state.currentPerson=b.dataset.person));
+  const absencePane=$('#emp-absence'); if(absencePane){
+    const form=$('.userForm',absencePane), add=$('.btn.primary',form); bindClickOnce(add,'v6',()=>{const type=$('select',form).value,dates=$$('input[type="date"]',form),tr=document.createElement('tr');const fmt=v=>{const [y,m,d]=v.split('-');return `${d}.${m}.${y}`};tr.innerHTML=`<td>${type}</td><td>${fmt(dates[0].value)}</td><td>${fmt(dates[1].value)}</td><td>Kapazität wird neu berechnet</td><td><button class="btn">Löschen</button></td>`;$('#absenceRows').appendChild(tr);$('button',tr).onclick=()=>tr.remove();toast('Abwesenheit eingetragen',`${type}: ${fmt(dates[0].value)}`);markDirty()});
+    $$('#absenceRows .btn').forEach(b=>b.onclick=()=>toast('Abwesenheit bearbeiten','Demo-Aktion.'));
+  }
+
+  // ---------- system users ----------
+  const users=$('#sys-users'); if(users){
+    const form=$('.userForm',users), inputs=$$('input',form), role=$('#roleSel'), dept=$('#deptSelWrap select'), add=$('.btn.primary',form), tbody=$('tbody',users), tools=$('.tableTools',users), q=$('input',tools), filters=$$('select',tools), reset=$('.btn',tools);
+    add.onclick=()=>{const name=inputs[0].value.trim(),login=inputs[1].value.trim();if(!name||!login){toast('Benutzer fehlt','Name und Login sind Pflicht.','danger');return}const global=['Admin','Geschäftsführung','Arbeitsvorbereitung'].includes(role.value),tr=document.createElement('tr');tr.dataset.userRow='1';tr.innerHTML=`<td>${name}<br><small>${login}</small></td><td>${role.value}</td><td>${global?'—':dept.value}</td><td><span class="badge blue">aktiv</span></td><td><button class="btn">Bearbeiten</button> <button class="btn warn">Deaktivieren</button></td>`;tbody.appendChild(tr);$$('button',tr)[0].onclick=()=>toast(name,'Bearbeiten-Demo geöffnet.');$$('button',tr)[1].onclick=()=>{tr.style.opacity='.45';$$('button',tr)[1].disabled=true;$$('button',tr)[1].textContent='deaktiviert'};inputs.forEach(i=>i.value='');toast('Benutzer angelegt',`${name} · ${role.value}`);markDirty()};
+    function filterUsers(){const txt=(q.value||'').toLowerCase(),rf=filters[0]?.value||'',df=filters[1]?.value||'';$$('tbody tr',users).forEach(r=>{const t=r.textContent.toLowerCase();r.style.display=(!txt||t.includes(txt))&&(!rf||rf.includes('Alle')||t.includes(rf.toLowerCase()))&&(!df||df.includes('Alle')||t.includes(df.toLowerCase()))?'':'none'})}
+    q?.addEventListener('input',filterUsers);filters.forEach(f=>f.addEventListener('change',filterUsers));if(reset)reset.onclick=()=>{q.value='';filters.forEach(f=>f.selectedIndex=0);filterUsers()};
+  }
+
+  // ---------- module switches / areas ----------
+  $$('.switch').forEach(sw=>sw.addEventListener('click',()=>{const mod=sw.closest('.module')?.querySelector('b')?.textContent||'Modul';toast(mod,sw.classList.contains('on')?'aktiviert':'deaktiviert');markDirty()}));
+  const modules=$('#sys-modules'); if(modules){
+    const addArea=$('.sectionHead .btn.primary',modules); if(addArea)addArea.onclick=()=>{const n=prompt('Name des neuen Bereichs:','Montage');if(n){const tb=$('tbody',modules),tr=document.createElement('tr');tr.innerHTML=`<td><b>${n}</b></td><td>Zeit</td><td>—</td><td><span class="badge blue">aktiv</span></td><td>neu</td><td><button class="btn">Bearbeiten</button> <button class="btn warn">Deaktivieren</button></td>`;tb.appendChild(tr);toast('Bereich angelegt',n);markDirty()}};
+    $$('tbody .btn.warn',modules).forEach(b=>b.onclick=()=>{const tr=b.closest('tr');b.textContent='Aktivieren';const badge=$('.badge',tr);if(badge){badge.textContent='inaktiv';badge.classList.remove('blue')}tr.style.opacity='.6';toast('Bereich deaktiviert','Produktionsdaten bleiben erhalten.','warn');markDirty()});
+  }
+
+  // ---------- company/update ----------
+  const updateBtn=$('#updateBtn'); const toggle=$('#demoToggleUpdate'); if(toggle)toggle.onclick=()=>{if(!updateBtn)return;const hidden=getComputedStyle(updateBtn).display==='none';updateBtn.style.display=hidden?'inline-flex':'none';toast('Update-Simulation',hidden?'Update verfügbar.':'Kein Update verfügbar.');};
+  if(updateBtn)updateBtn.onclick=()=>{updateBtn.textContent='Update vorbereitet ✓';toast('Update','Demo: Preflight bestanden, produktiv würde Backup/Rollback folgen.')};
+
+  // ---------- chat send & group create ----------
+  const compose=$('.chatComposeDemo'); if(compose){const input=$('input',compose),send=$('button',compose);send.onclick=()=>{const msg=input.value.trim();if(!msg)return;const thread=$('#chatThread');thread.classList.remove('hidden');thread.style.display='grid';$('#chatListDemo').style.display='none';$('#groupPicker').classList.remove('open');$('#chatDemoTitle').textContent='Arbeitsvorbereitung';const c=document.createElement('div');c.className='pCard';c.style.cssText='max-width:80%;justify-self:end';c.innerHTML=`<strong>Jonas</strong><small>jetzt</small><span>${msg.replace(/[&<>]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[m]))}</span>`;thread.appendChild(c);input.value='';thread.scrollTop=thread.scrollHeight;toast('Nachricht gesendet','Nur Demo-Chat.')}}
+  const gp=$('#groupPicker'); if(gp){const create=$('.btn.primary',gp);create.onclick=()=>{const name=$('input[type="text"],input:not([type])',gp)?.value||'Neue Gruppe',members=$$('input[type="checkbox"]:checked',gp).length;if(!members){toast('Keine Mitglieder','Mindestens eine Person oder Abteilung auswählen.','danger');return}gp.classList.remove('open');$('#chatListDemo').style.display='grid';const row=document.createElement('button');row.className='chatRow';row.innerHTML=`<span class="chatAvDemo">G</span><span><b>${name}</b><small style="display:block;color:var(--muted)">${members} Mitglieder</small></span><span></span>`;$('#chatListDemo').prepend(row);toast('Gruppe erstellt',name)}}
+
+  // ---------- demo reset ----------
+  const reset=$('#demoReset'); if(reset)reset.onclick=()=>{if(confirm('Demo auf Ausgangszustand zurücksetzen?'))location.reload()};
+
+  // helpful tooltips for currently non-functional generic buttons
+  $$('button.btn,button.iconBtn').forEach(b=>{
+    if(b.disabled||b.dataset.v6generic||b.onclick||b.id||b.closest('.modalBack,.planModalBack'))return;
+    b.dataset.v6generic='1'; b.addEventListener('click',()=>{if(!/Öffnen|Bearbeiten|Speichern|Anlegen|Planen|Details|PDF|Heute|Zurücksetzen|Erstellen|Eintragen/i.test(b.textContent))return;toast(b.textContent.trim(),'Demo-Aktion ausgeführt.')});
+  });
+})();
+</script>
+
+
+<script id="v7-updates-hours-js">
+(()=>{
+  const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
+  let updateAvailable=false;
+  const updateBtn=$('#updateBtn'), navBadge=$('#updateNavBadge'), state=$('#updateStateCard'), dot=$('#updateDot'), badge=$('#updateStatusBadge'), headline=$('#updateHeadline'), desc=$('#updateDescription'), ver=$('#availableVersion'), install=$('#installUpdateBtn');
+  function renderUpdate(){
+    if(!state)return;
+    state.classList.toggle('available',updateAvailable);
+    dot.className='dot '+(updateAvailable?'warn':'live');
+    badge.className='badge '+(updateAvailable?'warn':'blue');
+    badge.textContent=updateAvailable?'Update verfügbar':'Kein Update verfügbar';
+    headline.textContent=updateAvailable?'v12.19.1 kann installiert werden':'System ist aktuell';
+    desc.textContent=updateAvailable?'Installiert: v12.19.0 · verfügbar: v12.19.1 · Stable':'Installiert: v12.19.0 · Updatekanal: Stable';
+    ver.textContent=updateAvailable?'v12.19.1':'—';
+    install.disabled=!updateAvailable;
+    if(updateBtn){updateBtn.className='btn '+(updateAvailable?'primary':'');updateBtn.textContent=updateAvailable?'Update verfügbar':'Kein Update';}
+    if(navBadge)navBadge.style.display=updateAvailable?'inline-flex':'none';
+  }
+  $('#demoMakeUpdate')?.addEventListener('click',()=>{updateAvailable=true;renderUpdate();window.toast?.('Update verfügbar','Demo: v12.19.1 wurde gefunden.');});
+  $('#checkUpdateBtn')?.addEventListener('click',e=>{e.currentTarget.textContent='Prüfe …';setTimeout(()=>{e.currentTarget.textContent='Jetzt prüfen';$('#lastUpdateCheck').textContent='gerade eben';window.toast?.('Updateprüfung',updateAvailable?'v12.19.1 verfügbar.':'Keine neue Version gefunden.');},450)});
+  $('#resetUpdateDemo')?.addEventListener('click',()=>{updateAvailable=false;renderUpdate();['#updStep2','#updStep3','#updStep4'].forEach(x=>{const el=$(x);if(el){el.className='badge';el.textContent='wartet'}});const s1=$('#updStep1');if(s1){s1.className='badge blue';s1.textContent='bereit'};window.toast?.('Update-Demo','Zurückgesetzt.');});
+  install?.addEventListener('click',()=>{
+    if(!updateAvailable)return; install.disabled=true; install.textContent='Installiere …';
+    const steps=[['#updStep2','Backup erstellt'],['#updStep3','installiert'],['#updStep4','PASS']];
+    steps.forEach((a,i)=>setTimeout(()=>{const el=$(a[0]);if(el){el.className='badge blue';el.textContent=a[1]}},350*(i+1)));
+    setTimeout(()=>{updateAvailable=false;renderUpdate();install.textContent='Update installieren';window.toast?.('Update abgeschlossen','Demo: Backup, Installation und Healthcheck erfolgreich.');},1500);
+  });
+  updateBtn?.addEventListener('click',()=>{const tab=$('[data-sys="updates"]');tab?.click();});
+  const oldToggle=$('#demoToggleUpdate'); if(oldToggle)oldToggle.onclick=()=>{updateAvailable=!updateAvailable;renderUpdate();window.toast?.('Update-Simulation',updateAvailable?'v12.19.1 verfügbar.':'Update zurückgesetzt.');};
+  renderUpdate();
+
+  function filterHours(){
+    const dept=$('#hoursDept')?.value||'all', status=$('#hoursStatus')?.value||'all', q=($('#hoursSearch')?.value||'').toLowerCase().trim();
+    let sums={av:0,plan:0,person:0,machine:0};
+    $$('[data-hours-row]').forEach(r=>{
+      const show=(dept==='all'||r.dataset.dept===dept)&&(status==='all'||r.dataset.status===status)&&(!q||(r.dataset.search||'').includes(q));
+      r.style.display=show?'':'none'; const detail=r.nextElementSibling;if(detail?.classList.contains('hoursDetail')&&!show){detail.style.display='none';detail.classList.remove('open')}
+      if(show){sums.av+=+(r.querySelector('[data-av]')?.dataset.av||0);sums.plan+=+(r.querySelector('[data-plan]')?.dataset.plan||0);sums.person+=+(r.querySelector('[data-person]')?.dataset.person||0);sums.machine+=+(r.querySelector('[data-machine]')?.dataset.machine||0)}
+    });
+    const f=n=>n.toLocaleString('de-DE',{minimumFractionDigits:1,maximumFractionDigits:1})+' h';
+    if($('#sumAvHours'))$('#sumAvHours').textContent=f(sums.av);if($('#sumPlanHours'))$('#sumPlanHours').textContent=f(sums.plan);if($('#sumActualPerson'))$('#sumActualPerson').textContent=f(sums.person);if($('#sumActualMachine'))$('#sumActualMachine').textContent=f(sums.machine);
+  }
+  ['#hoursDept','#hoursStatus'].forEach(id=>$(id)?.addEventListener('change',filterHours));$('#hoursSearch')?.addEventListener('input',filterHours);
+  $$('.hoursOpen').forEach(b=>b.addEventListener('click',()=>{const d=b.closest('tr')?.nextElementSibling;if(!d)return;const open=d.classList.toggle('open');d.style.display=open?'table-row':'none';b.textContent=open?'Schließen':'Details'}));
+  $('#hoursCsv')?.addEventListener('click',()=>{
+    const rows=[['FA','Projekt/Kunde','Bereich','Status','Soll/AV h','Plan Pers.-h','Ist Pers.-h','Ist Maschine h']];
+    $$('[data-hours-row]').filter(r=>r.style.display!=='none').forEach(r=>{const c=r.cells;rows.push([c[0].innerText.trim(),c[1].innerText.replace(/\n/g,' / ').trim(),c[2].innerText.trim(),c[3].innerText.trim(),c[4].innerText.trim(),c[5].innerText.trim(),c[6].innerText.trim(),c[7].innerText.trim()])});
+    const csv=rows.map(r=>r.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(';')).join('\n');
+    const blob=new Blob([csv],{type:'text/csv;charset=utf-8'}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='stundenauswertung_kalkulation_demo.csv';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),500);window.toast?.('CSV erstellt','Gefilterte Stundenauswertung exportiert.');
+  });
+  filterHours();
+})();
+</script>
+<script id="v8-system-js">
+(()=>{
+ const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
+ const esc=v=>String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+ const notify=(a,b,c)=>window.toast?window.toast(a,b,c):null;
+ // resource editor
+ const ed=$('#resourceEditor'); let editRow=null;
+ function openRes(row=null){editRow=row;ed?.classList.remove('hidden');$('#resourceEditorTitle').textContent=row?'Ressource bearbeiten':'Ressource anlegen';if(row){const c=row.cells;$('#resDept').value=c[0].innerText.trim();$('#resName').value=c[1].querySelector('b')?.textContent||'';$('#resType').value=c[2].innerText.trim();$('#resPlanning').value=c[3].innerText.trim().split(' / ')[0];$('#resCrew').value=parseInt(c[4].innerText)||1;$('#resShift').value=c[5].innerText.trim()}else{$('#resName').value='';$('#resCrew').value=1}}
+ $('#addResourceBtn')?.addEventListener('click',()=>openRes());$('#closeResourceEditor')?.addEventListener('click',()=>ed.classList.add('hidden'));$('#setupAddResource')?.addEventListener('click',()=>{document.querySelector('[data-sys="machines"]')?.click();openRes()});
+ function bindResourceRows(){$$('[data-edit-resource]').forEach(b=>b.onclick=()=>openRes(b.closest('tr')))}bindResourceRows();
+ $('#saveResourceBtn')?.addEventListener('click',()=>{const name=$('#resName').value.trim();if(!name)return notify('Name fehlt','Ressource benötigt einen Namen.','danger');const vals=[$('#resDept').value,name,$('#resType').value,$('#resPlanning').value,$('#resCrew').value,$('#resShift').value];if(editRow){editRow.cells[0].textContent=vals[0];editRow.cells[1].innerHTML='<b>'+esc(vals[1])+'</b>';editRow.cells[2].textContent=vals[2];editRow.cells[3].textContent=vals[3];editRow.cells[4].textContent=vals[4];editRow.cells[5].textContent=vals[5];notify('Ressource gespeichert',name)}else{const tr=document.createElement('tr');tr.dataset.resource='';tr.innerHTML=`<td>${esc(vals[0])}</td><td><b>${esc(vals[1])}</b></td><td>${esc(vals[2])}</td><td>${esc(vals[3])}</td><td>${esc(vals[4])}</td><td>${esc(vals[5])}</td><td><button class="btn" data-edit-resource>Bearbeiten</button></td>`;$('#resourceTable tbody').appendChild(tr);$('#resourceCount').textContent=$$('[data-resource]').length;notify('Ressource angelegt',name)}ed.classList.add('hidden');editRow=null;bindResourceRows()});
+ // departments
+ const depEd=$('#deptEditor');let depRow=null;
+ function openDep(row=null){depRow=row;depEd.classList.remove('hidden');if(row){$('#deptId').value=row.cells[0].innerText.trim();$('#deptId').disabled=true;$('#deptName').value=row.cells[1].innerText.trim();$('#deptPlanning').value=row.cells[2].innerText.trim()}else{$('#deptId').disabled=false;$('#deptId').value='';$('#deptName').value='';}}
+ $('#addDepartmentBtn')?.addEventListener('click',()=>openDep());$('#cancelDeptBtn')?.addEventListener('click',()=>depEd.classList.add('hidden'));
+ function bindDeps(){$$('[data-edit-dept]').forEach(b=>b.onclick=()=>openDep(b.closest('tr')));$$('[data-toggle-dept]').forEach(b=>b.onclick=()=>{const r=b.closest('tr'),badge=r.querySelector('.badge'),off=badge.textContent.includes('inaktiv');badge.textContent=off?'aktiv':'inaktiv';badge.classList.toggle('blue',off);b.textContent=off?'Deaktivieren':'Aktivieren';r.style.opacity=off?'1':'.58';notify(off?'Bereich aktiviert':'Bereich deaktiviert',r.cells[1].innerText.trim(),off?'':'warn')})}bindDeps();
+ $('#saveDeptBtn')?.addEventListener('click',()=>{const id=$('#deptId').value.trim().toLowerCase().replace(/[^a-z0-9_-]/g,''),name=$('#deptName').value.trim(),plan=$('#deptPlanning').value;if(!id||!name)return notify('Pflichtfelder fehlen','ID und Name eintragen.','danger');if(depRow){depRow.cells[1].innerHTML='<b>'+esc(name)+'</b>';depRow.cells[2].textContent=plan;notify('Bereich gespeichert',name)}else{const tr=document.createElement('tr');tr.dataset.dept='';tr.innerHTML=`<td><span class="codeTag">${esc(id)}</span></td><td><b>${esc(name)}</b></td><td>${esc(plan)}</td><td>—</td><td><span class="badge blue">aktiv</span></td><td><button class="btn" data-edit-dept>Bearbeiten</button> <button class="btn warn" data-toggle-dept>Deaktivieren</button></td>`;$('#departmentTable tbody').appendChild(tr);notify('Bereich angelegt',name)}depEd.classList.add('hidden');depRow=null;bindDeps()});
+ // project areas
+ $('#addProjectAreaBtn')?.addEventListener('click',()=>{const n=prompt('Name des Projektbereichs:','Musterbau');if(!n)return;const id=n.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'_').replace(/^_|_$/g,'').slice(0,30);const d=document.createElement('div');d.className='inventoryCard';d.innerHTML=`<div class="top"><div><h4>${esc(n)}</h4><small>${esc(id)}</small></div><button class="btn">Bearbeiten</button></div>`;$('#projectAreaGrid').appendChild(d);notify('Projektbereich angelegt',n)});
+ // pallet optional
+ $('#palletSwitch')?.addEventListener('click',e=>{$('#palletDesigner')?.classList.toggle('hidden',!e.currentTarget.classList.contains('on'))});
+ // setup flow
+ const steps=$$('.setupStep'), screens=$$('.setupScreen');let ix=0;
+ function showStep(n){ix=Math.max(0,Math.min(steps.length-1,n));steps.forEach((b,i)=>{b.classList.toggle('active',i===ix);b.classList.toggle('done',i<ix)});screens.forEach((x,i)=>x.classList.toggle('active',i===ix));$('#setupProgressText').textContent=`Schritt ${ix+1} von ${steps.length}`;$('#setupPrev').disabled=ix===0;$('#setupNext').style.visibility=ix===steps.length-1?'hidden':'visible'}
+ steps.forEach((b,i)=>b.onclick=()=>showStep(i));$('#setupPrev')?.addEventListener('click',()=>showStep(ix-1));$('#setupNext')?.addEventListener('click',()=>showStep(ix+1));showStep(0);
+ $('#validateConfigBtn')?.addEventListener('click',()=>notify('Konfiguration geprüft','Schema, Module, Bereiche, Ressourcen und Schichten: Demo PASS.'));
+ $('#finishSetupBtn')?.addEventListener('click',()=>{steps.forEach(b=>b.classList.add('done'));notify('Einrichtung abgeschlossen','Demo wechselt danach direkt in die reguläre Anwendung.');document.querySelector('[data-view="planning"]')?.click()});
+ // shifts/calendar
+ $('#saveScheduleRule')?.addEventListener('click',()=>{const d=document.createElement('div');d.className='task';d.style.gridTemplateColumns='1fr auto';d.innerHTML='<span><b>'+esc($('#ruleRes').value)+'</b> · KW 41 · '+esc($('#ruleRes').closest('.detailBlock').querySelectorAll('select')[2].value)+'</span><button class="btn">Entfernen</button>';d.querySelector('button').onclick=()=>d.remove();$('#scheduleRuleDemo').appendChild(d);notify('Schichtregel gespeichert','KW-Abweichung hinzugefügt.')});
+ $('#addExcV8')?.addEventListener('click',()=>{const d=document.createElement('div');d.className='task';d.style.gridTemplateColumns='1fr auto';d.innerHTML=`<span><b>${esc($('#excDateV8').value)}</b> · ${esc($('#excLabelV8').value)} · ${esc($('#excModeV8').value)}</span><button class="btn">Entfernen</button>`;d.querySelector('button').onclick=()=>d.remove();$('#excListV8').appendChild(d);notify('Kalendertag angelegt',$('#excLabelV8').value)});
+ $('#addBlockV8')?.addEventListener('click',()=>{const d=document.createElement('div');d.className='task';d.style.gridTemplateColumns='1fr auto';d.innerHTML=`<span><b>${esc($('#blockResV8').value)}</b> · ${esc($('#blockFromV8').value.replace('T',' '))} – ${esc($('#blockToV8').value.replace('T',' '))}<br><small>${esc($('#blockLabelV8').value)}</small></span><button class="btn">Entfernen</button>`;d.querySelector('button').onclick=()=>d.remove();$('#blockListV8').appendChild(d);notify('Sperrzeit angelegt',$('#blockLabelV8').value)});
+ $('#saveCompanyConfig')?.addEventListener('click',()=>notify('Firmenkonfiguration gespeichert','Demo: config/firma.json wäre atomar validiert und gesichert.'));
+ $('#addShiftBtn')?.addEventListener('click',()=>notify('Schichtvorlage','Demo: Neue Vorlage kann hier ergänzt werden.'));
+})();
+</script>
+
+
+<script>
+(()=>{
+ const $=q=>document.querySelector(q), esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+ const rights=[
+  ['projects','Projekte','rw',false],['fa','Fertigungsaufträge','rw',false],['planning','Planung & Produktion','rw',false],['personnel','Personal','rw',false],['formats','Formate / Tiefziehen','rw',false],['framework','Rahmenaufträge / Bedarf','rw',false],['postcalc','Stundenauswertung / Postcalc','rw',false],['kpi','GF / KPI','rw',false],['chat','Chat','rw',false],['history','Historie / Audit','r',false],['settings','Systemeinstellungen','rw',false],['users','Benutzerverwaltung','rw',false],['productionStart','Produktion starten / pausieren / fertigmelden','action',true],['editConfectionHours','Konfektionsstunden ändern','action',true],['manageDepartments','Bereiche & Ressourcen verwalten','action',true],['manageRoles','Rollen & Rechte verwalten','action',true],['updates','Updates installieren','action',true]
+ ];
+ const defaultPerm=(role)=>{
+  const none=Object.fromEntries(rights.map(([k,,,a])=>[k,a?false:'none']));
+  const set=(ks,v)=>ks.forEach(k=>none[k]=v);
+  if(role==='admin'){set(rights.filter(x=>!x[3]).map(x=>x[0]),'write');set(rights.filter(x=>x[3]).map(x=>x[0]),true)}
+  if(role==='gf'){set(['projects','fa','planning','personnel','framework','postcalc','kpi','history'],'read');set(['personnel'],'write')}
+  if(role==='production_planning'){set(['projects','fa','planning','formats','framework'],'write');set(['personnel','history'],'read');none.editConfectionHours=true}
+  if(role==='department_lead'){set(['fa','planning','personnel','formats','history'],'write');none.productionStart=true}
+  if(role==='department_deputy'){set(['fa','planning','personnel','formats','history'],'write');none.productionStart=true}
+  if(role==='project_management'){set(['projects','fa','history'],'write');set(['planning','personnel'],'read')}
+  if(role==='sales'){set(['projects'],'write');set(['fa','planning'],'read')}
+  if(role==='production'){set(['fa','planning'],'read');none.productionStart=true}
+  if(role==='viewer'){set(['projects','fa','planning'],'read')}
+  return none;
+ };
+ let roles=[
+  {id:'admin',name:'Admin',system:true,scope:'global',active:true,desc:'Administrative Vollrechte',perm:defaultPerm('admin')},
+  {id:'gf',name:'Geschäftsführung',system:true,scope:'global',active:true,desc:'Unternehmensweite Übersicht und Freigaben',perm:defaultPerm('gf')},
+  {id:'department_lead',name:'Abteilungsleiter',system:true,scope:'department',active:true,desc:'Operative Leitung des eigenen Bereichs',perm:defaultPerm('department_lead')},
+  {id:'department_deputy',name:'Stellv. Abteilungsleiter',system:true,scope:'department',active:true,desc:'Vertretung im eigenen Bereich',perm:defaultPerm('department_deputy')},
+  {id:'project_management',name:'Projektmanagement',system:true,scope:'global',active:true,desc:'Projektstamm und Projektstatus',perm:defaultPerm('project_management')},
+  {id:'production_planning',name:'Arbeitsvorbereitung',system:true,scope:'global',active:true,desc:'FA anlegen, Abteilungsfolge und Konfektionsstunden',perm:defaultPerm('production_planning')},
+  {id:'sales',name:'Vertrieb',system:true,scope:'global',active:true,desc:'Kundeneingänge und Projektstatus lesen',perm:defaultPerm('sales')},
+  {id:'production',name:'Produktion',system:true,scope:'department',active:true,desc:'Operative Produktionsaktionen',perm:defaultPerm('production')},
+  {id:'viewer',name:'Lesend',system:true,scope:'department',active:true,desc:'Nur Ansicht im erlaubten Scope',perm:defaultPerm('viewer')}
+ ];
