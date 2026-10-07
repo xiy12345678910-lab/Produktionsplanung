@@ -53,7 +53,6 @@ Testhinweis: E2E-Tests setzen die Browser-Zeitzone auf Europe/Berlin (wie `relea
 ## 4. Betrieb
 
 - Ab V12.19.0: Admin-Updatehinweis nur bei neuem freigegebenem Release, siehe `docs/ADMIN_UPDATES.md`.
-- Einmaliger Einstieg / manuelles IT-Update als normaler Windows-Benutzer (z. B. boensch): `Update_von_GitHub.ps1` (siehe README_Windows.txt 2b) – lädt das Paket, startet `UPDATE_LIVE.ps1` per UAC als Administrator.
-- Alternativ (Admin-PowerShell): Paket-ZIP des Branches laden, entpacken, `.\UPDATE_LIVE.ps1`.
+- Windows-Updates ausschließlich gemäß `README_Windows.txt` 2b: `Update_von_GitHub.ps1` aus normaler PowerShell – veröffentlichtes Release mit festem Commit auf `main`, Download und Prüfung nach UAC, anschließend `UPDATE_LIVE.ps1` durch den Updater.
 - Gelöschte Chat-Nachrichten bleiben bis zu 30 Tage in den Backups (60 Sicherungen).
 - Danach alle Browser mit Strg+F5 neu laden.

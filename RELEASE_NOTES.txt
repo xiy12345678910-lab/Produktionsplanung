@@ -1,6 +1,6 @@
 MASCHINENPLANUNG V12.19.1 - RELEASE NOTES
 =========================================
-Datum: 07.10.2026 · Basis: V12.19.0 · Update mit UPDATE_LIVE.ps1, Daten bleiben erhalten
+Datum: 07.10.2026 · Basis: V12.19.0 · Update gemäß README_Windows.txt 2b, Daten bleiben erhalten
 
 HOTFIXES #57–#62
 - AV erfasst einen FA mit Projekt/AB, Menge, Bereichsreihenfolge und Solltermin je Bereich.
@@ -21,6 +21,8 @@ HOTFIXES #57–#62
   Vorlagen mit Farbe/Barcode und Vorschau; abgeschaltete Funktion sperrt die API und erhält vorhandene Daten.
 - Scheduler-Selbsttest verwendet isolierte Standardschichten und Testmaschinen. Live-Daten sowie
   Schedulerreferenzen bleiben auch bei Fehlern unverändert; keine Speicherung oder Auditänderung.
+- Chat-Browserprüfung wartet beim Öffnen einer Direktnachricht auf das tatsächliche Ergebnis;
+  eine verzögerte Antwort verursacht dadurch keinen Fehlalarm nach einer festen 500-ms-Pause.
 - Abnahme und Messung: docs/V12_19_1.md. Lazy Loading und Blocks E–I sind separate Folgeschritte nach der Installation.
 
 MASCHINENPLANUNG V12.19.0 - RELEASE NOTES
