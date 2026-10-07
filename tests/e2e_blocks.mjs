@@ -72,9 +72,14 @@ async function login(page,user=USER,pass=PASS) {
   await page.goto(BASE);
   await page.fill('#loginUser', user);
   await page.fill('#loginPassword', pass);
+  await page.evaluate(() => {
+    const button=document.getElementById('loginBtn'),handler=button.onclick;
+    button.onclick=()=>window.__loginCompletion=handler();
+  });
   await page.click('#loginBtn');
+  await page.evaluate(() => window.__loginCompletion);
   await page.waitForFunction(() => !document.getElementById('loginModal').classList.contains('show'));
-  await page.waitForTimeout(400);
+  await page.waitForFunction(user => window.__t('lastServerState !== null && serverReachable') && window.__t('sessionUser.username') === user, user);
 }
 
 try {
@@ -91,22 +96,28 @@ try {
  const avctx=await browser.newContext({timezoneId:'Europe/Berlin'}),av=await avctx.newPage();await login(av,'avtest',PASS);
  await ev(av,()=>switchView('projects'));await av.click('#projectNew');await av.fill('#npCustomer','Testkunde');await av.fill('#npName','A-D Produktion');await av.click('#npCreate');await ev(av,async()=>{if(!await flushNow())throw new Error(document.getElementById('errorModal').textContent)});
  const project=await ev(av,()=>data.projects.find(p=>p.name==='A-D Produktion'));
+ if(!project)console.log('Projektzustand: '+JSON.stringify(await ev(av,()=>({projects:data.projects,lastServerProjects:lastServerState?.projects,remoteDirty,remoteSaving,remoteSaveError,serverMode,serverReachable,user:sessionUser,error:document.getElementById('errorModal').textContent}))));
  check(!!project?.id,'AV erstellt ein Projekt über die reale Oberfläche');
  await ev(av,id=>openProject(id),project.id);await av.fill('[data-pfield="ab"]','AB-4711');await av.fill('[data-pfield="dueDate"]','2026-10-30');await av.locator('[data-pfield="dueDate"]').blur();
- await ev(av,async()=>await flushNow());await av.locator('[data-project-go="accepted"]').click();await ev(av,async()=>await flushNow());await ev(av,()=>closeProject());
+ await ev(av,async()=>{if(!await flushNow())throw new Error('AV speichern: '+document.getElementById('errorModal').textContent)});await av.locator('[data-project-go="accepted"]').click();await ev(av,async()=>{if(!await flushNow())throw new Error('AV speichern: '+document.getElementById('errorModal').textContent)});await ev(av,()=>closeProject());
  check(await ev(av,id=>projectById(id).phase,project.id)==='accepted','AV übergibt das Projekt mit AB und Termin an die Produktion');
  for(const [fa,hours] of [['AV-4711-A','16'],['AV-4711-B','']]){
-  await ev(av,args=>openOrderDialog({projectId:args.pid,departmentId:args.departmentId}),{pid:project.id,departmentId:handoff.departmentId});await av.selectOption('#qMachine',handoff.id);await av.fill('#qFA',fa);await av.fill('#qHours',hours);await av.fill('#qQty','100');await av.click('#createOrder');await ev(av,async()=>await flushNow());
+  await ev(av,args=>openOrderDialog({projectId:args.pid,departmentId:args.departmentId}),{pid:project.id,departmentId:handoff.departmentId});await av.selectOption('#qMachine',handoff.id);await av.fill('#qFA',fa);await av.fill('#qHours',hours);await av.fill('#qQty','100');await av.click('#createOrder');await ev(av,async()=>{if(!await flushNow())throw new Error('AV speichern: '+document.getElementById('errorModal').textContent)});
  }
  check(await ev(av,id=>data.workSteps.filter(o=>o.projectId===id).length,project.id)===2,'AV legt mehrere FA mit Stunden und Menge am selben Projekt an');
  const second=await ev(av,()=>data.workSteps.find(o=>o.fa==='AV-4711-B').id);
  check(await ev(av,id=>calcSchedule()[id]?.conflict,second)==='Konfektionsstunden fehlen','Konfektions-FA ohne Stunden bleibt sichtbar und als fehlend markiert');
- await ev(av,id=>openProject(id),project.id);await av.locator(`[data-fexp="${second}"]`).click();await av.fill(`[data-fa-id="${second}"][data-fa-field="hours"]`,'8');await av.locator(`[data-fa-id="${second}"][data-fa-field="hours"]`).blur();await ev(av,async()=>await flushNow());
+ await ev(av,id=>openProject(id),project.id);await av.locator(`[data-fexp="${second}"]`).click();await av.fill(`[data-fa-id="${second}"][data-fa-field="hours"]`,'8');await av.locator(`[data-fa-id="${second}"][data-fa-field="hours"]`).blur();await ev(av,async()=>{if(!await flushNow())throw new Error('AV speichern: '+document.getElementById('errorModal').textContent)});
  check(await ev(av,id=>data.workSteps.find(o=>o.id===id).hours,second)===8,'AV ergänzt Konfektionsstunden direkt am bestehenden FA');await ev(av,()=>closeProject());
  await ev(page,async()=>await syncFromServer());
- await ev(page,async dep=>{await api('/api/users',{method:'POST',body:JSON.stringify({username:'leadtest',password:'Effort-Test-1234',role:'department_lead',departmentId:dep})});const m=data.machines.find(x=>x.departmentId!==dep);data.workSteps.push({id:'foreign_secret',fa:'SECRET-OTHER-AREA',departmentId:m.departmentId,machineId:m.id,planningType:'MACHINE',sequence:50,pos:50,order:'SECRET-OTHER-AREA',hours:1,targetQty:1,status:'planned',direction:'forward',anchorMode:'none',predecessorIds:[]});save('Bereichsfixture');return await flushNow()},handoff.departmentId);
- const leadctx=await browser.newContext({timezoneId:'Europe/Berlin'}),lead=await leadctx.newPage();await login(lead,'leadtest',PASS);
- check(await ev(lead,()=>data.workSteps.some(o=>o.fa==='AV-4711-A')&&!data.workSteps.some(o=>o.fa==='SECRET-OTHER-AREA')),'Bereich übernimmt AV-FA und erhält keine fremden FA vom Server');
+ await ev(page,async dep=>{await api('/api/users',{method:'POST',body:JSON.stringify({username:'leadtest',password:'Effort-Test-1234',role:'department_lead',departmentId:dep})});const m=data.machines.find(x=>x.departmentId!==dep);data.workSteps.push({id:'foreign_secret',fa:'SECRET-OTHER-AREA',departmentId:m.departmentId,machineId:m.id,planningType:'MACHINE',sequence:50,pos:50,order:'SECRET-OTHER-AREA',hours:1,targetQty:1,status:'planned',direction:'forward',anchorMode:'none',predecessorIds:[]});save('Bereichsfixture');if(!await flushNow())throw new Error('Fixture speichern: '+document.getElementById('errorModal').textContent);return true},handoff.departmentId);
+ const leadctx=await browser.newContext({timezoneId:'Europe/Berlin'}),lead=await leadctx.newPage();
+ let firstState=true;
+ await lead.route('**/api/state',async route=>{if(firstState&&route.request().method()==='GET'){firstState=false;await new Promise(resolve=>setTimeout(resolve,750))}await route.continue()});
+ await login(lead,'leadtest',PASS);
+ const handoffState=await ev(lead,async()=>{const snapshot=await api('/api/state');return {user:sessionUser,client:data.workSteps.map(x=>({fa:x.fa,departmentId:x.departmentId})),server:snapshot.body.data.workSteps.map(x=>({fa:x.fa,departmentId:x.departmentId}))}});
+ const handedOff=[handoffState.client,handoffState.server].every(steps=>steps.some(o=>o.fa==='AV-4711-A')&&!steps.some(o=>o.fa==='SECRET-OTHER-AREA'));
+ check(handedOff,'Bereich übernimmt AV-FA und erhält keine fremden FA vom Server'+(handedOff?'':' · '+JSON.stringify({handoff,handoffState})));
  check(await ev(lead,async()=>{const original=await api('/api/state');original.body.data.workSteps[0].hours=99;return (await api('/api/state',{method:'PUT',body:JSON.stringify({revision:original.body.revision,data:original.body.data})})).r.status})===403,'Manipulierte Bereichsanfrage kann die AV-Konfektionsstunden nicht ändern');
  await ev(lead,()=>{data.ui.week='2026-10-05';switchView('orders');renderAll()});
  const handed=await ev(lead,()=>data.workSteps.find(o=>o.fa==='AV-4711-A').id);
