@@ -41,8 +41,8 @@ with server.DB_LOCK, server.db_session() as con:
     old = json.loads(con.execute("SELECT json FROM state WHERE id=1").fetchone()["json"])
     new = json.loads(json.dumps(old))
     new["machines"].append({"id": "tz1", "name": "TZ 1", "departmentId": "thermoforming", "setupMinutes": 0, "start": "2026-09-07T06:30", "committedUntil": "", "defaultShiftMode": "1", "staffRequired": 1, "crew": 1})
-    def step(i, fs, qty):
-        return {"id": f"ws_tz{i}", "sequence": i * 10, "planningType": "MACHINE", "pos": i * 10, "departmentId": "thermoforming", "projectId": "", "predecessorIds": [], "fa": fs, "ab": "", "wt": "", "machineId": "tz1", "altMachineId": "", "allowAlternative": False, "order": fs, "articleNo": "", "description": f"Schale {i}", "targetQty": qty, "dueDate": "", "baselinePlan": None, "hours": 2, "goodQty": 0, "scrapQty": 0, "status": "planned", "direction": "forward", "anchorMode": "none", "requiredStart": "", "requiredFinish": "", "createdAt": "2026-10-01T08:00:00Z", "lockedStart": "", "lockedSegments": [], "actualStartedAt": "", "runningSince": "", "pausedAt": "", "pauseIntervals": [], "remainingHours": None, "lastStatusCheckAt": ""}
+    def step(i, fa, qty):
+        return {"id": f"ws_tz{i}", "sequence": i * 10, "planningType": "MACHINE", "pos": i * 10, "departmentId": "thermoforming", "projectId": "", "predecessorIds": [], "fa": fa, "ab": "", "wt": "", "machineId": "tz1", "altMachineId": "", "allowAlternative": False, "order": fa, "articleNo": "", "description": f"Schale {i}", "targetQty": qty, "dueDate": "", "baselinePlan": None, "hours": 2, "goodQty": 0, "scrapQty": 0, "status": "planned", "direction": "forward", "anchorMode": "none", "requiredStart": "", "requiredFinish": "", "createdAt": "2026-10-01T08:00:00Z", "lockedStart": "", "lockedSegments": [], "actualStartedAt": "", "runningSince": "", "pausedAt": "", "pauseIntervals": [], "remainingHours": None, "lastStatusCheckAt": ""}
     new["workSteps"] += [step(1, "FA 7001", 100), step(2, "FA 7002", 60)]
     ok, code, reason = server.validate_state(old, new)
     if not ok:

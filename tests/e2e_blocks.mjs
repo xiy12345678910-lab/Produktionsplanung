@@ -24,7 +24,8 @@ const near = (a, b, eps = 0.01) => Math.abs(a - b) < eps;
 
 const dataDir = mkdtempSync(path.join(tmpdir(), 'mp-effort-'));
 const py = `
-import ipaddress, sys
+import ipaddress, sys, time
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 sys.path.insert(0, ${JSON.stringify(SRC)})
 import server
@@ -32,7 +33,8 @@ server.DATA_DIR = Path(${JSON.stringify(dataDir)})
 server.DB_PATH = server.DATA_DIR / "maschinenplanung.sqlite3"
 server.ALLOWED_NETWORK = ipaddress.ip_network("127.0.0.0/8")
 server.init_db(seed="werbetechnik")
-server.now_iso = lambda: '2026-10-07T05:00:00Z'
+clock_start = time.monotonic()
+server.now_iso = lambda: (datetime(2026,10,7,5,tzinfo=timezone.utc)+timedelta(seconds=time.monotonic()-clock_start)).isoformat(timespec='seconds').replace('+00:00','Z')
 server.create_or_reset_admin(${JSON.stringify(USER)}, ${JSON.stringify(PASS)})
 httpd = server.MPHTTPServer(("127.0.0.1", ${PORT}), server.Handler)
 print("READY", flush=True)
@@ -82,12 +84,12 @@ try {
  await page.selectOption('#newUserRole','department_lead');check(await page.locator('#newUserDepartment').isVisible(),'Bereichsrolle: Bereichsfeld sichtbar');
  await page.selectOption('#newUserRole','admin');check(!(await page.locator('#newUserDepartment').isVisible()),'Globale Rolle: Bereichsfeld ausgeblendet');
  check(await page.locator('[data-user-delete]').count()===0,'Eigenes Konto hat keine Löschaktion');
- const dep=await ev(page,()=>data.departments[0].id);
+ const runtimeMachineId=await ev(page,()=>data.machines[0].id);
  const created=await ev(page,async()=>{const r=await api('/api/users',{method:'POST',body:JSON.stringify({username:'avtest',password:'Effort-Test-1234',role:'production_planning',departmentId:data.departments[0].id})});return r.body});
  check(created.departmentId==='','Globale Rolle entfernt früheren Bereich serverseitig');
  const handoff=await ev(page,async()=>{const m=data.machines.find(x=>x.kind==='line');m.crew=4;m.crewMax=4;m.effortScaling=true;m.start='2026-10-05T06:30';save('Konfektionslinie');await flushNow();return {id:m.id,departmentId:m.departmentId}});
  const avctx=await browser.newContext({timezoneId:'Europe/Berlin'}),av=await avctx.newPage();await login(av,'avtest',PASS);
- await ev(av,()=>switchView('projects'));await av.click('#projectNew');await av.fill('#npCustomer','Testkunde');await av.fill('#npName','A-D Produktion');await av.click('#npCreate');await ev(av,async()=>await flushNow());
+ await ev(av,()=>switchView('projects'));await av.click('#projectNew');await av.fill('#npCustomer','Testkunde');await av.fill('#npName','A-D Produktion');await av.click('#npCreate');await ev(av,async()=>{if(!await flushNow())throw new Error(document.getElementById('errorModal').textContent)});
  const project=await ev(av,()=>data.projects.find(p=>p.name==='A-D Produktion'));
  check(!!project?.id,'AV erstellt ein Projekt über die reale Oberfläche');
  await ev(av,id=>openProject(id),project.id);await av.fill('[data-pfield="ab"]','AB-4711');await av.fill('[data-pfield="dueDate"]','2026-10-30');await av.locator('[data-pfield="dueDate"]').blur();
@@ -117,7 +119,7 @@ try {
  await page.route('**/api/state',async route=>{if(route.request().method()!=='GET')return route.continue();const response=await route.fetch();await new Promise(resolve=>setTimeout(resolve,200));await route.fulfill({response})});
  const preserved=await ev(page,async()=>{const pending=syncFromServer();await new Promise(resolve=>setTimeout(resolve,30));data.workSteps[0].description='Lokale Bearbeitung erhalten';save('Bearbeitung');await pending;return data.workSteps[0].description==='Lokale Bearbeitung erhalten'});
  check(preserved,'Bereits laufender Datenabruf überschreibt keine neue Bearbeitung');await ev(page,async()=>await flushNow());await page.unroute('**/api/state');
- const prepared=await ev(page,async pid=>{const m=data.machines[0];m.start='2026-10-05T06:30';m.setupMinutes=0;m.kind='line';m.crew=4;m.crewMax=4;m.effortScaling=true;m.staffRequired=0;data.personnelGate=false;data.palletTemplates=[{id:'real_tpl',name:'Versand',fromAddress:'Testfirma',toAddress:'Testkunde',shelfLifeDays:30}];data.workSteps.push({id:'runtime_fa',fa:'4711',faNumber:'4711',sourceType:'PROJECT',sourceId:pid,projectId:pid,departmentId:m.departmentId,planningType:'MACHINE',sequence:30,pos:30,machineId:m.id,altMachineId:'',allowAlternative:false,order:'4711',ab:'',wt:'',predecessorIds:[],hours:8,targetQty:100,articleNo:'ART-1',description:'Testartikel',status:'planned',direction:'forward',anchorMode:'none',requiredStart:'',requiredFinish:'',baselinePlan:null});if(!save('FA angelegt')||!await flushNow())return false;const loaded=await api('/api/state');if(!loaded.body.data.workSteps.some(x=>x.id==='runtime_fa'))throw new Error(document.getElementById('errorModal').textContent);return true},project.id);
+ const prepared=await ev(page,async args=>{const pid=args.pid,m=data.machines.find(x=>x.id===args.mid);m.start='2026-10-05T06:30';m.setupMinutes=0;m.kind='line';m.crew=4;m.crewMax=4;m.effortScaling=true;m.staffRequired=0;data.personnelGate=false;data.palletTemplates=[{id:'real_tpl',name:'Versand',fromAddress:'Testfirma',toAddress:'Testkunde',shelfLifeDays:30}];data.workSteps.push({id:'runtime_fa',fa:'4711',faNumber:'4711',sourceType:'PROJECT',sourceId:pid,projectId:pid,departmentId:m.departmentId,planningType:'MACHINE',sequence:30,pos:30,machineId:m.id,altMachineId:'',allowAlternative:false,order:'4711',ab:'',wt:'',predecessorIds:[],hours:8,targetQty:100,articleNo:'ART-1',description:'Testartikel',status:'planned',direction:'forward',anchorMode:'none',requiredStart:'',requiredFinish:'',baselinePlan:null});if(!save('FA angelegt')||!await flushNow())return false;const loaded=await api('/api/state');if(!loaded.body.data.workSteps.some(x=>x.id==='runtime_fa'))throw new Error(document.getElementById('errorModal').textContent);return true},{pid:project.id,mid:runtimeMachineId});
  check(prepared,'Kanonischer FA mit Projekt- und Bereichsreferenz gespeichert');
  const released=await ev(page,async()=>{const o=data.workSteps.find(x=>x.id==='runtime_fa');if(!releaseOrder(o)||!save('Freigabe'))return false;return await flushNow()});
  check(released,'Ein gemeinsamer Scheduler gibt den FA frei');

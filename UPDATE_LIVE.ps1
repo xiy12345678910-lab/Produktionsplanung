@@ -71,7 +71,8 @@ try {
     if (-not $HaveMutex) { throw 'MP-UPD-002: Ein anderes Update laeuft bereits.' }
     Set-MPUpdateStage 'backup'
     Write-Host '1/9 Online-Datenbankbackup ...'
-    & $PythonExe (Join-Path $OldBase 'Backup_Datenbank.py')
+    # Use this package's backup code: legacy installations may not yet back up firma.json.
+    & $PythonExe -I (Join-Path $NewSource 'Backup_Datenbank.py') --base $OldBase
     if ($LASTEXITCODE -notin @(0, 2)) { throw 'Online-Datenbankbackup fehlgeschlagen.' }
 
     Write-Host '2/9 Vorabtest: neue Version mit einer Datenkopie starten (Live bleibt unberuehrt) ...'
@@ -104,7 +105,7 @@ try {
     Stop-MPServer $OldBase
 
     Write-Host '4/9 Finales Backup nach Stopp ...'
-    & $PythonExe (Join-Path $OldBase 'Backup_Datenbank.py')
+    & $PythonExe -I (Join-Path $NewSource 'Backup_Datenbank.py') --base $OldBase
     if ($LASTEXITCODE -notin @(0, 2)) { throw 'Finales Datenbankbackup fehlgeschlagen.' }
     $FinalBackup = Get-ChildItem (Join-Path $OldBase 'backups') -File -Filter 'maschinenplanung_*.sqlite3' |
         Sort-Object LastWriteTime -Descending | Select-Object -First 1

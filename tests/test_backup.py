@@ -14,6 +14,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import zipfile
 from pathlib import Path
 
 SRC = Path(__file__).resolve().parents[1]
@@ -110,6 +111,16 @@ os.utime(stale, (old, old))
 time.sleep(1.1)
 run()
 check(not stale.exists(), "Abgebrochene .tmp-Sicherung (> 1 h) wird entfernt")
+
+# Bootstrap upgrades use the new backup script before replacing old application files.
+(tmp / "config").mkdir()
+(tmp / "config" / "firma.json").write_text('{"company":{"name":"Bestandsfirma"}}', encoding="utf-8")
+r = subprocess.run([sys.executable, "-I", str(SRC / "Backup_Datenbank.py"), "--base", str(tmp)], capture_output=True, text=True,
+                   env={**os.environ, "MP_CONFIG_DIR": str(tmp / "irrelevant")}, timeout=120)
+profile_backups = list((tmp / "backups").glob("firma_*.zip"))
+check(r.returncode == 0 and len(profile_backups) == 1, "Neues Backupskript sichert alten Installationsordner samt Firmenprofil")
+with zipfile.ZipFile(profile_backups[0]) as z:
+    check(z.testzip() is None and b"Bestandsfirma" in z.read("firma.json"), "Bootstrap-Firmenprofilbackup enthält die tatsächliche Live-Konfiguration")
 
 shutil.rmtree(tmp, ignore_errors=True)
 failed = [x for x in RESULTS if not x[0]]

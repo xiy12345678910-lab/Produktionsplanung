@@ -13,6 +13,7 @@
 
 Aufruf:
   Backup_Datenbank.py                     Sicherung anlegen
+  Backup_Datenbank.py --base <ordner>     Sicherung mit diesem Skript fuer einen alten Installationsordner
   Backup_Datenbank.py --restore <datei>   Sicherung zurückspielen (Server vorher stoppen!
                                           -> Restore_Datenbank.ps1 erledigt Stopp/Start)
   Backup_Datenbank.py --restore-config <zip>  config\ aus firma_*.zip zurückspielen (aktuelle Datei vorher als .bak)
@@ -211,7 +212,12 @@ def restore_config(src: Path) -> int:
 
 
 def main(argv: list[str]) -> int:
+    global base, db, out, cfg_dir
     try:
+        if len(argv) == 2 and argv[0] == "--base":
+            base = Path(argv[1]).resolve()
+            db, out, cfg_dir = base / "data" / "maschinenplanung.sqlite3", base / "backups", base / "config"
+            argv = []
         if len(argv) == 2 and argv[0] == "--restore":
             return restore(Path(argv[1]))
         if len(argv) == 2 and argv[0] == "--restore-config":

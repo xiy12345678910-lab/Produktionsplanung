@@ -37,8 +37,8 @@ def state():
     return copy.deepcopy(BASE)
 
 
-def step(sid, fs, mid, dep, **kw):
-    x = {"id": sid, "sequence": 10, "planningType": "MACHINE", "pos": 10, "departmentId": dep, "projectId": "", "predecessorIds": [], "fa": fs, "ab": "", "wt": "", "machineId": mid, "altMachineId": "", "allowAlternative": False, "order": fs, "hours": 2, "status": "planned", "direction": "forward", "anchorMode": "none"}
+def step(sid, fa, mid, dep, **kw):
+    x = {"id": sid, "sequence": 10, "planningType": "MACHINE", "pos": 10, "departmentId": dep, "projectId": "", "predecessorIds": [], "fa": fa, "ab": "", "wt": "", "machineId": mid, "altMachineId": "", "allowAlternative": False, "order": fa, "hours": 2, "status": "planned", "direction": "forward", "anchorMode": "none"}
     x.update(kw)
     return x
 

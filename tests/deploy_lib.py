@@ -298,9 +298,9 @@ def seed(url: str, admin_user: str, admin_pw: str, scenario: str = "ci") -> dict
     _expect(len(cnc) >= 2, "CNC-Maschinen im Datenstand")
 
     def step(i, dep, mid, **kw):
-        fs = f"FA 80{i:02d}"
+        fa = f"FA 80{i:02d}"
         x = {"id": f"ws_up{i}", "sequence": i * 10, "planningType": "MACHINE", "pos": i * 10, "departmentId": dep, "projectId": "", "predecessorIds": [],
-             "fa": fs, "ab": "AB-777", "wt": "", "machineId": mid, "altMachineId": "", "allowAlternative": False, "order": fs, "articleNo": f"Ä-{i}",
+             "fa": fa, "ab": "AB-777", "wt": "", "machineId": mid, "altMachineId": "", "allowAlternative": False, "order": fa, "articleNo": f"Ä-{i}",
              "description": f"Gehäuse Größe {i} (Übergröße)", "targetQty": 20 + i, "dueDate": "2026-11-20", "baselinePlan": None, "hours": 4.5 + i,
              "goodQty": 0, "scrapQty": 0, "status": "planned", "direction": "forward", "anchorMode": "none", "requiredStart": "", "requiredFinish": "",
              "createdAt": "2026-10-01T08:00:00Z", "lockedStart": "", "lockedSegments": [], "actualStartedAt": "", "runningSince": "", "pausedAt": "",

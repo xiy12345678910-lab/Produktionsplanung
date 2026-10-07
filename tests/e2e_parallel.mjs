@@ -38,8 +38,8 @@ with server.DB_LOCK, server.db_session() as con:
     new = json.loads(json.dumps(old))
     new["machines"].append({"id": "k1", "name": "Linie K1", "departmentId": "konf1", "kind": "line", "crew": 1, "lanes": 2, "setupMinutes": 0, "start": "2026-09-07T06:30", "committedUntil": "", "defaultShiftMode": "1", "staffRequired": 0})
     def step(i):
-        fs = f"FA 800{i}"
-        return {"id": f"ws_k{i}", "sequence": i * 10, "planningType": "MACHINE", "pos": i * 10, "departmentId": "konf1", "projectId": "", "predecessorIds": [], "fa": fs, "ab": "", "wt": "", "machineId": "k1", "altMachineId": "", "allowAlternative": False, "order": fs, "articleNo": "", "description": "", "targetQty": 0, "dueDate": "", "baselinePlan": None, "hours": 4, "goodQty": 0, "scrapQty": 0, "status": "planned", "direction": "forward", "anchorMode": "none", "requiredStart": "", "requiredFinish": "", "createdAt": "2026-10-01T08:00:00Z", "lockedStart": "", "lockedSegments": [], "actualStartedAt": "", "runningSince": "", "pausedAt": "", "pauseIntervals": [], "remainingHours": None, "lastStatusCheckAt": ""}
+        fa = f"FA 800{i}"
+        return {"id": f"ws_k{i}", "sequence": i * 10, "planningType": "MACHINE", "pos": i * 10, "departmentId": "konf1", "projectId": "", "predecessorIds": [], "fa": fa, "ab": "", "wt": "", "machineId": "k1", "altMachineId": "", "allowAlternative": False, "order": fa, "articleNo": "", "description": "", "targetQty": 0, "dueDate": "", "baselinePlan": None, "hours": 4, "goodQty": 0, "scrapQty": 0, "status": "planned", "direction": "forward", "anchorMode": "none", "requiredStart": "", "requiredFinish": "", "createdAt": "2026-10-01T08:00:00Z", "lockedStart": "", "lockedSegments": [], "actualStartedAt": "", "runningSince": "", "pausedAt": "", "pauseIntervals": [], "remainingHours": None, "lastStatusCheckAt": ""}
     new["workSteps"] += [step(1), step(2), step(3)]
     ok, code, reason = server.validate_state(old, new)
     if not ok:
@@ -110,13 +110,13 @@ try {
 
   // Zwei Aufträge freigeben: Server prüft MP-PLAN-058 spurfähig
   p = await plan();
-  for (const fs of ['FA 8001', 'FA 8002']) {
-    await page.locator(`#ordersBody tr:has(strong:text-is("${fs}")) [data-act="prodstart"]`).click();
+  for (const fa of ['FA 8001', 'FA 8002']) {
+    await page.locator(`#ordersBody tr:has(strong:text-is("${fa}")) [data-act="prodstart"]`).click();
     await page.waitForSelector('#prodStartModal.show, .modal.show #psReleaseOnly', { timeout: 5000 }).catch(() => {});
     await page.click('#psReleaseOnly');
     await page.waitForTimeout(300);
     const em = await page.evaluate(() => document.getElementById('errorModal')?.classList.contains('show') ? document.getElementById('errorModal').innerText.replace(/\s+/g, ' ') : '');
-    if (em) { console.log('MELDUNG', fs, em.slice(0, 300)); await page.keyboard.press('Escape'); }
+    if (em) { console.log('MELDUNG', fa, em.slice(0, 300)); await page.keyboard.press('Escape'); }
     await page.waitForTimeout(900);
   }
   st = await serverState(page);

@@ -130,9 +130,9 @@ def audit_entry(new, actor):
 
 def res_of(n, dep):
     return next(m["id"] for m in n["machines"] if m.get("departmentId") == dep)
-def mstep(n, sid, fs, dep, hours, **kw):
+def mstep(n, sid, fa, dep, hours, **kw):
     pos = max([float(x.get("pos") or 0) for x in n["workSteps"]] + [0]) + 10
-    base = {"id": sid, "projectId": "", "fa": fs, "ab": "", "wt": "", "order": fs, "departmentId": dep, "planningType": "MACHINE", "sequence": 50000 + pos,
+    base = {"id": sid, "projectId": "", "fa": fa, "ab": "", "wt": "", "order": fa, "departmentId": dep, "planningType": "MACHINE", "sequence": 50000 + pos,
             "predecessorIds": [], "pos": pos, "machineId": res_of(n, dep), "altMachineId": "", "allowAlternative": False, "articleNo": "", "description": "",
             "targetQty": 0, "dueDate": "", "baselinePlan": None, "hours": hours, "goodQty": 0, "scrapQty": 0, "status": "planned", "direction": "forward",
             "anchorMode": "none", "requiredStart": "", "requiredFinish": "", "createdAt": server.now_iso(), "lockedStart": "", "lockedSegments": [],
@@ -249,7 +249,7 @@ s, code, _ = put(A, lambda n: next(y for y in n["workSteps"] if y["id"] == "ws_k
 AV = login("t_av")
 def av_cnc(n):
     o = copy.deepcopy(next(x for x in n["workSteps"] if x["planningType"] == "MACHINE" and x["status"] == "planned"))
-    o.update(id="ws_av_cnc", fs="FA AV1", order="FA AV1", pos=max(float(x.get("pos") or 0) for x in n["workSteps"] if x["planningType"] == "MACHINE") + 10,
+    o.update(id="ws_av_cnc", fa="FA AV1", faNumber="FA AV1", sourceId="ws_av_cnc", order="FA AV1", pos=max(float(x.get("pos") or 0) for x in n["workSteps"] if x["planningType"] == "MACHINE") + 10,
              sequence=9001, createdAt=server.now_iso(), direction="forward", anchorMode="none", requiredStart="", requiredFinish="")
     n["workSteps"].append(o); audit_entry(n, "t_av")
 s, code, _ = put(AV, av_cnc); check(s == 200, f"Arbeitsvorbereitung legt CNC-Auftrag an ({s} {code})")
