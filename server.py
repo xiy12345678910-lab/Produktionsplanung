@@ -54,7 +54,8 @@ CONFIG_SCHEMA = 1
 CONFIG_KEEP_BAK = 20
 CONFIG_LOGO_MAX = 420 * 1024
 CONFIG_LOCK = threading.RLock()
-CONFIG_MODULES = ("projects", "formats", "personnel", "chat", "notifications", "postcalc", "kpi")
+CONFIG_MODULES = ("projects", "formats", "personnel", "chat", "notifications", "postcalc", "kpi", "palletLabels")
+CONFIG_MODULE_DEFAULTS = {k: True for k in CONFIG_MODULES} | {"palletLabels": False}
 CONFIG_TEMPLATES = {"werbetechnik", "neutral", "metall_cnc", "leer", "demo"}
 CONFIG_HEX = re.compile(r"^#[0-9a-fA-F]{6}$")
 CONFIG_TENANT = re.compile(r"^[a-z0-9-]{3,32}$")
@@ -83,7 +84,7 @@ def config_defaults() -> dict:
         "locale": {"language": "de", "timezone": "Europe/Berlin", "holidayRegion": ""},
         "terms": {"projectNumber": "Projekt", "orderNumber": "Auftrag", "roleLabels": {}},
         "template": "neutral",
-        "modules": {k: True for k in CONFIG_MODULES},
+        "modules": dict(CONFIG_MODULE_DEFAULTS),
         "projectAreas": [dict(a) for a in CONFIG_PROJECT_AREAS],
         "license": {"file": "lizenz.key"},
         "update": {"channel": "stable", "source": ""},
@@ -630,7 +631,7 @@ def public_config(cfg: dict | None = None) -> dict:
 # die Daten bleiben vollständig erhalten. kpi hängt an postcalc (aus -> auch kpi aus).
 # ---------------------------------------------------------------------------------------------
 MODULE_LABELS = {"projects": "Projekte", "formats": "Formate", "personnel": "Personal", "chat": "Nachrichten",
-                 "notifications": "Benachrichtigungen", "postcalc": "Auswertung", "kpi": "Kennzahlen"}
+                 "notifications": "Benachrichtigungen", "postcalc": "Auswertung", "kpi": "Kennzahlen", "palletLabels": "Palettenetiketten"}
 MODULE_DEPS = {"kpi": ("postcalc",)}
 # Datensammlungen im Datenstand, die ein Modul besitzt (Schreiben nur bei eingeschaltetem Modul).
 MODULE_STATE_KEYS = {
@@ -638,12 +639,13 @@ MODULE_STATE_KEYS = {
     "formats": ("formats", "baseFormats"),
     "personnel": ("employees", "personnelAssignments", "personnelAbsences", "weeklyEmployeeDeployments",
                   "departmentStaffNeeds", "personnelGate"),
+    "palletLabels": ("palletTemplates", "palletLabels"),
 }
 
 
 def modules_effective(cfg: dict | None = None) -> dict:
     cfg = cfg or current_config()
-    m = {**{k: True for k in CONFIG_MODULES}, **{k: v for k, v in (cfg.get("modules") or {}).items() if k in CONFIG_MODULES}}
+    m = {**CONFIG_MODULE_DEFAULTS, **{k: v for k, v in (cfg.get("modules") or {}).items() if k in CONFIG_MODULES}}
     for k, deps in MODULE_DEPS.items():
         if not all(m.get(d, True) for d in deps):
             m[k] = False
@@ -651,7 +653,7 @@ def modules_effective(cfg: dict | None = None) -> dict:
 
 
 def module_on(name: str) -> bool:
-    return bool(modules_effective().get(name, True))
+    return bool(modules_effective().get(name, CONFIG_MODULE_DEFAULTS.get(name, True)))
 
 
 def module_error(name: str) -> dict:
@@ -2675,12 +2677,7 @@ def validate_state(old: dict, new: dict) -> tuple[bool, str, str]:
         for rec in new.get(name) or []:
             if isinstance(rec, dict) and dept_kinds.get(str(rec.get("departmentId") or dd), "production") != "production":
                 return False, "MP-DEPT-004", f"Bereich '{rec.get('departmentId')}' ist kein Produktionsbereich – {what} nicht zulässig."
-    old_inactive = {str(d.get("id")) for d in (old.get("departments") or []) if isinstance(d, dict) and d.get("active") is False}
-    for dep in departments:
-        if dep.get("active") is False and str(dep.get("id")) not in old_inactive:
-            did = str(dep.get("id"))
-            if any(isinstance(x, dict) and str(x.get("departmentId")) == did and str(x.get("status") or "planned") in {"planned", "released", "running", "paused"} for x in work_steps if isinstance(work_steps, list)):
-                return False, "MP-DEPT-006", f"Bereich '{dep.get('name') or did}' hat noch offene Aufträge und kann nicht deaktiviert werden."
+    # Deactivation is additive and keeps every linked order/resource/history record intact.
 
     if not isinstance(projects, list):
         return False, "MP-PM-001", "Projekt-/Auftragsstamm ist ungültig."
@@ -4665,7 +4662,7 @@ def template_apply(user: dict, body: dict) -> tuple[int, dict]:
         changed = canonical({k: v for k, v in new.items() if k != "meta"}) != canonical({k: v for k, v in old.items() if k != "meta"})
         cfg_now = current_config()
         tmods = tpl.get("modules") if isinstance(tpl.get("modules"), dict) else {}
-        mod_changes = {k: bool(v) for k, v in tmods.items() if k in CONFIG_MODULES and (cfg_now.get("modules") or {}).get(k, True) != bool(v)} if want_modules else {}
+        mod_changes = {k: bool(v) for k, v in tmods.items() if k in CONFIG_MODULES and (cfg_now.get("modules") or {}).get(k, CONFIG_MODULE_DEFAULTS[k]) != bool(v)} if want_modules else {}
         summary["modules"] = mod_changes
         # V12.17.0: Projektbereiche der Vorlage werden nur ergänzt (nie entfernt oder umbenannt).
         have_pa = cfg_now.get("projectAreas") or CONFIG_PROJECT_AREAS
@@ -5164,6 +5161,8 @@ class Handler(BaseHTTPRequestHandler):
             user = self.require_user(["admin", *DEPARTMENT_ROLES, "production"])
             if not user or not self.require_current_client():
                 return
+            if production_path.group(2) == "label" and not module_on("palletLabels"):
+                return self.json_response(403, module_error("palletLabels"))
             request_id = body.get("requestId")
             if not isinstance(request_id, str) or not re.fullmatch(r"[A-Za-z0-9_-]{8,100}", request_id):
                 return self.json_response(400, mp_error("MP-PROD-050", "Stabile Request-ID erforderlich."))
@@ -5454,6 +5453,9 @@ class Handler(BaseHTTPRequestHandler):
             normalize_fa_state(incoming)
             unredact_incoming(old, incoming, user)
             strip_archived_history(con, old, incoming)
+            if user["role"] != "admin" and canonical(old.get("palletTemplates")) != canonical(incoming.get("palletTemplates")):
+                con.execute("ROLLBACK")
+                return self.json_response(403, mp_error("MP-AUTH-002", "Etikettenvorlagen dürfen nur Admins verwalten."))
             for key in ("productionEvents", "palletLabels", "inventory"):
                 if canonical(old.get(key)) != canonical(incoming.get(key)):
                     return self.json_response(403, mp_error("MP-PROD-041", "Produktionsbuchungen erfolgen über die Produktionsaktionen."))
