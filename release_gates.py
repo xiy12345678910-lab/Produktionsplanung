@@ -243,30 +243,54 @@ def can_staff(state,e,mid,day):
             and mid in {str(x) for x in e.get("skills") or []})
 
 
-def daily_hours(e,day):
+def daily_hours(e,day,templates=None):
     days=e.get("workingDays",[1,2,3,4,5])
     if day.isoweekday() not in days:
         return 0.0
     values=e.get("dailyHours") or {}
-    return float(values.get(str(day.isoweekday()),float(e.get("weeklyHours",40))/max(1,len(days))))
+    weekly=max(0.0,float(e.get("weeklyHours",40)))
+    if str(day.isoweekday()) in values:
+        return max(0.0,float(values[str(day.isoweekday())]))
+    unset=[d for d in days if str(d) not in values]
+    remaining=max(0.0,weekly-sum(float(v) for v in values.values()))
+    if values:
+        return remaining/max(1,len(unset)) if day.isoweekday() in unset else 0.0
+    def weight(d):
+        key="fridaySingle" if d==5 else "single"
+        t=(templates or {}).get(key) or {}
+        a,z=clock_minutes(t.get("start")),clock_minutes(t.get("end"))
+        if a is None or z is None or z<=a:
+            return 5.0 if d==5 else 8.75
+        pauses=sum((clock_minutes(b.get("end")) or 0)-(clock_minutes(b.get("start")) or 0) for b in t.get("breaks") or [] if b.get("start") and b.get("end"))
+        return max(0.0,(z-a-pauses)/60)
+    if days==[1,2,3,4,5]:
+        if weekly==40.0: return weight(day.isoweekday())
+        return weekly/len(days)
+    total=sum(weight(d) for d in days)
+    return weekly*weight(day.isoweekday())/total if total else 0.0
 
 
-def limit_assignment(e,a,day):
+def limit_assignment(e,a,day,templates=None):
     if not a:
         return None
-    limit=daily_hours(e,day)*60
+    limit=round(daily_hours(e,day)*60)
     start,end=clock_minutes(a.get("start")),clock_minutes(a.get("end"))
     if limit<=0 or start is None or end is None:
         return None
     breaks=[(clock_minutes(b.get("start")),clock_minutes(b.get("end"))) for b in a.get("breaks") or []]
-    used=0;stop=start
-    for minute in range(start,end):
-        if not any(x is not None and y is not None and x<=minute<y for x,y in breaks):
-            if used>=limit:
-                break
-            used+=1
-        stop=minute+1
-    return {**a,"end":f"{stop//60:02d}:{stop%60:02d}","breaks":[b for b in a.get("breaks") or [] if clock_minutes(b.get("end")) is not None and clock_minutes(b["end"])<=stop]}
+    valid=sorted((x,y) for x,y in breaks if x is not None and y is not None and y>x)
+    cursor=start; used=0.0
+    for bs,be in valid:
+        lo,hi=max(cursor,bs),min(end,be)
+        if hi<=lo: continue
+        work=lo-cursor
+        if used+work>=limit:
+            cursor+=limit-used
+            break
+        used+=work; cursor=hi
+    else:
+        cursor+=min(end-cursor,max(0.0,limit-used))
+    return {**a,"end":f"{int(cursor)//60:02d}:{int(cursor)%60:02d}","breaks":[b for b in a.get("breaks") or [] if clock_minutes(b.get("end")) is not None and clock_minutes(b["end"])<=cursor]}
 
 
 def explicit_assignment(state,eid,dk):
@@ -318,13 +342,14 @@ def home_assignment(state,e,day,dk):
     else:
         shift=e.get("homeShift") if e.get("homeShift") in {"early","late"} else auto_home_shift(state,e,day,dk,m)
     ts=state.get("shiftTemplates") or {}
-    t=(ts.get("fridaySingle") if day.weekday()==4 else ts.get("single")) if shift=="single" else ts.get(shift)
+    key="fridaySingle" if day.weekday()==4 else "single"
+    t=((e.get("standardPersonnelTimes") or {}).get(key) or ts.get(key)) if shift=="single" else ts.get(shift)
     t=t or {}
     return {"employeeId":str(e.get("id")),"date":dk,"machineId":str(m.get("id")),"shift":shift,"laneIndex":int(e.get("homeLaneIndex",1)),
             "start":str(t.get("start","")),"end":str(t.get("end","")),"breaks":t.get("breaks") or []}
 
 def personnel_assignment(state,e,day,dk):
-    return limit_assignment(e,explicit_assignment(state,str(e.get("id")),dk) or home_assignment(state,e,day,dk),day)
+    return limit_assignment(e,explicit_assignment(state,str(e.get("id")),dk) or home_assignment(state,e,day,dk),day,state.get("shiftTemplates"))
 
 def personnel_cover(state,seg):
     if not state.get("personnelGate",False):

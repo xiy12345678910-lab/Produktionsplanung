@@ -2955,6 +2955,14 @@ def validate_state(old: dict, new: dict) -> tuple[bool, str, str]:
                 return False, "MP-PERS-033", f"Leiharbeiter-Anfrage von '{e.get('name') or eid}' ist ungültig (Zeitraum/Status)."
         if str(e.get("departmentId") or "") not in dept_ids:
             return False, "MP-PERS-029", f"Mitarbeiter '{e.get('name') or eid}' verweist auf einen unbekannten Bereich."
+        custom_times = e.get("standardPersonnelTimes")
+        if custom_times is not None:
+            if (not isinstance(custom_times, dict) or set(custom_times) != {"single", "fridaySingle"}
+                    or any(not isinstance(custom_times.get(k), dict)
+                           or not isinstance(custom_times[k].get("breaks", []), list)
+                           or len(custom_times[k].get("breaks", [])) > 2
+                           or not _template_valid(custom_times.get(k)) for k in ("single", "fridaySingle"))):
+                return False, "MP-PERS-035", f"Dauerhafte Mitarbeiterzeiten von '{e.get('name') or eid}' sind ungültig."
         days = e.get("workingDays", [1, 2, 3, 4, 5])
         daily = e.get("dailyHours", {})
         if (not isinstance(days, list) or not days or len(days) != len(set(map(str, days)))
@@ -2964,7 +2972,7 @@ def validate_state(old: dict, new: dict) -> tuple[bool, str, str]:
         weekly = _finite_float(e.get("weeklyHours", 40))
         if weekly is None or weekly < 0 or weekly > 80:
             return False, "MP-PERS-030", f"Wochenstunden von '{e.get('name') or eid}' sind ungültig."
-        if sum(float(daily.get(str(d), weekly/len(days))) for d in days) > weekly+0.001:
+        if sum(float(v) for v in daily.values()) > weekly+0.001:
             return False, "MP-PERS-035", "Tagesstunden überschreiten die Wochenstunden."
     if len(eids) != len(set(eids)):
         return False, "MP-PERS-001", "Doppelte Mitarbeiter-ID."
