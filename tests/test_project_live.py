@@ -21,6 +21,8 @@ server.DB_PATH = server.DATA_DIR / 'maschinenplanung.sqlite3'
 server.PBKDF2_ITERS = 1000
 server.init_db(seed='werbetechnik')
 server.load_config()
+# HTTP production starts must remain valid outside working hours and weekends.
+server.now_iso = lambda: '2026-10-07T05:00:00Z'
 with server.db_session() as con:
     BASE = json.loads(con.execute('SELECT json FROM state WHERE id=1').fetchone()[0])
 MACHINE = BASE['machines'][0]
