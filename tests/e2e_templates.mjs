@@ -139,14 +139,16 @@ try {
   check(await vis(pm, '#chatFab'), 'PM sieht den Chat-Knopf');
   const msg = await api(admin, 'POST', '/api/chat/messages', { channel: 1, text: 'vor dem Abschalten' });
   await admin.click('#navSystem'); await admin.click('[data-systab="functions"]'); await admin.waitForTimeout(300);
-  await admin.click('[data-admin-mod="chat"]'); await admin.waitForTimeout(800);
+  await admin.click('[data-admin-mod="chat"]');
+  await admin.locator('#chatFab').waitFor({ state: 'hidden', timeout: 8000 });
   check(!(await vis(admin, '#chatFab')), 'Chat aus: Knopf weg (Admin)');
   check(!(await admin.locator('[data-admin-mod="chat"]').isChecked()), 'Schalter zeigt aus');
   const r403 = await api(admin, 'GET', '/api/chat/channels');
   check(r403[0] === 403 && r403[1].errorCode === 'MP-MOD-001', 'Chat aus: Endpunkt 403 MP-MOD-001');
   await pm.waitForFunction(() => getComputedStyle(document.getElementById('chatFab')).display === 'none', null, { timeout: 12000 }).catch(() => {});
   check(!(await vis(pm, '#chatFab')), 'Chat aus: auch beim zweiten Nutzer ohne Neuladen weg');
-  await admin.click('[data-admin-mod="chat"]'); await admin.waitForTimeout(800);
+  await admin.click('[data-admin-mod="chat"]');
+  await admin.locator('#chatFab').waitFor({ state: 'visible', timeout: 8000 });
   check(await vis(admin, '#chatFab'), 'Chat wieder an: Knopf da');
   const back = await api(admin, 'GET', '/api/chat/messages?channel=1');
   check(back[0] === 200 && JSON.stringify(back[1]).includes('vor dem Abschalten'), 'Chat wieder an: alte Nachricht ist da');
