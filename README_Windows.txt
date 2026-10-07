@@ -1,4 +1,4 @@
-﻿MASCHINENPLANUNG V12.19.1 - WINDOWS-SERVER (LAN ONLY)
+MASCHINENPLANUNG V12.20.0 - WINDOWS-SERVER (LAN ONLY)
 =====================================================
 
 1. VORAUSSETZUNGEN
@@ -11,10 +11,10 @@
 
 
 
-2a. UPDATE DIREKT VON GITHUB (Windows-Benutzer, z. B. <Benutzername>) - ab V12.10.2 nur aus Releases
+2b. UPDATE DIREKT VON GITHUB (Windows-Benutzer, z. B. <Benutzername>) - ab V12.10.2 nur aus Releases
    Normale PowerShell (kein Administrator):
         powershell -ExecutionPolicy Bypass -File C:\ProgramData\Maschinenplanung\Update_von_GitHub.ps1
-   - Nimmt das neueste GitHub-Release; dessen Commit muss in "main" liegen. Bestimmte Version: -Tag v12.10.2
+   - Nimmt das neueste GitHub-Release; dessen Commit muss in "main" liegen. Bestimmte Version: -Tag v12.20.0
    - Installiert wird genau ein fester Commit (Hash wird angezeigt). Mit -Sha256 <hash> wird das ZIP
      zusaetzlich geprueft (Hash steht in den Release-Notizen bzw. wird beim Download angezeigt).
    - Download, Pruefung und Entpacken laufen erst im Administrator-Fenster (UAC) in
@@ -83,8 +83,8 @@
    GF                      Gesamtuebersicht; bestaetigt Personalbedarf, KW-Einsaetze, Betriebsferien
    Abteilungsleiter        plant den eigenen Bereich; verwaltet Stellvertretungen und Lesende
    Stellv. Abteilungsleiter plant den eigenen Bereich; verwaltet Lesende
-   Arbeitsvorbereitung     plant Termine und verwaltet die Fertigung: FA anlegen/verknuepfen,
-                           Planwochen, Fertigungsprozesse terminieren, eigene Fertigungsablaeufe.
+   Arbeitsvorbereitung     legt FA mit Projekt/AB, Menge, Bereichsterminen und Vorgaengern an.
+                           Sollstunden nur fuer Konfektion; operative Einplanung macht die Abteilung.
                            Keine Freigabe, keine Fortschrittsmeldung, kein Personal/Einstellungen
    (V12.10.1) GF sieht Wochenplan und Auftragsliste nur lesend.
    (V12.7) GF-Ansicht: nur GF + Admin. Projekt-Ansicht: GF, PM, AV, Vertrieb, Admin.
@@ -93,6 +93,8 @@
    Projektmanagement       plant Termine und verwaltet Projekte bis zur Annahme: Prozesse je
                            Abteilung anlegen/terminieren, Angebot, eigene Prozessablaeufe.
                            Status von Abteilungsprozessen meldet die Abteilung.
+   Produktion              meldet Start/Pause/Fortschritt/Fertig im eigenen Bereich;
+                           verfolgt Bereichsplan und Fortschritt in Projekte live lesend.
    Lesend                  nur Ansicht
    Leitungs- und Arbeitsvorbereitungskonten legt nur der Admin an. Jeder Benutzer aendert sein Passwort selbst (Schluessel-Symbol oben).
 

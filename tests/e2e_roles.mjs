@@ -35,6 +35,7 @@ const ROLES = [
   ['pm', 'project_management', '', ['navOrders', 'navHistory', 'navReport']],
   ['av', 'production_planning', '', ['navPlan', 'navList', 'navOrders', 'navHistory', 'navReport']],
   ['sales', 'sales', '', ['navOrders', 'navReport']],
+  ['prod', 'production', 'cnc', ['navPlan', 'navList', 'navOrders', 'navHistory']],
 ];
 const NAV_ALL = ['navPlan', 'navList', 'navOrders', 'navPersonnel', 'navGF', 'navSystem', 'navHistory', 'navReport'];
 

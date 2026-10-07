@@ -1,4 +1,4 @@
-﻿MASCHINENPLANUNG V12.19.1 - KURZANLEITUNG FUER BENUTZER
+MASCHINENPLANUNG V12.20.0 - KURZANLEITUNG FUER BENUTZER
 ======================================================
 
 ANMELDEN
@@ -49,7 +49,11 @@ ROLLEN
   Leitung legt Stellvertretungen und Lesende an, Stellvertretung nur Lesende.
 - Vertrieb: legt Eingaenge an und meldet Annahme oder Verlust.
 - Arbeitsvorbereitung: legt Projekte und Auftraege (FA) mit Bereichsreihenfolge, AV-Terminen und Konfektionsstunden an
-  und verknuepft sie mit AB. Die operative Ressourcen-/Terminplanung uebernimmt der Bereich. Freigabe, Produktion und Fertigmeldung machen die Bereiche.
+  und verknuepft sie mit AB. Der breite Dialog zeigt die FA deutlich sowie je Bereich Reihenfolge,
+  Vorgaenger und Fertigtermin. Sollstunden sind nur fuer Konfektion editierbar.
+  Die operative Ressourcen-/Terminplanung uebernimmt der Bereich. Freigabe, Produktion und Fertigmeldung machen die Bereiche.
+- Produktion: verfolgt in Projekte den Plan, Status, Gut-/Ausschuss-/Restmengen des eigenen Bereichs live lesend.
+  Start, Pause und Fertigmeldung erfolgen weiterhin in Produktion.
 - Projektmanagement: pflegt AB-Auftraege.
 - GF: GF-Ansicht (nur GF/Admin), Projekte, bestaetigt den von den Abteilungen gemeldeten Personalbedarf.
 - Admin: alles inkl. Benutzerverwaltung.
