@@ -1,7 +1,9 @@
-# Maintainers publish the draft only after reviewing notes and completed CI.
+# Manual runs create drafts. A reviewed tag on a green main commit publishes.
 name: Release package
 on:
   workflow_dispatch:
+  push:
+    tags: ['v*']
 permissions:
   contents: write
   actions: read
@@ -10,6 +12,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -17,14 +21,21 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
-            if (context.ref !== 'refs/heads/main') throw new Error('Releases must be built on main');
+            const tagged = context.eventName === 'push' && context.ref.startsWith('refs/tags/');
+            if (!tagged && context.ref !== 'refs/heads/main') throw new Error('Releases must be built on main');
+            await exec.exec('git', ['merge-base', '--is-ancestor', context.sha, 'origin/main']);
             const { data } = await github.rest.actions.listWorkflowRunsForRepo({ ...context.repo, head_sha: context.sha, status: 'completed', per_page: 100 });
-            if (!data.workflow_runs.some(r => r.name === 'CI' && r.conclusion === 'success' && r.head_sha === context.sha)) throw new Error('CI must pass for the release commit');
+            if (!data.workflow_runs.some(r => r.name === 'CI' && r.event === 'push' && r.head_branch === 'main' && r.conclusion === 'success' && r.head_sha === context.sha)) throw new Error('Main CI must pass for the exact release commit');
       - run: python tests/test_version.py
       - run: python tools/build_release.py --output /tmp/release
-      - name: Create draft release with checked assets
+      - name: Create release with checked assets
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           version=$(python -c 'import json; print(json.load(open("/tmp/release/update-manifest.json"))["version"])')
-          gh release create "v$version" /tmp/release/* --target "$GITHUB_SHA" --draft --title "Produktionsplanung v$version" --notes-file RELEASE_NOTES.txt
+          options=(--draft)
+          if [[ "$GITHUB_EVENT_NAME" == 'push' ]]; then
+            [[ "$GITHUB_REF" == "refs/tags/v$version" ]] || { echo 'Tag must match the application version'; exit 1; }
+            options=()
+          fi
+          gh release create "v$version" /tmp/release/* --target "$GITHUB_SHA" "${options[@]}" --title "Produktionsplanung v$version" --notes-file RELEASE_NOTES.txt
