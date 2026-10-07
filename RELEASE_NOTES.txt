@@ -1,3 +1,26 @@
+MASCHINENPLANUNG V12.19.1 - RELEASE NOTES
+=========================================
+Datum: 07.10.2026 · Basis: V12.19.0 · Update mit UPDATE_LIVE.ps1, Daten bleiben erhalten
+
+HOTFIXES #57–#62
+- AV erfasst einen FA mit Projekt/AB, Menge, Bereichsreihenfolge und Solltermin je Bereich.
+  Konfektionsstunden bleiben AV-Vorgabe. Ressourcen, Laufzeit und Feinplanung übernimmt die Abteilung
+  mit Vorschau aus dem durchsuchbaren Bereichsvorrat unter dem Wochenplan; unzugeordnete FA belegen keine Kapazität.
+  Serverprüfungen schützen AV-Felder, Übergabezustand und Bereichsgrenzen.
+- Personal: Standardschicht Mo–Do 06:30–16:00 minus 45 Minuten Pausen = 8,75 Stunden,
+  Freitag 06:30–11:45 minus 15 Minuten = 5 Stunden; Standardwoche = 40 Stunden.
+  Teilzeit, individuelle Arbeitstage, Tagesstunden, Abwesenheiten und eigene dauerhafte Zeiten/Pausen
+  werden berücksichtigt. Namen in der Personalwoche öffnen Bearbeitung und Planstunden; Istzeiten werden nicht erfunden.
+- Personalzeiten werden mit Intervallen statt Minutenscan berechnet. Darstellung verwendet einen gemeinsamen Plan;
+  Abwesenheitssimulation entfällt ohne eingeschaltetes Gate oder echte Abwesenheiten.
+- Benutzerverwaltung: responsive Felder/Aktionen, Suche, kombinierbare Rollen-/Bereichsfilter, Zurücksetzen und leere Ergebnisse.
+- Admin: eigener Reiter „Funktionen & Bereiche“. Bereiche anlegen, umbenennen, deaktivieren und reaktivieren;
+  verknüpfte Produktionsdaten bleiben erhalten. Palettenzettel sind optional und standardmäßig aus.
+  Vorlagen mit Farbe/Barcode und Vorschau; abgeschaltete Funktion sperrt die API und erhält vorhandene Daten.
+- Scheduler-Selbsttest verwendet isolierte Standardschichten und Testmaschinen. Live-Daten sowie
+  Schedulerreferenzen bleiben auch bei Fehlern unverändert; keine Speicherung oder Auditänderung.
+- Abnahme und Messung: docs/V12_19_1.md. Lazy Loading und Blocks E–I sind separate Folgeschritte nach der Installation.
+
 MASCHINENPLANUNG V12.19.0 - RELEASE NOTES
 =========================================
 Datum: 07.10.2026 · Basis: V12.18.0 · Update mit UPDATE_LIVE.ps1, Daten bleiben erhalten

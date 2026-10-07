@@ -128,7 +128,8 @@ try {
   check(st1.departments.length === 6 && st1.machines.length === 4, `Vorlage füllt Bereiche und Maschinen (${st1.departments.length}/${st1.machines.length})`);
 
   // Schritt 3: Module
-  check(await a.locator('#suMods [data-mod-sw]').count() === 7, 'sieben Modul-Schalter');
+  check(await a.locator('#suMods [data-mod-sw]').count() === 8, 'acht Funktions-Schalter inklusive optionaler Palettenzettel');
+  check(await a.locator('#suMods [data-mod-sw="palletLabels"]').getAttribute('aria-pressed') === 'false', 'Palettenzettel sind bei neuer Einrichtung ausgeschaltet');
   await a.click('#suMods [data-mod-sw="chat"]');
   await a.waitForFunction(() => document.querySelector('#suMods [data-mod-sw="chat"]').getAttribute('aria-pressed') === 'false');
   check((await api(a, 'GET', '/api/config'))[1].modules.chat === false, 'Modul Nachrichten abgeschaltet');

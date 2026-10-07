@@ -66,6 +66,21 @@ with server.db_session() as con:
     check(valid and [m["id"] for m in restored["machines"] if m.get("departmentId") == dep["id"]] == linked_ids,
           "area can be reactivated with its original linked records")
 
+# A department with only historical records must retain its identity, including
+# requests that try to remove the linked rows along with the department.
+archived=json.loads(json.dumps(old))
+archived["departments"].append({"id":"archived_area","name":"Archivbereich","planningType":"MACHINE"})
+archived["history"].append({"id":"h_archived_area","departmentId":"archived_area","recordType":"done"})
+for clear_history in (False,True):
+    removed=json.loads(json.dumps(archived));removed["departments"]=[d for d in removed["departments"] if d["id"]!="archived_area"]
+    if clear_history: removed["history"]=[]
+    valid,code,reason=server.validate_state(archived,removed)
+    check(not valid and code=="MP-DEPT-006", "historical area cannot be deleted or cleared in the same request")
+for active in (False,True):
+    retained=json.loads(json.dumps(archived));next(d for d in retained["departments"] if d["id"]=="archived_area")["active"]=active
+    valid,code,reason=server.validate_state(archived,retained)
+    check(valid and retained["history"]==archived["history"], "historical area deactivates/reactivates without changing records")
+
 failed = [label for ok, label in results if not ok]
 print(f"\n{len(results) - len(failed)}/{len(results)} bestanden")
 sys.exit(bool(failed))

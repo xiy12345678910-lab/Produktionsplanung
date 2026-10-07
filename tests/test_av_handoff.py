@@ -3,6 +3,8 @@
 import copy
 import sys
 import unittest
+import tempfile
+import json
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -20,6 +22,25 @@ def step(**overrides):
     return value
 
 class AVHandoffAuthorization(unittest.TestCase):
+    def test_validator_rejects_invalid_handoff_flag_and_release_without_assignment(self):
+        saved_dir, saved_db = server.DATA_DIR, server.DB_PATH
+        try:
+            with tempfile.TemporaryDirectory(prefix="mp-av-validator-") as tmp:
+                server.DATA_DIR=Path(tmp); server.DB_PATH=Path(tmp)/"state.sqlite3"
+                server.init_db(seed="werbetechnik")
+                with server.db_session() as con:
+                    base=json.loads(con.execute("SELECT json FROM state WHERE id=1").fetchone()[0])
+                order=step(fa="Validator",order="Validator",sequence=10,pos=10,predecessorIds=[],targetQty=1)
+                new=copy.deepcopy(base);new["workSteps"].append(order)
+                self.assertTrue(server.validate_state(base,new)[0])
+                for patch in ({"handoffUnassigned":"false"},{"status":"released"},{"machineId":new["machines"][0]["id"]}):
+                    bad=copy.deepcopy(new);bad["workSteps"][-1].update(patch)
+                    ok,code,reason=server.validate_state(base,bad)
+                    self.assertFalse(ok,patch)
+                    self.assertEqual(code,"MP-PLAN-065",reason)
+        finally:
+            server.DATA_DIR,server.DB_PATH=saved_dir,saved_db
+
     def test_unassigned_av_order_must_have_no_resource_or_operational_runtime(self):
         old = copy.deepcopy(BASE)
         new = copy.deepcopy(old)
@@ -52,6 +73,15 @@ class AVHandoffAuthorization(unittest.TestCase):
         new = copy.deepcopy(old)
         new["workSteps"][0]["handoffUnassigned"] = False
         self.assertFalse(server.production_planning_change_allowed(old, new)[0])
+
+    def test_department_cannot_remove_av_provenance_or_delete_and_recreate(self):
+        old={"departments":copy.deepcopy(DEPARTMENTS),"machines":[{"id":"m1","departmentId":"cnc"}],"workSteps":[step(machineId="m1",handoffUnassigned=False,hours=2)]}
+        for replacement in ([],[step(id="replacement",machineId="m1",handoffUnassigned=False,hours=4)]):
+            new=copy.deepcopy(old);new["workSteps"]=replacement
+            self.assertFalse(server.department_change_allowed(old,new,"cnc")[0])
+        new=copy.deepcopy(old);new["workSteps"][0].pop("handoffUnassigned")
+        self.assertFalse(server.department_change_allowed(old,new,"cnc")[0])
+        self.assertFalse(server.production_planning_change_allowed(old,new)[0])
 
     def test_department_takeover_requires_same_department_resource_and_runtime(self):
         old = {"departments": copy.deepcopy(DEPARTMENTS), "machines": [{"id": "m1", "departmentId": "cnc"}, {"id": "m2", "departmentId": "konf1"}], "workSteps": [step()]}

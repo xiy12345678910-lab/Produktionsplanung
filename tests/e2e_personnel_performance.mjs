@@ -2,7 +2,7 @@
 // E2E V12.19.1: Personalzeiten und unnötige Abwesenheitssimulation.
 // Startet server.py mit leerer Datenbank in einem Temp-Ordner und prüft im Browser (Playwright/Chromium).
 //
-// Aufruf:  node tests/e2e_gate_lines.mjs
+// Aufruf:  node tests/e2e_personnel_performance.mjs
 import { spawn, execSync } from 'node:child_process';
 import { mkdtempSync, rmSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -81,6 +81,25 @@ try {
   const page = await ctx.newPage();
   page.on('pageerror', e => errors.push(e.message));
   await login(page);
+  const persistedFixture = await ev(page, async () => {
+    document.getElementById('setupModal')?.classList.remove('show');
+    const m=data.machines[0];m.defaultShiftMode='1';data.yearRules=[];data.weekRules=[];data.exceptions=[];data.ui.week='2026-10-05';
+    data.employees=[{id:'e_reload',name:'Persistente Zeiten',departmentId:m.departmentId,skills:[m.id],homeMachineId:m.id,homeShift:'auto',active:true,weeklyHours:40,standardPersonnelTimes:{single:{name:'Individuell',start:'07:00',end:'15:00',breaks:[{start:'10:00',end:'10:15'},{start:'12:00',end:'12:30'}]},fridaySingle:{name:'Freitag',start:'07:00',end:'11:45',breaks:[{start:'09:00',end:'09:15'}]}}},{id:'e_part',name:'Teilzeit',departmentId:m.departmentId,skills:[m.id],active:true,weeklyHours:20}];
+    data.personnelAssignments=[];data.personnelAbsences=[];save('Personalprüfbestand');if(!await flushNow())throw new Error('Fixture speichern fehlgeschlagen');switchView('personnel');renderPersonnel();return m.id;
+  });
+  for(const date of ['2026-10-05','2026-10-06','2026-10-07']){
+    await page.selectOption(`[data-person-cell="e_part"][data-date="${date}"]`,persistedFixture+'|single');
+    await ev(page,async()=>{if(!await flushNow())throw new Error('Teilzeit speichern fehlgeschlagen')});
+  }
+  await page.click('[data-ptime-toggle="e_reload|2026-10-05"]');
+  await page.fill('[data-person-time="end"][data-employee="e_reload"][data-date="2026-10-05"]','14:00');
+  await page.locator('[data-person-time="end"][data-employee="e_reload"][data-date="2026-10-05"]').blur();
+  await ev(page,async()=>{if(!await flushNow())throw new Error('Tageszeit speichern fehlgeschlagen')});
+  await page.reload();await page.waitForTimeout(800);
+  const reloaded=await ev(page,()=>({custom:employee('e_reload')?.standardPersonnelTimes?.single?.start,day:personnelAssignment('e_reload','2026-10-05')?.end,part:data.personnelAssignments.filter(a=>a.employeeId==='e_part').map(personnelNetHours)}));
+  check(reloaded.custom==='07:00'&&reloaded.day==='14:00'&&reloaded.part.length===3&&reloaded.part.every(h=>h===4),'Echte Teilzeit-Zuordnung und Tageszeitbearbeitung bleiben nach Server-Speicherung und Neuladen erhalten');
+  const capacity=await ev(page,()=>{const keep=data.exceptions,abs=data.personnelAbsences;const e=employee('e_reload'),ws=parseLocal('2026-10-05'),before=employeeWeekAvailableHours(e,ws);data.exceptions=[{date:'2026-10-06',mode:'0',label:'Betriebsferien'}];const closed=employeeWeekAvailableHours(e,ws);data.exceptions=[];data.personnelAbsences=[{employeeId:e.id,date:'2026-10-06',label:'Krank'}];const absent=employeeWeekAvailableHours(e,ws);data.personnelAbsences=[];const temp={...e,id:'e_temp',homeMachineId:'',employmentType:'temporary',tempStatus:'approved',tempFrom:'2026-10-07',tempTo:'2026-10-09'};const temporary=employeeWeekAvailableHours(temp,ws);data.exceptions=keep;data.personnelAbsences=abs;return {before,closed,absent,temporary};});
+  check(Math.abs(capacity.before-capacity.closed-7.25)<.001&&Math.abs(capacity.before-capacity.absent-7.25)<.001&&capacity.temporary===22.5,'Betriebsferien, Abwesenheit und genehmigter Leihzeitraum begrenzen die verfügbare Kapazität');
   const vals = await ev(page, () => {
     const e = {id:'e_perf',weeklyHours:40,workingDays:[1,2,3,4,5]};
     const mo = employeeDailyHours(e,'2026-10-05'), fr = employeeDailyHours(e,'2026-10-09');

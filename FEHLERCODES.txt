@@ -1,4 +1,4 @@
-﻿MASCHINENPLANUNG V12.19.0 - FEHLERCODES
+﻿MASCHINENPLANUNG V12.19.1 - FEHLERCODES
 ======================================
 
 Jeder Fehler wird dem Mitarbeiter als Klartext + Code angezeigt.
@@ -273,6 +273,7 @@ MP-PLAN-061  Freigabe muss die aktuell gültige Besetzung der Linie einfrieren.
 MP-PLAN-062  Termin liegt nach dem AV-Termin. Früher planen ist erlaubt, später nicht.
 MP-PLAN-063  Hinweis: Auftrag wird erst nach dem AV-Termin fertig (Karte rot).
 MP-PLAN-064  Takt-Rechner: Menge und Takt eintragen.
+MP-PLAN-065  Bereichsuebergabe ungueltig: unzugeordneter FA darf keine Ressource, Freigabe oder operative Planung enthalten.
 
 [PM - Projektmanagement / AB-Aufträge]
 MP-PM-001  Projekt-/Auftragsstamm ist ungültig. / AB ist Pflicht.
@@ -371,7 +372,7 @@ MP-PLAN-058  (geaendert) Freigabe ueberschreitet die Parallelplaetze der Maschin
 V12.8.2 NEU (Bereiche anlegen, Bereichsarten)
 MP-DEPT-004  Bereichsart ungueltig bzw. Vertrieb/Entwicklung ohne Maschinen, Auftraege, Formate.
 MP-DEPT-005  Bereichsname fehlt/zu lang/doppelt oder ID fuer feste Projektbereiche reserviert.
-MP-DEPT-006  Bereich mit offenen Auftraegen kann nicht deaktiviert werden.
+MP-DEPT-006  Bereich mit verknuepften Produktions-/Historiedaten darf nicht geloescht werden; stattdessen deaktivieren. Deaktivieren und Reaktivieren erhalten die Daten (ab V12.19.1).
 MP-GF-030    (erweitert) GF legt Bereiche an (Name, Art, aktiv) und nur die erste Maschine/Linie
              eines Bereichs; keine Loeschung von Bereichen, keine Aenderung bestehender Maschinen.
 
@@ -433,7 +434,7 @@ MP-PERS-003  Unbesetzt: Auftrag nicht planbar, weil das Gate EIN ist und fuer di
 V12.19.0 (Bloecke A-D und I ausschliesslich 7a)
 MP-FA-001    FA-Quelle oder FA-Nummernzuordnung ungueltig; Projekt/Rahmen/Bestandsreferenz pruefen.
 MP-PERS-034  Parallelplatz oder Besetzung ungueltig; nur freie Plaetze/ganze Mitarbeiterzahlen.
-MP-PERS-035  Arbeitstage/Tagesstunden ungueltig oder Summe ueber Wochenstunden.
+MP-PERS-035  Arbeitstage/Tagesstunden ungueltig, Summe ueber Wochenstunden oder dauerhafte Mitarbeiterzeiten/Pausen ungueltig.
 MP-PROD-040  FA nicht gefunden.
 MP-PROD-041  Keine Produktionsrechte fuer den Bereich.
 MP-PROD-042  Start/Fortsetzen ausserhalb Arbeitszeit oder vor dem freigegebenen Start.

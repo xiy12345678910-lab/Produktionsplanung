@@ -115,6 +115,7 @@ try {
 
   // ------------------------------------------------------------------ eigener Eingabedialog statt prompt()
   await page.click('#navSystem');
+  await page.click('[data-systab="machines"]');
   await page.waitForTimeout(300);
   const addBtn = page.locator('[data-res-add="cnc|machine"]');
   await addBtn.click();
@@ -145,6 +146,7 @@ try {
   const other = await browser.newPage({ viewport: { width: 1440, height: 900 } });
   await login(other);
   await other.click('#navSystem');
+  await other.click('[data-systab="machines"]');
   await other.waitForTimeout(300);
   const setup = other.locator('.resRow input[data-f="setupMinutes"]').nth(1);
   await setup.fill('7');
@@ -203,7 +205,7 @@ try {
   await page.close();
 } catch (e) {
   check(false, 'Ablauf: ' + (e?.message || e));
-  for (const page of browser.pages()) {
+  for (const page of browser.contexts().flatMap(context => context.pages())) {
     const detail = await page.locator('#errorModal.show').textContent({ timeout: 500 }).catch(() => '');
     if (detail) console.log('Fehlerdialog: ' + detail.trim());
   }

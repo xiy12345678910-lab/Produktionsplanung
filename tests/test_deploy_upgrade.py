@@ -302,12 +302,14 @@ def run_case(label: str, commit: str, scenario: str, keep: bool, ip: str):
                         f"[{tag}] falsches und altes Passwort (vor der Änderung) werden abgewiesen")
         problems = L.check_company(srv.url, rec, template=template)
         ok_all &= check(not problems, f"[{tag}] Firmenprofil: Name, Farbe, Logo, Akzent wie vorher", "; ".join(problems))
-        # V12.16.0: nach dem Update sind alle Module an, die Bereichs-Eigenschaften sind gesetzt, die Anzeige bleibt (Daten gleich).
+        # Legacy modules stay enabled; V12.19.1 adds optional pallet labels disabled by default.
         adm = L.Api(srv.url)
         adm.login(ADMIN, ADMIN_PW)
         sc, pc = adm.call("GET", "/api/config")
         mods = (pc or {}).get("modules") if sc == 200 and isinstance(pc, dict) else {}
-        ok_all &= check(mods and all(mods.values()) and len(mods) >= 7, f"[{tag}] nach dem Update sind alle Module an", str(mods))
+        expected_modules = {k: True for k in ("projects", "formats", "personnel", "chat", "notifications", "postcalc", "kpi")}
+        expected_modules["palletLabels"] = False
+        ok_all &= check(mods == expected_modules, f"[{tag}] Bestandsmodule bleiben an, neue Palettenzettel sind optional aus", str(mods))
         sc, st = adm.call("GET", "/api/state")
         deps = {d["id"]: d for d in (st.get("data", {}).get("departments") or [])} if sc == 200 else {}
         want = {"thermoforming": "formats", "cnc": "sharedOperators"}

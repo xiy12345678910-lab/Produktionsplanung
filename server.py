@@ -28,7 +28,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 MP_DEBUG_ABORTS = os.environ.get('MP_DEBUG_ABORTS') == '1'
-APP_VERSION = "12.19.0"
+APP_VERSION = "12.19.1"
 HOST = os.environ.get("MP_HOST", "0.0.0.0")
 PORT = int(os.environ.get("MP_PORT", "8765"))
 BASE = Path(__file__).resolve().parent
@@ -2293,8 +2293,11 @@ def _personnel_assignment_valid(a: dict) -> tuple[bool, str, str]:
         return False, "MP-PERS-020", "Ungültige Mitarbeiter-Uhrzeit."
     if end <= start:
         return False, "MP-PERS-021", "Mitarbeiter-Ende muss nach Start liegen."
+    breaks = a.get("breaks") or []
+    if not isinstance(breaks, list) or len(breaks) > 2:
+        return False, "MP-PERS-022", "Mitarbeiter-Pausen müssen eine Liste mit höchstens zwei Pausen sein."
     ranges = []
-    for b in (a.get("breaks") or [])[:2]:
+    for b in breaks:
         if not isinstance(b, dict):
             return False, "MP-PERS-022", "Ungültige Mitarbeiter-Pause."
         bs, be = b.get("start", ""), b.get("end", "")
@@ -2679,6 +2682,21 @@ def validate_state(old: dict, new: dict) -> tuple[bool, str, str]:
         for rec in new.get(name) or []:
             if isinstance(rec, dict) and dept_kinds.get(str(rec.get("departmentId") or dd), "production") != "production":
                 return False, "MP-DEPT-004", f"Bereich '{rec.get('departmentId')}' ist kein Produktionsbereich – {what} nicht zulässig."
+    # Removing a department must not orphan its productive records, even if the
+    # client also removes those records in the same request. Empty setup resources
+    # can still be replaced; current resource references are checked below.
+    removed_depts = {str(d.get("id")) for d in old.get("departments") or [] if isinstance(d, dict)} - dept_ids
+    for did in removed_depts:
+        linked = any(isinstance(x, dict) and str(x.get("departmentId") or "") == did
+                     for state in (old, new)
+                     for key in ("workSteps", "history", "productionEvents", "palletLabels", "inventory", "formats", "baseFormats")
+                     for x in state.get(key) or [])
+        linked = linked or any(isinstance(proc, dict) and str(proc.get("areaId") or "") == did
+                               for state in (old, new) for project in state.get("projects") or []
+                               if isinstance(project, dict) for proc in project.get("processes") or [])
+        if linked:
+            return False, "MP-DEPT-006", f"Bereich '{did}' hat verknüpfte Produktionsdaten. Bitte deaktivieren statt löschen."
+
     # Deactivation is additive and keeps every linked order/resource/history record intact.
 
     if not isinstance(projects, list):
@@ -3113,9 +3131,9 @@ def validate_state(old: dict, new: dict) -> tuple[bool, str, str]:
         handoff = o.get("handoffUnassigned", False)
         ptype = str(o.get("planningType") or "")
         if "handoffUnassigned" in o and not isinstance(handoff, bool):
-            return False, "MP-PLAN-064", f"Auftrag '{o.get('order') or oid}': Bereichsübergabe ist ungültig."
+            return False, "MP-PLAN-065", f"Auftrag '{o.get('order') or oid}': Bereichsübergabe ist ungültig."
         if handoff and (ptype != "MACHINE" or str(o.get("status", "planned")) != "planned" or mid or alt or o.get("allowAlternative") or o.get("baselinePlan") is not None or o.get("anchorMode", "none") != "none" or o.get("direction", "forward") != "forward"):
-            return False, "MP-PLAN-064", f"Auftrag '{o.get('order') or oid}': Unzugeordnete Bereichsübergabe darf keine Ressource oder operative Planung enthalten."
+            return False, "MP-PLAN-065", f"Auftrag '{o.get('order') or oid}': Unzugeordnete Bereichsübergabe darf keine Ressource oder operative Planung enthalten."
         if not handoff and mid not in midset:
             return False, "MP-PLAN-003", f"Auftrag '{o.get('order') or oid}' verweist auf eine unbekannte Hauptmaschine."
         order_department = str(o.get("departmentId") or next((m.get("departmentId") or dd for m in machines if str(m.get("id")) == mid), dd))
@@ -3719,6 +3737,8 @@ def production_planning_change_allowed(old: dict, new: dict) -> tuple[bool, str]
             if side is not None and str(side.get("status") or "planned") != "planned":
                 return False, f"Arbeitsvorbereitung ändert nur geplante Aufträge ('{side.get('fa') or side.get('order') or rid}' ist {side.get('status')})."
         before, after = a.get(rid), b.get(rid)
+        if before is not None and after is not None and "handoffUnassigned" in before and "handoffUnassigned" not in after:
+            return False, "Die AV-Herkunft einer Bereichsübergabe bleibt erhalten."
         if before is not None and after is not None and canonical(before.get("handoffUnassigned", False)) != canonical(after.get("handoffUnassigned", False)):
             return False, "Die Bereichsplanung übernimmt offene AV-Aufträge über die Planen-Aktion."
         if before is None and after is not None:
@@ -3826,7 +3846,10 @@ def department_change_allowed(old: dict, new: dict, department_id: str) -> tuple
         if did != department_id:
             return False, "Arbeitsgang gehört nicht zum eigenen Bereich."
     old_steps = _record_map(old.get("workSteps"))
-    for rid, rec in _record_map(new.get("workSteps")).items():
+    new_steps = _record_map(new.get("workSteps"))
+    if any("handoffUnassigned" in before and rid not in new_steps for rid, before in old_steps.items()):
+        return False, "AV-Aufträge können nicht durch Löschen aus der Bereichsplanung entfernt werden."
+    for rid, rec in new_steps.items():
         before = old_steps.get(rid)
         if before is not None:
             if rec.get("handoffUnassigned") is True and (str(rec.get("machineId") or "") or str(rec.get("status") or "planned") != "planned"):
@@ -3838,9 +3861,12 @@ def department_change_allowed(old: dict, new: dict, department_id: str) -> tuple
                 machine = next((m for m in (new.get("machines") or []) if str(m.get("id")) == mid), None)
                 if not machine or machine_dept.get(mid, "") != department_id or _finite_float(rec.get("hours", 0)) is None or _finite_float(rec.get("hours", 0)) <= 0:
                     return False, "Zum Einplanen braucht der Bereich eine eigene Ressource und Maschinenlaufzeit."
-            for field in ("fa", "faNumber", "projectId", "ab", "wt", "targetQty", "sequence", "predecessorIds"):
-                if canonical(before.get(field)) != canonical(rec.get(field)):
-                    return False, "FA, Projekt, Menge und Vorgänger pflegt die Arbeitsvorbereitung."
+            if "handoffUnassigned" in before:
+                if "handoffUnassigned" not in rec:
+                    return False, "Die AV-Herkunft einer Bereichsübergabe bleibt erhalten."
+                for field in ("fa", "faNumber", "projectId", "ab", "wt", "targetQty", "sequence", "predecessorIds"):
+                    if canonical(before.get(field)) != canonical(rec.get(field)):
+                        return False, "FA, Projekt, Menge und Vorgänger pflegt die Arbeitsvorbereitung."
         resource = next((m for m in old.get("machines") or [] if m.get("id") == (before or {}).get("machineId")), {})
         dep = str((before or rec).get("departmentId") or "")
         dep_name = next((str(d.get("name") or "") for d in (old.get("departments") or []) if str(d.get("id")) == dep), "")

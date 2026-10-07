@@ -263,7 +263,7 @@ def daily_hours(e,day,templates=None):
             return 5.0 if d==5 else 8.75
         pauses=sum((clock_minutes(b.get("end")) or 0)-(clock_minutes(b.get("start")) or 0) for b in t.get("breaks") or [] if b.get("start") and b.get("end"))
         return max(0.0,(z-a-pauses)/60)
-    if days==[1,2,3,4,5]:
+    if len(days)==5 and set(days)=={1,2,3,4,5}:
         if weekly==40.0: return weight(day.isoweekday())
         return weekly/len(days)
     total=sum(weight(d) for d in days)
@@ -273,7 +273,7 @@ def daily_hours(e,day,templates=None):
 def limit_assignment(e,a,day,templates=None):
     if not a:
         return None
-    limit=round(daily_hours(e,day)*60)
+    limit=round(daily_hours(e,day,templates)*60)
     start,end=clock_minutes(a.get("start")),clock_minutes(a.get("end"))
     if limit<=0 or start is None or end is None:
         return None

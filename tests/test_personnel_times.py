@@ -42,7 +42,25 @@ def main():
     ok,code,_=server.validate_state(base,new);check(ok, 'Server akzeptiert gültige dauerhafte Mitarbeiterzeiten')
     bad=copy.deepcopy(new);bad['employees'][0]['standardPersonnelTimes']['single']['breaks'][0]={'start':'15:15','end':'15:30'}
     ok,code,_=server.validate_state(base,bad);check(not ok and code=='MP-PERS-035', 'Server weist Pausen außerhalb der Stammzeit ab')
-    print('8/8 bestanden')
+    custom_templates={'single':{'start':'06:30','end':'12:00','breaks':[]},'fridaySingle':{'start':'06:30','end':'11:45','breaks':[{'start':'09:00','end':'09:15'}]}}
+    mixed={'weeklyHours':20,'workingDays':[1,3,5]}
+    clipped=gates.limit_assignment(mixed,{'start':'06:30','end':'16:00','breaks':[]},monday,custom_templates)
+    check(clipped['end']=='13:22', 'Begrenzung verwendet die konfigurierten Schichtgewichte')
+    reversed_days={'weeklyHours':20,'workingDays':[5,4,3,2,1]}
+    check(gates.daily_hours(reversed_days,monday)==4, 'Reihenfolge der Arbeitstage verändert Teilzeit nicht')
+    for breaks in ({'start':'09:00','end':'09:15'},[{}, {}, 'bad']):
+        check(not server._personnel_assignment_valid({'start':'06:30','end':'16:00','breaks':breaks})[0], 'Server lehnt falsche Pausenstruktur oder mehr als zwei Pausen ab')
+    legacy=copy.deepcopy(base)
+    order=next((x for x in legacy['workSteps'] if x['planningType']=='MACHINE'),None)
+    if order is None:
+        order={'id':'legacy_review','planningType':'MACHINE','departmentId':m['departmentId'],'machineId':m['id'],'fa':'Legacy','targetQty':1,'hours':1,'status':'planned'}
+        legacy['workSteps'].append(order)
+    changed=copy.deepcopy(legacy);next(x for x in changed['workSteps'] if x['id']==order['id'])['targetQty']=2
+    check(server.department_change_allowed(legacy,changed,order['departmentId'])[0], 'Bereich darf manuell erstellte Legacy-Menge weiterhin bearbeiten')
+    order['handoffUnassigned']=False
+    changed=copy.deepcopy(legacy);record=next(x for x in changed['workSteps'] if x['id']==order['id']);record.pop('handoffUnassigned');record['targetQty']=2
+    check(not server.department_change_allowed(legacy,changed,order['departmentId'])[0], 'Bereich kann AV-Herkunft nach Übernahme nicht entfernen')
+    print('14/14 bestanden')
 
 
 if __name__ == '__main__':
