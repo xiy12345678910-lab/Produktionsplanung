@@ -249,13 +249,15 @@ s, code, _ = put(A, lambda n: next(y for y in n["workSteps"] if y["id"] == "ws_k
 AV = login("t_av")
 def av_cnc(n):
     o = copy.deepcopy(next(x for x in n["workSteps"] if x["planningType"] == "MACHINE" and x["status"] == "planned"))
-    o.update(id="ws_av_cnc", fa="FA AV1", faNumber="FA AV1", sourceId="ws_av_cnc", order="FA AV1", pos=max(float(x.get("pos") or 0) for x in n["workSteps"] if x["planningType"] == "MACHINE") + 10,
-             sequence=9001, createdAt=server.now_iso(), direction="forward", anchorMode="none", requiredStart="", requiredFinish="")
+    o.update(id="ws_av_cnc", fa="FA AV1", faNumber="FA AV1", sourceType="PROJECT", sourceId="ws_av_cnc", projectId="", ab="", wt="", order="FA AV1", pos=max(float(x.get("pos") or 0) for x in n["workSteps"] if x["planningType"] == "MACHINE") + 10,
+             sequence=9001, createdAt=server.now_iso(), machineId="", altMachineId="", allowAlternative=False, handoffUnassigned=True, hours=0, baselinePlan=None, predecessorIds=[], direction="forward", anchorMode="none", requiredStart="", requiredFinish="")
     n["workSteps"].append(o); audit_entry(n, "t_av")
-s, code, _ = put(AV, av_cnc); check(s == 200, f"Arbeitsvorbereitung legt CNC-Auftrag an ({s} {code})")
+s, code, _ = put(AV, av_cnc); check(s == 200, f"Arbeitsvorbereitung legt CNC-Auftrag zur Ressourcenübergabe an ({s} {code})")
 def av_dept(n):
-    n["workSteps"].append(mstep(n, "ws_av_k2", "FA AV2", "konf2", 40, dueDate="2026-10-16")); audit_entry(n, "t_av")
-s, code, _ = put(AV, av_dept); check(s == 200, f"Arbeitsvorbereitung legt Konfektions-Auftrag an ({s} {code})")
+    o = mstep(n, "ws_av_k2", "FA AV2", "konf2", 40, dueDate="2026-10-16")
+    o.update(machineId="", handoffUnassigned=True, baselinePlan=None, predecessorIds=[])
+    n["workSteps"].append(o); audit_entry(n, "t_av")
+s, code, _ = put(AV, av_dept); check(s == 200, f"Arbeitsvorbereitung legt Konfektions-Auftrag unzugeordnet an ({s} {code})")
 def av_link(n):
     x = next(y for y in n["workSteps"] if y["id"] == "ws_av_k2"); pr = n["projects"][0]; x["projectId"] = pr["id"]; x["ab"] = pr["ab"]; x["wt"] = pr.get("wt", ""); audit_entry(n, "t_av")
 s, code, _ = put(AV, av_link); check(s == 200, f"Arbeitsvorbereitung verknüpft freie FA mit AB ({s} {code})")
@@ -381,7 +383,9 @@ def sales_after(n):
     p = plog(n, "pj1", "t_sales"); p["customer"] = "anders"; audit_entry(n, "t_sales")
 s_, code, _ = put(SA, sales_after); check(s_ == 403, f"Vertrieb ändert nach Annahme keine Stammdaten ({s_} {code})")
 def av_fs(n):
-    n["workSteps"].append(mstep(n, "ws_pj1", "FA 8801", "konf2", 12, projectId="pj1", ab="AB-777", sequence=10, dueDate="2026-11-27")); audit_entry(n, "t_av")
+    o = mstep(n, "ws_pj1", "FA 8801", "konf2", 12, projectId="pj1", ab="AB-777", sequence=10, dueDate="2026-11-27")
+    o.update(machineId="", handoffUnassigned=True, baselinePlan=None, predecessorIds=[])
+    n["workSteps"].append(o); audit_entry(n, "t_av")
 s_, code, _ = put(AV, av_fs); check(s_ == 200, f"Arbeitsvorbereitung legt FA zum angenommenen Projekt an ({s_} {code})")
 def av_edit_project(n):
     p = plog(n, "pj1", "t_av"); p["dueDate"] = "2026-12-24"; audit_entry(n, "t_av")

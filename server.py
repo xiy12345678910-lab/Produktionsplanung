@@ -2648,6 +2648,7 @@ def validate_state(old: dict, new: dict) -> tuple[bool, str, str]:
     dept_ids = set()
     dept_types = {}
     dept_kinds = {}
+    dept_labels = {}
     valid_types = {"MACHINE", "LABOR_HOURS", "PROCESS", "CYCLE"}
     for dep in departments:
         if not isinstance(dep, dict) or not re.fullmatch(r"[A-Za-z0-9_-]{1,40}", str(dep.get("id") or "")):
@@ -2671,6 +2672,7 @@ def validate_state(old: dict, new: dict) -> tuple[bool, str, str]:
         dept_ids.add(did)
         dept_types[did] = ptype
         dept_kinds[did] = kind
+        dept_labels[did] = name
 
     # V12.8.2: Vertrieb/Entwicklung bearbeiten nur Projektaufgaben – keine Maschinen, Aufträge, Formate.
     for name, what in (("machines", "Maschine/Linie"), ("workSteps", "Auftrag"), ("formats", "Format"), ("baseFormats", "Grundformat")):
@@ -3108,7 +3110,13 @@ def validate_state(old: dict, new: dict) -> tuple[bool, str, str]:
 
         mid = str(o.get("machineId", ""))
         alt = str(o.get("altMachineId", "") or "")
-        if mid not in midset:
+        handoff = o.get("handoffUnassigned", False)
+        ptype = str(o.get("planningType") or "")
+        if "handoffUnassigned" in o and not isinstance(handoff, bool):
+            return False, "MP-PLAN-064", f"Auftrag '{o.get('order') or oid}': Bereichsübergabe ist ungültig."
+        if handoff and (ptype != "MACHINE" or str(o.get("status", "planned")) != "planned" or mid or alt or o.get("allowAlternative") or o.get("baselinePlan") is not None or o.get("anchorMode", "none") != "none" or o.get("direction", "forward") != "forward"):
+            return False, "MP-PLAN-064", f"Auftrag '{o.get('order') or oid}': Unzugeordnete Bereichsübergabe darf keine Ressource oder operative Planung enthalten."
+        if not handoff and mid not in midset:
             return False, "MP-PLAN-003", f"Auftrag '{o.get('order') or oid}' verweist auf eine unbekannte Hauptmaschine."
         order_department = str(o.get("departmentId") or next((m.get("departmentId") or dd for m in machines if str(m.get("id")) == mid), dd))
         if order_department not in dept_ids:
@@ -3703,6 +3711,7 @@ def production_planning_change_allowed(old: dict, new: dict) -> tuple[bool, str]
         if key not in allowed_root and canonical(old.get(key)) != canonical(new.get(key)):
             return False, f"Arbeitsvorbereitung darf '{key}' nicht ändern."
     a, b = _record_map(old.get("workSteps")), _record_map(new.get("workSteps"))
+    dep_names = {str(d.get("id")): str(d.get("name") or d.get("id") or "") for d in (new.get("departments") or []) if isinstance(d, dict)}
     for rid in set(a) | set(b):
         if canonical(a.get(rid)) == canonical(b.get(rid)):
             continue
@@ -3710,6 +3719,19 @@ def production_planning_change_allowed(old: dict, new: dict) -> tuple[bool, str]
             if side is not None and str(side.get("status") or "planned") != "planned":
                 return False, f"Arbeitsvorbereitung ändert nur geplante Aufträge ('{side.get('fa') or side.get('order') or rid}' ist {side.get('status')})."
         before, after = a.get(rid), b.get(rid)
+        if before is not None and after is not None and canonical(before.get("handoffUnassigned", False)) != canonical(after.get("handoffUnassigned", False)):
+            return False, "Die Bereichsplanung übernimmt offene AV-Aufträge über die Planen-Aktion."
+        if before is None and after is not None:
+            did = str(after.get("departmentId") or "")
+            is_confection = "konf" in did.casefold() or "konf" in dep_names.get(did, "").casefold()
+            if not after.get("handoffUnassigned") or str(after.get("machineId") or "") or str(after.get("altMachineId") or "") or after.get("allowAlternative") or after.get("baselinePlan") is not None or after.get("planningWeek") or str(after.get("direction") or "forward") != "forward" or str(after.get("anchorMode") or "none") != "none" or after.get("requiredStart") or after.get("requiredFinish") or after.get("laneIndex"):
+                return False, "Neue AV-Aufträge müssen ohne Ressource und Terminanker an die Bereichsplanung gehen."
+            if not is_confection and (_finite_float(after.get("hours", 0)) or 0) > 0:
+                return False, "Arbeitsvorbereitung darf Stunden nur für Konfektion vorgeben."
+        if after is not None and canonical((before or {}).get("hours", 0)) != canonical(after.get("hours", 0)):
+            dept = str(after.get("departmentId") or "")
+            if ("konf" not in dept.casefold() and "konf" not in dep_names.get(dept, "").casefold()) and (_finite_float(after.get("hours", 0)) or 0) > 0:
+                return False, "Arbeitsvorbereitung darf Stunden nur für Konfektion vorgeben."
         if before and after:
             for field in ("machineId", "altMachineId", "allowAlternative", "laneIndex", "pos", "direction", "anchorMode", "requiredStart", "requiredFinish", "planningWeek", "baselinePlan"):
                 if canonical(before.get(field)) != canonical(after.get(field)):
@@ -3806,8 +3828,23 @@ def department_change_allowed(old: dict, new: dict, department_id: str) -> tuple
     old_steps = _record_map(old.get("workSteps"))
     for rid, rec in _record_map(new.get("workSteps")).items():
         before = old_steps.get(rid)
+        if before is not None:
+            if rec.get("handoffUnassigned") is True and (str(rec.get("machineId") or "") or str(rec.get("status") or "planned") != "planned"):
+                return False, "Unzugeordnete AV-Aufträge bleiben ohne Ressource und Freigabe."
+            if canonical(before.get("handoffUnassigned", False)) != canonical(rec.get("handoffUnassigned", False)):
+                if before.get("handoffUnassigned") is not True or rec.get("handoffUnassigned") is not False:
+                    return False, "Eine Bereichsübergabe kann nur einmal übernommen werden."
+                mid = str(rec.get("machineId") or "")
+                machine = next((m for m in (new.get("machines") or []) if str(m.get("id")) == mid), None)
+                if not machine or machine_dept.get(mid, "") != department_id or _finite_float(rec.get("hours", 0)) is None or _finite_float(rec.get("hours", 0)) <= 0:
+                    return False, "Zum Einplanen braucht der Bereich eine eigene Ressource und Maschinenlaufzeit."
+            for field in ("fa", "faNumber", "projectId", "ab", "wt", "targetQty", "sequence", "predecessorIds"):
+                if canonical(before.get(field)) != canonical(rec.get(field)):
+                    return False, "FA, Projekt, Menge und Vorgänger pflegt die Arbeitsvorbereitung."
         resource = next((m for m in old.get("machines") or [] if m.get("id") == (before or {}).get("machineId")), {})
-        if before is not None and (resource.get("kind") == "line" or resource.get("effortScaling")) and canonical(before.get("hours")) != canonical(rec.get("hours")):
+        dep = str((before or rec).get("departmentId") or "")
+        dep_name = next((str(d.get("name") or "") for d in (old.get("departments") or []) if str(d.get("id")) == dep), "")
+        if before is not None and ("konf" in dep.casefold() or "konf" in dep_name.casefold() or resource.get("kind") == "line" or resource.get("effortScaling")) and canonical(before.get("hours")) != canonical(rec.get("hours")):
             return False, "Konfektionsstunden pflegt die Arbeitsvorbereitung."
         if before is not None and before.get("planningType") == "LABOR_HOURS" and canonical(before.get("requiredHours")) != canonical(rec.get("requiredHours")):
             return False, "Konfektionsstunden pflegt die Arbeitsvorbereitung."
