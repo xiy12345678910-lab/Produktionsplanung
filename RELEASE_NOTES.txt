@@ -9,6 +9,8 @@ HOTFIXES #57–#62
   Serverprüfungen schützen AV-Felder, Übergabezustand und Bereichsgrenzen.
   Auftrags-/Projektdialoge behalten den gewählten Eingabefokus auch bei schneller Eingabe;
   der Fokus kehrt beim Schließen weiterhin zum auslösenden Knopf zurück.
+  Normale und ältere Aufträge bleiben nach einem Maschinenwechsel durch die Abteilung bearbeitbar
+  und löschbar; nur echte AV-Übergaben erhalten die AV-Schutzregeln.
 - Personal: Standardschicht Mo–Do 06:30–16:00 minus 45 Minuten Pausen = 8,75 Stunden,
   Freitag 06:30–11:45 minus 15 Minuten = 5 Stunden; Standardwoche = 40 Stunden.
   Teilzeit, individuelle Arbeitstage, Tagesstunden, Abwesenheiten und eigene dauerhafte Zeiten/Pausen

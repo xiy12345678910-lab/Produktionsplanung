@@ -21,6 +21,7 @@ with server.DB_LOCK,server.db_session() as con:
  old=json.loads(con.execute('SELECT json FROM state WHERE id=1').fetchone()['json'])
  new=json.loads(json.dumps(old))
  new['workSteps']=[]
+ new['workSteps'].append({'id':'legacy-manual-cnc','sequence':1,'planningType':'MACHINE','pos':1,'departmentId':'cnc','projectId':'','predecessorIds':[],'fa':'FA-MANUAL-1001','faNumber':'FA-MANUAL-1001','ab':'','wt':'','machineId':'m1','altMachineId':'','allowAlternative':False,'order':'FA-MANUAL-1001','articleNo':'','description':'Manueller Legacy-Auftrag','targetQty':10,'dueDate':'','baselinePlan':None,'hours':3,'goodQty':0,'scrapQty':0,'status':'planned','direction':'forward','anchorMode':'none','requiredStart':'','requiredFinish':'','createdAt':server.now_iso(),'lockedStart':'','lockedSegments':[],'actualStartedAt':'','runningSince':'','pausedAt':'','pauseIntervals':[],'remainingHours':None,'lastStatusCheckAt':''})
  new['projects']=[{'id':'p1','number':'P-2026-001','phase':'accepted','name':'Gehäuse','customer':'Kunde A','ab':'AB-500','dueDate':'2026-11-30','log':[],'processes':[]}]
  ok,code,reason=server.validate_state(old,new)
  if not ok: print('SEED-ERROR',code,reason,flush=True);sys.exit(1)
@@ -55,7 +56,24 @@ const denied=async(patch,id)=>av.evaluate(async([stepId,changes])=>{const state=
 const denyMachine=await denied({machineId:'m1',handoffUnassigned:false,hours:4},rows[0]?.id);check(denyMachine===403,`server rejects AV resource assignment (${denyMachine})`);
 const denyFlag=await denied({handoffUnassigned:false,machineId:'m1',hours:4},rows[0]?.id);check(denyFlag===403,`server rejects AV takeover marker bypass (${denyFlag})`);
 const denyHours=await denied({hours:6},rows[0]?.id);check(denyHours===403,`server rejects AV CNC hours (${denyHours})`);
- const cnc=await login('cnclead');await cnc.click('#navPlan');await cnc.waitForTimeout(250);
+ let cnc=await login('cnclead');await cnc.click('#navPlan');await cnc.waitForTimeout(250);await cnc.click('#navList');await cnc.waitForTimeout(250);
+const legacyId='legacy-manual-cnc',legacyRow=cnc.locator(`#ordersBody tr[data-id="${legacyId}"]`);
+check(await legacyRow.count()===1,'manueller Legacy-Auftrag ohne AV-Übergabeflag ist im Bereich sichtbar');
+await legacyRow.locator('select[data-f="machineId"]').selectOption('m2');await cnc.waitForSelector('#moveModal.show');await cnc.click('#confirmMove');
+await cnc.waitForFunction(async id=>{const s=await(await fetch('/api/state')).json(),o=s.data.workSteps.find(x=>x.id===id);return o?.machineId==='m2'&&!Object.prototype.hasOwnProperty.call(o,'handoffUnassigned')},legacyId);
+check(true,'Maschinenwechsel erhält beim Legacy-Auftrag das fehlende AV-Übergabeflag');
+await legacyRow.locator('input[data-f="targetQty"]').fill('44');await legacyRow.locator('input[data-f="targetQty"]').press('Tab');
+await cnc.waitForFunction(async id=>{const s=await(await fetch('/api/state')).json();return s.data.workSteps.find(x=>x.id===id)?.targetQty===44},legacyId);
+check(true,'Bereich kann beim Legacy-Auftrag die Sollmenge ändern');
+await cnc.waitForFunction(()=>document.querySelector('#saveState')?.textContent==='Server gespeichert');
+const legacyFaResult=await cnc.evaluate(async id=>{const s=await(await fetch('/api/state')).json(),o=s.data.workSteps.find(x=>x.id===id);o.fa=o.faNumber='FA-MANUAL-1002';o.order='FA-MANUAL-1002';const h=await(await fetch('/api/health')).json(),r=await fetch('/api/state',{method:'PUT',headers:{'Content-Type':'application/json','X-MP-Client-Version':h.version},body:JSON.stringify({revision:s.revision,data:s.data,action:'Legacy order edit'})});return {status:r.status,body:await r.text()}},legacyId);
+check(legacyFaResult.status===200,`Bereich kann beim Legacy-Auftrag die FA ändern (${legacyFaResult.status}: ${legacyFaResult.body})`);
+await cnc.close();cnc=await login('cnclead');await cnc.click('#navList');await cnc.waitForTimeout(250);const deleteRow=cnc.locator(`#ordersBody tr[data-id="${legacyId}"]`);
+check(await deleteRow.locator('button[data-act="delete"]').isEnabled(),'Bereich darf Legacy-Auftrag löschen');
+await deleteRow.locator('button[data-act="delete"]').click();await cnc.locator('#askModal.show').waitFor();await cnc.click('#askOk');
+await cnc.waitForFunction(async id=>{const s=await(await fetch('/api/state')).json();return !s.data.workSteps.some(x=>x.id===id)},legacyId);
+check(true,'Bereich kann den Legacy-Auftrag löschen');
+await cnc.click('#navPlan');await cnc.waitForFunction(()=>document.querySelector('#board')?.offsetParent!==null);
  check(await cnc.locator(`#board [data-handoff-plan="${rows[0]?.id}"]`).isVisible(),'matching department gets Plan action in the week backlog');await cnc.screenshot({path:'/tmp/av-handoff-backlog.png'});
 await cnc.fill('#avBacklogSearch','not found');check(await cnc.locator('#board [data-backlog-card]:visible').count()===0,'department backlog search filters empty results');await cnc.fill('#avBacklogSearch','Kunde A');check(await cnc.locator('#board [data-backlog-card]:visible').count()===1,'department backlog search finds customer');
  await cnc.click(`#board [data-handoff-plan="${rows[0]?.id}"]`);await cnc.waitForTimeout(250);
