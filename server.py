@@ -29,6 +29,7 @@ from urllib.parse import parse_qs, urlparse
 
 MP_DEBUG_ABORTS = os.environ.get('MP_DEBUG_ABORTS') == '1'
 APP_VERSION = "12.27.0"
+SERVER_STARTED = time.time()
 HOST = os.environ.get("MP_HOST", "0.0.0.0")
 PORT = int(os.environ.get("MP_PORT", "8765"))
 BASE = Path(__file__).resolve().parent
@@ -656,6 +657,84 @@ def modules_effective(cfg: dict | None = None) -> dict:
 
 def module_on(name: str) -> bool:
     return bool(modules_effective().get(name, CONFIG_MODULE_DEFAULTS.get(name, True)))
+
+
+def build_diagnostics(tls_on: bool = False) -> dict:
+    """#52 K6: Systemstatus fuer den Admin. Nur technische Werte und Zaehler, nie Auftrags-, Chat-, Personal- oder Zugangsdaten."""
+    import platform
+    now = time.time()
+    warnings: list[str] = []
+    cfg = current_config()
+    out: dict = {
+        "generatedAt": now_iso(),
+        "product": {"version": APP_VERSION, "python": sys.version.split()[0], "platform": platform.platform(),
+                    "startedAt": datetime.fromtimestamp(SERVER_STARTED, timezone.utc).isoformat(),
+                    "uptimeSeconds": int(now - SERVER_STARTED)},
+    }
+    db: dict = {"fileBytes": DB_PATH.stat().st_size if DB_PATH.exists() else 0}
+    counts: dict = {}
+    updates: list = []
+    errors: list = []
+    with DB_LOCK, db_session() as con:
+        try:
+            db["integrity"] = str(con.execute("PRAGMA integrity_check").fetchone()[0])
+        except sqlite3.DatabaseError as e:
+            db["integrity"] = f"Fehler: {type(e).__name__}"
+        row = con.execute("SELECT revision,json FROM state WHERE id=1").fetchone()
+        db["revision"] = row["revision"] if row else None
+        db["configSchema"] = CONFIG_SCHEMA
+        try:
+            st = json.loads(row["json"]) if row else {}
+        except ValueError:
+            st = {}
+        for k in ("workSteps", "projects", "departments", "machines"):
+            v = st.get(k)
+            counts[k] = len(v) if isinstance(v, list) else 0
+        counts["users"] = con.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+        for r in con.execute("SELECT ts,action,detail FROM server_audit WHERE action LIKE 'Update%' ORDER BY id DESC LIMIT 10"):
+            try:
+                d = json.loads(r["detail"])
+            except ValueError:
+                d = {}
+            d = d if isinstance(d, dict) else {}
+            updates.append({"ts": r["ts"], "action": r["action"], "version": d.get("version"), "stage": d.get("stage"), "error": str(d.get("error") or "")[:200]})
+        for r in con.execute("SELECT ts,action,detail FROM server_audit WHERE action LIKE '%fehlgeschlagen%' OR action LIKE '%Fehler%' ORDER BY id DESC LIMIT 10"):
+            try:
+                d = json.loads(r["detail"])
+            except ValueError:
+                d = {}
+            errors.append({"ts": r["ts"], "action": r["action"], "error": str(d.get("error") or "")[:200] if isinstance(d, dict) else ""})
+    out["database"] = db
+    out["counts"] = counts
+    if db["integrity"] != "ok":
+        warnings.append(f"Datenbankpruefung nicht ok: {db['integrity']}")
+    try:
+        du = shutil.disk_usage(DATA_DIR)
+        out["disk"] = {"freeBytes": du.free, "totalBytes": du.total, "freePercent": round(du.free * 100 / du.total, 1) if du.total else None}
+        if du.total and du.free * 10 < du.total:
+            warnings.append("Freier Speicherplatz unter 10 %")
+    except OSError:
+        out["disk"] = None
+    bdir = DATA_DIR.parent / "backups"
+    files = sorted(bdir.glob("maschinenplanung_*.sqlite3"), key=lambda p: p.stat().st_mtime, reverse=True) if bdir.is_dir() else []
+    if files:
+        age = max(0, int(now - files[0].stat().st_mtime))
+        out["backup"] = {"newest": files[0].name, "ageSeconds": age, "bytes": files[0].stat().st_size, "count": len(files)}
+        if age > 2 * 86400:
+            warnings.append("Letztes Backup aelter als 2 Tage")
+    else:
+        out["backup"] = {"newest": None, "ageSeconds": None, "count": 0}
+        warnings.append("Kein Backup gefunden")
+    out["updates"] = updates
+    if updates and updates[0]["action"] == "Update fehlgeschlagen":
+        warnings.append("Letztes Update fehlgeschlagen")
+    if errors:
+        out["recentErrors"] = errors
+    out["modules"] = modules_effective(cfg)
+    out["config"] = {"companyName": (cfg.get("company") or {}).get("name", ""), "template": cfg.get("template", ""),
+                     "tenantId": cfg.get("tenantId", ""), "timezone": (cfg.get("locale") or {}).get("timezone", ""), "tls": bool(tls_on)}
+    out["warnings"] = warnings
+    return out
 
 
 def module_error(name: str) -> dict:
@@ -5589,6 +5668,22 @@ class Handler(BaseHTTPRequestHandler):
             if not user:
                 return
             return self.json_response(200, update_manager().poll())
+        if path == "/api/diagnostics":
+            user = self.require_user(["admin"])
+            if not user:
+                return
+            info = build_diagnostics(self.server.ssl_context is not None)
+            if parse_qs(parsed.query).get("download") == ["1"]:
+                raw = json.dumps(info, ensure_ascii=False, indent=2).encode("utf-8")
+                self.send_response(200)
+                self._security_headers()
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.send_header("Content-Disposition", f'attachment; filename="diagnose-{APP_VERSION}-{time.strftime("%Y-%m-%d")}.json"')
+                self.send_header("Content-Length", str(len(raw)))
+                self.end_headers()
+                self.wfile.write(raw)
+                return
+            return self.json_response(200, info)
         if path == "/api/health":
             return self.json_response(200, {"ok": True, "version": APP_VERSION})
         if path == "/api/session":

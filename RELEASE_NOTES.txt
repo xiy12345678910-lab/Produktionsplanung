@@ -2,6 +2,9 @@ MASCHINENPLANUNG V12.27.0 - RELEASE NOTES
 =========================================
 Datum: 08.10.2026 · Basis: V12.26.0 · Update gemäß README_Windows.txt 2b, Daten bleiben erhalten
 
+SYSTEMSTATUS UND DIAGNOSEPAKET FUER DEN ADMIN (#52 K6)
+- System zeigt dem Admin einen Systemstatus (Version, Datenbank-Pruefung, freier Speicher, letztes Backup, Warnungen) und bietet ein Diagnosepaket als JSON zum Download. Nur Zaehler und technische Werte, keine Auftrags-, Chat-, Personal- oder Zugangsdaten.
+
 UPDATER: PROGRAMMDATEIEN IN UNTERORDNERN (#73, Vorbereitung)
 - Updater, Setup, Vorabtest und Rollback koennen Programmdateien in einer Unterordnerebene (z. B. core/) installieren und sichern; unzulaessige Pfade werden abgewiesen (MP-UPD-006). Noch nichts verschoben, Paketinhalt unveraendert.
 

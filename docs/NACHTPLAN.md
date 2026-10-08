@@ -29,7 +29,7 @@ Auftrag (Jonas, 08.10. abends): über Nacht selbständig an #73, #55, #51, #52 a
 | 6a | #73 Phase 1 | Vorbereitung: Updater, PowerShell-Kopie, Preflight, Rollback und Tests können Dateien in Unterordnern (`core/x.py`), noch ohne verschobenen Code | Opus | erledigt (Commit „Phase 1 Vorbereitung: Updater und Skripte unterstützen Unterordner (#73)“) |
 | 7 | #73 Phase 1 | Schritt 2: TLS → `core/tls.py` | Sonnet | zurückgestellt (wie 6) |
 | 8 | #73 Phase 1 | Review der Schritte 6–7 (rein lesend) | Opus | erledigt (Review: keine Blocker; Nacharbeit Commit „Phase 1 Vorbereitung: Review-Nacharbeit Updater (#73)“) |
-| 9 | #52 K6 | System-Status/Diagnosepaket für den Admin (ohne Geheimnisse) | Sonnet | offen |
+| 9 | #52 K6 | System-Status/Diagnosepaket für den Admin (ohne Geheimnisse) | Sonnet | erledigt (Commit „#52 K6: Systemstatus und Diagnosepaket für den Admin“) |
 
 ## Fragen für morgen (Jonas)
 - Rechte: Darf der Vertrieb Projekte bearbeiten? (heute nein)
