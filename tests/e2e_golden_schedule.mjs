@@ -2,7 +2,7 @@
 // Phase 0 (#73): Referenzstand der Planungslogik (Scheduler) + Laufzeit-Benchmark.
 // Fester Zeitpunkt und deterministisch erzeugte FA → Ergebnis (Start/Ende/Ressource/Konflikt) muss der Referenz
 // tests/golden/schedule.json entsprechen. So fällt bei Umbauten (Phase 1–4) jede ungewollte Planänderung auf.
-// Benchmark: 300 FA (heute ~2,5 s lokal). Wachstum ~n^2,6 – Optimierung siehe Roadmap #73. Last: MP_BENCH_ORDERS=1500.
+// Benchmark: 300 FA (V12.26.0 ~0,3 s lokal; vorher 2,5 s). Last: MP_BENCH_ORDERS=1500 (vorher 186 s, jetzt ~9 s).
 // node tests/e2e_golden_schedule.mjs            vergleichen
 // node tests/e2e_golden_schedule.mjs --update   Referenz bewusst neu schreiben
 import { spawn } from 'node:child_process';
@@ -17,7 +17,7 @@ const UPDATE = process.argv.includes('--update');
 const PORT = 18990, BASE = `http://127.0.0.1:${PORT}/`, PASS = 'E2E-Golden-1234';
 // Montag 05.10.2026 05:00 Berlin – vor Schichtbeginn, damit die Woche vollständig planbar ist.
 const NOW = new Date('2026-10-05T03:00:00Z');
-const BENCH_ORDERS = Number(process.env.MP_BENCH_ORDERS || 300), BENCH_LIMIT_MS = Number(process.env.MP_BENCH_LIMIT_MS || 15000);
+const BENCH_ORDERS = Number(process.env.MP_BENCH_ORDERS || 300), BENCH_LIMIT_MS = Number(process.env.MP_BENCH_LIMIT_MS || 5000);
 const tmp = mkdtempSync(path.join(tmpdir(), 'mp-golden-'));
 const py = `
 import ipaddress,sys
@@ -85,6 +85,14 @@ try {
   const again = await build(120);
   check(JSON.stringify(again.out) === JSON.stringify(golden.out), 'Scheduler ist deterministisch (zweiter Lauf identisch)');
 
+  // Gegenprobe: dieselbe Planung mit der alten linearen Belegungsprüfung und ohne Kalender-Zwischenspeicher (V12.26.0).
+  {
+    const n = Number(process.env.MP_EQUIV || 300), fast = await build(n);
+    await ev(() => { window.__fh = firstHit; window.__wi = workIntervalsForDate; firstHit = function (segments, blocks, lanes = 1) { if (lanes > 1) return laneHit(segments, blocks, lanes); let hit = null; for (const s of segments) for (const b of blocks) if (segOverlap(s, b) && (!hit || b.start < hit.start)) hit = b; return hit }; workIntervalsForDate = workIntervalsForDateRaw; });
+    const slow = await build(n), diff = Object.keys(fast.out).filter(k => JSON.stringify(fast.out[k]) !== JSON.stringify(slow.out[k]));
+    await ev(() => { firstHit = window.__fh; workIntervalsForDate = window.__wi; });
+    check(diff.length === 0, `Gegenprobe ${n} FA: optimierte und lineare Logik identisch (${diff.length} Abweichungen; ${Math.round(fast.ms)} ms vs ${Math.round(slow.ms)} ms)`);
+  }
   const bench = await build(BENCH_ORDERS);
   console.log(`BENCH Scheduler: ${BENCH_ORDERS} FA auf ${bench.machines} Ressourcen in ${Math.round(bench.ms)} ms`);
   check(bench.ms < BENCH_LIMIT_MS, `Benchmark: ${BENCH_ORDERS} FA in ${Math.round(bench.ms)} ms (Grenze ${BENCH_LIMIT_MS} ms)`);

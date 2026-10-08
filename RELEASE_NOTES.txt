@@ -1,5 +1,15 @@
-MASCHINENPLANUNG V12.25.0 - RELEASE NOTES
+MASCHINENPLANUNG V12.26.0 - RELEASE NOTES
 =========================================
+Datum: 08.10.2026 · Basis: V12.25.0 · Update gemäß README_Windows.txt 2b, Daten bleiben erhalten
+
+PLANUNG SCHNELLER (Roadmap #73, P1)
+- Belegungsprüfung je Maschine über einen sortierten Index statt Vergleich mit allen Belegungen;
+  Arbeitszeiten je Tag und Ressource werden während eines Planungslaufs zwischengespeichert.
+- Gleiches Ergebnis: Referenztest (120 FA) unverändert, Gegenprobe gegen die alte Logik (300 bzw. 600 FA) ohne Abweichung.
+- Laufzeit lokal: 300 FA 2,5 s -> 0,3 s · 600 FA 16 s -> 1,5 s · 1500 FA 186 s -> 9 s.
+
+MASCHINENPLANUNG V12.25.0
+=========================
 Datum: 08.10.2026 · Basis: V12.24.0 · Update gemäß README_Windows.txt 2b, Daten bleiben erhalten
 
 TROCKNUNG: ABTEILUNGSLEITUNG ENTSCHEIDET, EINGABE IN hh:mm

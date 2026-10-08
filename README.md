@@ -1,12 +1,13 @@
 # Produktionsplanung
 
-Maschinenplanung V12.25.0 – Wochen-/Ressourcenplanung je Bereich (Maschinen & Linien), Projekte,
+Maschinenplanung V12.26.0 – Wochen-/Ressourcenplanung je Bereich (Maschinen & Linien), Projekte,
 Formate (Tiefziehen), Personal und Nachrichten. Zentraler Windows-LAN-Server, Browser-Oberfläche.
 
 - `server.py` – Python-Server (nur Standardbibliothek, SQLite), `index.html` – Oberfläche, `release_gates.py` – Freigabeprüfung, `app_updates.py` – allgemeine Releaseupdates
 - Windows: `README_Windows.txt` (Installation, Update, Update direkt von GitHub), `BENUTZER_KURZANLEITUNG.txt`
 - A–D: `docs/BLOCKS_A_D.md` · Admin-Updates (I 7a): `docs/ADMIN_UPDATES.md`
 - Änderungen: `RELEASE_NOTES.txt` · Fehlercodes: `FEHLERCODES.txt` · Übergabe: `docs/UEBERGABE.md`
+- Planung schneller (Scheduler-Performance) V12.26.0: `docs/V12_26_0.md`
 - Trocknung durch Abteilungsleitung (hh:mm), Phase-0-Referenztests V12.25.0: `docs/V12_25_0.md`
 - Trocknungs-/Wartezeit nach Arbeitsgaengen V12.24.0: `docs/V12_24_0.md`
 - Rollen & Rechte, FA-Einplanungsfenster V12.23.0: `docs/V12_23_0.md`
