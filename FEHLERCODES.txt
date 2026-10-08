@@ -275,6 +275,7 @@ MP-PLAN-062  Termin liegt nach dem AV-Termin. Früher planen ist erlaubt, späte
 MP-PLAN-063  Hinweis: Auftrag wird erst nach dem AV-Termin fertig (Karte rot).
 MP-PLAN-064  Takt-Rechner: Menge und Takt eintragen.
 MP-PLAN-070  Fixer Start liegt in der Trocknungszeit des Vorgaengers. Spaeter starten oder Trocknung pruefen.
+MP-PLAN-071  Titel (Artikel/Beschreibung) ist Pflicht (nur Bereiche ohne Mengenmeldung, z. B. Formbau).
 MP-PLAN-065  Bereichsuebergabe ungueltig: unzugeordneter FA darf keine Ressource, Freigabe oder operative Planung enthalten.
 
 [PM - Projektmanagement / AB-Aufträge]
@@ -471,6 +472,7 @@ MP-PROD-047  Maschine/Parallelplatz gesperrt, belegt oder ungueltig.
 MP-PROD-048  Mengen/Etikettenvorlage/Haltbarkeit ungueltig; Restmenge beachten.
 MP-PROD-049  Bestands-FA ohne Artikelreferenz.
 MP-PROD-050  Request-ID fehlt oder wurde mit anderem Inhalt verwendet; bei Verbindungsabbruch Aktion wiederholen.
+MP-PROD-060  Bereich meldet keine Mengen (Eigenschaft Ohne Mengenmeldung): keine Teilmeldung, Gut-/Ausschussmenge nur 0.
 MP-AUTH-024  (zusaetzlich) Aktive Mitarbeiterzuordnung oder offene Zustaendigkeit vor Benutzerloeschung loesen.
 MP-UPD-001   Kein freigegebenes/kompatibles Paket, ungueltige Quelle oder Updateauftrag.
 MP-UPD-002   Eine andere Installation laeuft bereits.

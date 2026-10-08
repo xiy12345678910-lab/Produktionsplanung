@@ -6,6 +6,11 @@ PLANUNG AV JA/NEIN JE BEREICH
 - Neue Bereichs-Option "Planung AV" (GF-Steuerung und System > Funktionen & Bereiche). Ja: die AV gibt die Stunden je FA vor (wie Konfektion). Nein: die Abteilung plant ihre Stunden selbst.
 - Ersetzt die Namenserkennung "Konfektion". Beim Start werden Bereiche mit "konf" in ID/Name einmalig auf "ja" gesetzt, bestehende Werte bleiben. Neue Bereiche mit Personenstunden starten mit "nein".
 
+BEREICHE OHNE MENGENMELDUNG, Z. B. FORMBAU
+- Neue Bereichs-Option "Ohne Mengenmeldung" (GF-Steuerung und System > Funktionen & Bereiche, nur Admin). Produktion meldet nur Start/Pause/Stopp; keine Gut-/Ausschussmengen, keine Teilfertigmeldung.
+- "Fertig" meldet immer 0/0, bucht keinen Bestand. Server: MP-PROD-060 bei Teilmeldung oder Menge ungleich 0.
+- Formbau-Logik: Abteilung plant ihre Stunden selbst (Planung AV = nein). Pflicht: benoetigte Stunden > 0 und Titel (Artikel/Beschreibung), sonst MP-PLAN-071 (nur in solchen Bereichen).
+
 REINIGUNG NACH FA JE MASCHINE (Block F)
 - Neues optionales Maschinenfeld "Reinigung" (hh:mm, 0-24 h) in den Maschineneinstellungen, neben Umrüsten min.
 - Nach jedem FA (geplant, gesperrt, freigegeben) ist die Maschine für diese Zeit belegt (Arbeitszeit der Maschine/des Platzes).

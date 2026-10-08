@@ -89,6 +89,13 @@ try {
   await page.selectOption('#planResource', rid); await page.selectOption('#planTakt', 'tk_t');
   check((await page.textContent('#planTaktHint')).includes('Menge fehlt'), 'Hinweis "Menge fehlt" bei Menge 0');
   await page.click('#planCancel');
+  // (b2) V12.27.0: Bereich ohne Mengenmeldung blendet Mengenfelder der Fertigmeldung aus
+  await ev(() => { const o = data.workSteps[0]; window.__nq = o.id; o.status = 'running'; o.actualStartedAt = new Date(Date.now() - 36e5).toISOString(); departmentById(o.departmentId).noQuantity = true; openFinish(o.id); });
+  check(await ev(() => deptNoQty(data.workSteps[0].departmentId)), 'deptNoQty erkennt Bereich ohne Mengenmeldung');
+  check(!(await page.locator('#finishGood').isVisible()) && !(await page.locator('#finishScrap').isVisible()), 'Fertigmeldung ohne Mengenfelder bei noQuantity');
+  await ev(() => { document.getElementById('finishModal').classList.remove('show'); const o = data.workSteps[0]; delete departmentById(o.departmentId).noQuantity; openFinish(o.id); });
+  check(await page.locator('#finishGood').isVisible(), 'Gegenprobe: Mengenfelder sichtbar ohne noQuantity');
+  await ev(() => { document.getElementById('finishModal').classList.remove('show'); });
   // (c) Server lehnt ungueltige Einheit / Stueck je Takt ab
   const put = (mut) => page.evaluate(async (m) => { const s = await (await fetch('/api/state')).json(), h = await (await fetch('/api/health')).json(); const mac = s.data.machines[0]; mac.takte = [{ id: 'tk_x', name: 'X', sec: 3, ...m }]; const r = await fetch('/api/state', { method: 'PUT', headers: { 'Content-Type': 'application/json', 'X-MP-Client-Version': h.version }, body: JSON.stringify({ revision: s.revision, data: s.data }) }); return [r.status, (await r.json()).errorCode]; }, mut);
   const b1 = await put({ unit: 'xyz' }), b2 = await put({ parts: 0 }), b3 = await put({ parts: 2.5 });

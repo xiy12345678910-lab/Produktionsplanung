@@ -2846,8 +2846,8 @@ def validate_state(old: dict, new: dict) -> tuple[bool, str, str]:
             return False, "MP-DEPT-002", "Produktionsbereich hat eine ungültige ID."
         did = str(dep["id"])
         ptype = str(dep.get("planningType") or "")
-        if any(k in dep and not isinstance(dep[k], bool) for k in ("formats", "sharedOperators", "avHours")):
-            return False, "MP-DEPT-007", f"Bereich '{did}': Eigenschaften formats/sharedOperators/avHours sind true/false."
+        if any(k in dep and not isinstance(dep[k], bool) for k in ("formats", "sharedOperators", "avHours", "noQuantity")):
+            return False, "MP-DEPT-007", f"Bereich '{did}': Eigenschaften formats/sharedOperators/avHours/noQuantity sind true/false."
         if "dryingHours" in dep and (_finite_float(dep["dryingHours"]) is None or not 0 <= float(dep["dryingHours"]) <= 720 or isinstance(dep["dryingHours"], bool)):
             return False, "MP-DEPT-007", f"Bereich '{did}': Trocknungszeit muss 0–720 Stunden sein."
         if did in dept_ids:
@@ -3642,7 +3642,7 @@ def _gf_departments_change(old: dict, new: dict) -> tuple[bool, str]:
     for did, b in db.items():
         a = da.get(did)
         if a is None:
-            if set(b) - {"id", "name", "kind", "active", "planningType", "avHours"} or b.get("avHours", False) is not False or str(b.get("planningType") or "") != "MACHINE":
+            if set(b) - {"id", "name", "kind", "active", "planningType", "avHours", "noQuantity"} or b.get("avHours", False) is not False or b.get("noQuantity", False) is not False or str(b.get("planningType") or "") != "MACHINE":
                 return False, "Neuer Bereich: nur Name, Art und aktiv (Planung über Maschinen/Linien)."
             continue
         diff = {k for k in set(a) | set(b) if canonical(a.get(k)) != canonical(b.get(k))}
@@ -4388,6 +4388,11 @@ def production_replan(state, order, stamp, crew):
     order["remainingHours"] = sum((local_dt(x["end"])-local_dt(x["start"])).total_seconds()/3600 for x in locked)
 
 
+def department_no_quantity(state, did):
+    """V12.27.0: Bereich ohne Mengenmeldung (Eigenschaft noQuantity)."""
+    return any(isinstance(d, dict) and str(d.get("id")) == str(did) and d.get("noQuantity") is True for d in (state.get("departments") or []))
+
+
 def production_apply(state, user, oid, action, body, stamp=None):
     """One authoritative runtime for every FA source and planning type."""
     stamp = stamp or now_iso()
@@ -4475,7 +4480,13 @@ def production_apply(state, user, oid, action, body, stamp=None):
         order["pausedAt"], order["status"] = stamp, "paused"
         production_replan(state, order, stamp, order["productionPhases"][-1]["crew"])
     elif action in {"partial", "finish", "abort"}:
-        target = int(order.get("targetQty") or order.get("quantity") or 0)
+        no_qty = department_no_quantity(state, order.get("departmentId"))
+        if no_qty:
+            # V12.27.0: Bereich ohne Mengenmeldung (z. B. Formbau): nur Start/Pause/Stopp, keine Teilmeldung, Mengen immer 0.
+            if action == "partial" or any(body.get(k) not in (None, 0) for k in ("goodQty", "scrapQty")):
+                raise ProductionError("MP-PROD-060", "Bereich meldet keine Mengen.")
+            body = {**body, "goodQty": 0, "scrapQty": 0}
+        target = 0 if no_qty else int(order.get("targetQty") or order.get("quantity") or 0)
         previous_good, previous_scrap = int(order.get("goodQty") or 0), int(order.get("scrapQty") or 0)
         good = body.get("goodQty", max(0, target-previous_good-previous_scrap) if action == "finish" else 0)
         scrap = body.get("scrapQty", 0)
@@ -4498,7 +4509,7 @@ def production_apply(state, user, oid, action, body, stamp=None):
                 finished.update(recordType="cancelled", status="cancelled", abortReason=body["reason"].strip())
             state["history"].insert(0, finished)
             state["workSteps"].remove(order)
-            if order.get("sourceType") in DEMAND_SOURCES:
+            if order.get("sourceType") in DEMAND_SOURCES and not no_qty:
                 # Auch ein Abbruch bucht bereits gefertigte Gutteile: sie liegen physisch vor.
                 demand_book_completion(state, order, finished)
     elif action == "label":
@@ -5170,7 +5181,7 @@ def template_merge(state: dict, tpl: dict) -> tuple[dict, dict]:
             summary["skipped"] += 1
             continue
         rec = {"id": did, "name": name[:60], "planningType": d["planningType"], "active": True}
-        for flag in ("formats", "sharedOperators", "avHours"):
+        for flag in ("formats", "sharedOperators", "avHours", "noQuantity"):
             if d.get(flag) is True:
                 rec[flag] = True
         deps.append(rec)
