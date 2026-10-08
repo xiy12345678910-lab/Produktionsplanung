@@ -181,7 +181,8 @@ try {
   // Der Client hat die neue Meldung verarbeitet, sobald sich die Glocke ändert.
   await lb.waitForFunction(b => document.getElementById('notifBtn').innerText !== b, badgeBefore, { timeout: 10000 }).catch(() => {});
   await lb.waitForTimeout(300);
-  check((await lb.evaluate(() => window.__nlog.length)) === 1 && (await items(lb, 'mention')).length >= 2, 'Ruhezeit: Eintrag in der Glocke, aber keine Browser-Meldung');
+  const qLog = await lb.evaluate(() => window.__nlog.length), qItems = (await items(lb, 'mention')).length;
+  check(qLog === 1 && qItems >= 2, `Ruhezeit: Eintrag in der Glocke, aber keine Browser-Meldung (Meldungen ${qLog}, Einträge ${qItems})`);
 
   // LAN über HTTP: Notification API unbrauchbar -> nur Glocke, ohne Fehler
   const insecure = await open('lena', { init: () => { Object.defineProperty(window, 'isSecureContext', { value: false }); delete window.Notification; } });
