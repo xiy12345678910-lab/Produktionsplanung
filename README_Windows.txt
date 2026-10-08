@@ -33,20 +33,26 @@ MASCHINENPLANUNG V12.27.0 - WINDOWS-SERVER (LAN ONLY)
    BRANCH-SCHUTZ (GitHub -> Settings -> Branches -> main): "Require a pull request before merging",
    "Do not allow bypassing", kein Force-Push; Tags v* unter Settings -> Rules schuetzen.
 
-2c. HTTPS IM LAN (ab V12.21.0, empfohlen)
-   Ohne HTTPS gehen Passwoerter und Sitzungen unverschluesselt durchs LAN. Einmalig als Administrator:
+2c. HTTPS IM LAN (ab V12.21.0; Standard bei NEUINSTALLATION ab #52)
+   Ohne HTTPS gehen Passwoerter und Sitzungen unverschluesselt durchs LAN.
+   NEUINSTALLATION: Setup_Windows.ps1 (INSTALLIEREN_ALS_ADMIN.ps1) richtet HTTPS automatisch ein.
+   Abschalten nur bewusst:   .\INSTALLIEREN_ALS_ADMIN.ps1 -OhneHttps   (bzw. Setup_Windows.ps1 -OhneHttps)
+   Schlaegt die Einrichtung fehl, installiert Setup mit HTTP weiter und warnt (MP-TLS-002/003, FEHLERCODES.txt).
+   BESTEHENDE INSTALLATION: Updates (UPDATE_LIVE.ps1, Softwareupdate) und ein erneutes Setup aendern HTTP/HTTPS
+   NICHT - sonst saehen alle Arbeitsplaetze Zertifikatswarnungen, bevor die CA importiert ist. Der Systemstatus
+   (System, nur Admin) zeigt "HTTPS nicht eingerichtet". Umstellen einmalig als Administrator:
         cd C:\ProgramData\Maschinenplanung
         .\HTTPS_Einrichten.ps1                       (optional: -Name mp.firma.local)
    - Legt config\tls an (Firmen-CA + Serverzertifikat, nur SYSTEM/Administratoren lesbar), vertraut der CA
      auf dem Server und startet ihn neu. Adresse danach: https://<LAN-IP>:8765 bzw. https://<PC-Name>:8765
-   - Arbeitsplaetze: Datei Firmen-CA.crt (im Live-Ordner) EINMAL als vertrauenswuerdige Stammzertifizierungs-
-     stelle importieren - per Gruppenrichtlinie oder je PC als Administrator:
+   - Arbeitsplaetze (auch nach Neuinstallation noetig): Datei Firmen-CA.crt (im Live-Ordner) EINMAL als
+     vertrauenswuerdige Stammzertifizierungsstelle importieren - per Gruppenrichtlinie oder je PC als Administrator:
         certutil -addstore -f Root \\<Server>\<Freigabe>\Firmen-CA.crt
      Ohne Import zeigt der Browser eine Zertifikatswarnung. Firefox nutzt den Windows-Speicher, wenn die
      Richtlinie "Enterprise Roots" aktiv ist.
    - Neue LAN-IP oder Ablauf (< 30 Tage): Server erneuert das Zertifikat beim Start selbst; die Firmen-CA
      bleibt, kein neuer Import. Zurueck auf HTTP: config\tls umbenennen, Neustart_Server.ps1.
-   - Fehler MP-TLS-001: siehe FEHLERCODES.txt.
+   - Fehler MP-TLS-001/002/003: siehe FEHLERCODES.txt.
 
 2a. FIRMENDATEN (config\firma.json)
    - Liegt in C:\ProgramData\Maschinenplanung\config\ (neben data\): firma.json, logo.png|jpg, lizenz.key.
@@ -66,6 +72,8 @@ MASCHINENPLANUNG V12.27.0 - WINDOWS-SERVER (LAN ONLY)
         Set-ExecutionPolicy -Scope Process Bypass
         .\INSTALLIEREN_ALS_ADMIN.ps1
    Admin-Benutzername und Passwort festlegen. Installationsordner: C:\ProgramData\Maschinenplanung
+   HTTPS wird dabei eingerichtet (Abschnitt 2c; ohne HTTPS: -OhneHttps). Danach Firmen-CA.crt auf den
+   Arbeitsplaetzen importieren.
 
 4. GEPLANTE AUFGABEN
    - "Maschinenplanung Server": beim Windows-Start, Konto SYSTEM, automatischer Neustart bei Fehlern.

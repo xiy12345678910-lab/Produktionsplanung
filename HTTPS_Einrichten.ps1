@@ -14,29 +14,10 @@ Assert-MPAdmin 'HTTPS_Einrichten.ps1'
 $c = Read-MPConfig $Base
 if (-not $c) { throw 'LAN_CONFIG.json fehlt - Server zuerst einmal starten (Start_Server.ps1).' }
 $PythonExe = Get-MPPython
-$tls = Join-Path (Join-Path $Base $MP_ConfigDir) 'tls'
-# Ordner zuerst sperren, damit die privaten Schluessel nie mit Benutzer-Leserecht entstehen.
-Set-MPFolderAcl $tls $false
-$argList = @('-X', 'utf8', '-I', (Join-Path $Base 'server.py'), '--tls-einrichten', '--host', [string]$c.lan_ip)
-foreach ($n in $Name) { $argList += @('--tls-name', $n) }
-$env:MP_CONFIG_DIR = Join-Path $Base $MP_ConfigDir
-try {
-    & $PythonExe @argList
-    $code = $LASTEXITCODE
-} finally {
-    Remove-Item Env:\MP_CONFIG_DIR -ErrorAction SilentlyContinue
-}
-if ($code -ne 0) { throw "HTTPS-Einrichtung fehlgeschlagen (Exitcode $code)." }
-Set-MPFolderAcl $tls $false
-
-$caFile = Join-Path $tls 'firmen-ca.crt'
-$ca = New-Object Security.Cryptography.X509Certificates.X509Certificate2($caFile)
-$store = New-Object Security.Cryptography.X509Certificates.X509Store('Root', 'LocalMachine')
-$store.Open('ReadWrite')
-try { $store.Add($ca) } finally { $store.Close() }
-$public = Join-Path $Base 'Firmen-CA.crt'
-Copy-Item -LiteralPath $caFile -Destination $public -Force
-Write-Host "Firmen-CA vertraut (Fingerabdruck $($ca.Thumbprint)). Zum Verteilen: $public" -ForegroundColor Green
+# #52: gleiche Implementierung wie Setup_Windows.ps1 (MP_Common.ps1, Install-MPTls).
+$r = Install-MPTls $Base $PythonExe ([string]$c.lan_ip) $Name
+$public = $r.PublicCa
+Write-Host "Firmen-CA vertraut (Fingerabdruck $($r.Thumbprint)). Zum Verteilen: $public" -ForegroundColor Green
 
 Stop-ScheduledTask -TaskName $MP_TaskName -ErrorAction SilentlyContinue
 [void](Wait-MPTaskIdle $MP_TaskName 30)

@@ -2,6 +2,10 @@ MASCHINENPLANUNG V12.27.0 - RELEASE NOTES
 =========================================
 Datum: 08.10.2026 · Basis: V12.26.0 · Update gemäß README_Windows.txt 2b, Daten bleiben erhalten
 
+HTTPS STANDARD BEI NEUINSTALLATION (#52)
+- Setup_Windows.ps1 richtet bei einer Neuinstallation HTTPS ein (Firmen-CA + Serverzertifikat wie HTTPS_Einrichten.ps1, gemeinsame Funktion Install-MPTls). Abschalten mit -OhneHttps. Schlaegt die Einrichtung fehl, laeuft die Installation mit HTTP weiter und warnt (MP-TLS-002/003).
+- Bestehende Installationen bleiben unveraendert (Updates und erneutes Setup stellen nicht um). Der Systemstatus zeigt dort "HTTPS nicht eingerichtet" mit Verweis auf README_Windows.txt 2c (HTTPS_Einrichten.ps1). Arbeitsplaetze muessen Firmen-CA.crt weiterhin einmal importieren.
+
 EINRICHTUNG OHNE SCHRITT BRANCHE (#51/#53)
 - Der Einrichtungsassistent hat vier Schritte: Firma, Funktionen, Bereiche, Benutzer. Der Schritt "Branche" (Vorlage waehlen) entfaellt; neue Installationen starten ohne Vorlage mit leerem Bereichs-Stand und legen Bereiche und Maschinen im Schritt Bereiche selbst an.
 - Branchenvorlagen bleiben im Firmenprofil ("Vorlage anwenden - ergaenzt nur") verfuegbar. Server und Daten unveraendert, kein Schritt-Stand wird gespeichert.

@@ -425,6 +425,12 @@ MP-ROLE-013  Hinweis (kein Fehler): Benutzer verwalten zusammen mit Bearbeitungs
 MP-ROLE-014  Hinweis (kein Fehler): Unveränderte Kopie einer Leitungsrolle – ersetzt die Einzelhinweise 011–013.
 MP-TLS-001   HTTPS-Zertifikat in config\tls ungueltig oder nicht lesbar. Server startet nicht (kein stiller Rueckfall
              auf HTTP). HTTPS_Einrichten.ps1 erneut ausfuehren oder config\tls umbenennen (= wieder HTTP).
+MP-TLS-002   HTTPS-Einrichtung fehlgeschlagen (Install-MPTls: server.py --tls-einrichten, Ordnerrechte oder Vertrauen
+             der Firmen-CA). HTTPS_Einrichten.ps1 bricht ab. Setup_Windows.ps1 entfernt das halb angelegte config\tls,
+             warnt und installiert mit HTTP weiter; HTTPS spaeter mit HTTPS_Einrichten.ps1 nachholen (README_Windows.txt 2c).
+MP-TLS-003   Setup_Windows.ps1: Server antwortet nach der HTTPS-Einrichtung nicht per HTTPS. Setup faellt auf HTTP zurueck
+             (config\tls, Firmen-CA.crt und die eben vertraute CA werden entfernt) und prueft den Start erneut.
+             Ursache im Log logs\server_<Datum>.log; danach HTTPS_Einrichten.ps1.
 MP-CFG-003   schemaVersion neuer als dieses Programm (nur Warnung): Datei wird gelesen, nicht geaendert.
              Beim Speichern im Firmenprofil: schreibgeschuetzt (409), Datei bleibt unveraendert.
 

@@ -659,6 +659,9 @@ def module_on(name: str) -> bool:
     return bool(modules_effective().get(name, CONFIG_MODULE_DEFAULTS.get(name, True)))
 
 
+DIAG_WARN_NO_TLS = "HTTPS nicht eingerichtet – empfohlen, siehe README_Windows 2c (HTTPS_Einrichten.ps1)"
+
+
 def build_diagnostics(tls_on: bool = False) -> dict:
     """#52 K6: Systemstatus fuer den Admin. Nur technische Werte und Zaehler, nie Auftrags-, Chat-, Personal- oder Zugangsdaten."""
     import platform
@@ -730,6 +733,9 @@ def build_diagnostics(tls_on: bool = False) -> dict:
         warnings.append("Letztes Update fehlgeschlagen")
     if errors:
         out["recentErrors"] = errors
+    if not tls_on:
+        # #52: HTTPS ist Standard bei Neuinstallation; Bestandsinstallationen werden nicht automatisch umgestellt.
+        warnings.append(DIAG_WARN_NO_TLS)
     out["modules"] = modules_effective(cfg)
     out["config"] = {"companyName": (cfg.get("company") or {}).get("name", ""), "template": cfg.get("template", ""),
                      "tenantId": cfg.get("tenantId", ""), "timezone": (cfg.get("locale") or {}).get("timezone", ""), "tls": bool(tls_on)}

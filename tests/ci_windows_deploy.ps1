@@ -5,6 +5,8 @@
 # Nur diese Testumgebung weicht von der Produktion ab (Live-Skripte bleiben unveraendert, es wird nur eine KOPIE gepatcht):
 #  - Get-MPLanInfo liefert die IP des Runners (Runner haben kein "physisches Privat-Netz"),
 #  - Setup_Windows.ps1 des alten Stands bekommt Benutzer/Passwort statt Read-Host.
+# Abschnitt 8 (#52) installiert danach den AKTUELLEN Stand neu: -OhneHttps (HTTP), erneutes Setup auf einer
+# bestehenden HTTP-Installation (bleibt HTTP) und eine echte Neuinstallation (HTTPS als Standard).
 param(
     [Parameter(Mandatory = $true)][string]$OldCommit,
     [ValidateSet('ci', 'noci')][string]$Scenario = 'ci'
@@ -27,6 +29,16 @@ function Patch-Lan([string]$folder, [string]$ip) {
     if (-not $t.Contains($marker)) { throw "Get-MPLanInfo nicht gefunden in $f" }
     $inject = "$marker`n    return [PSCustomObject]@{ IP = '$ip'; PrefixLength = 24; InterfaceIndex = 1; Profile = 'Private'; InterfaceAlias = 'CI'; InterfaceDescription = 'CI-Runner' }`n"
     Utf8Bom $f ($t.Replace($marker, $inject))
+}
+function Patch-Setup([string]$folder) {
+    # Setup_Windows.ps1 ohne Rueckfragen: Benutzer/Passwort statt Read-Host (nur in dieser Testkopie).
+    $f = Join-Path $folder 'Setup_Windows.ps1'
+    $s = [IO.File]::ReadAllText($f)
+    $s = $s.Replace("Read-Host 'Trotzdem fortfahren? (j/N)'", "'j'").Replace("Read-Host 'Erster Admin-Benutzername'", "'admin'")
+    $s = $s.Replace("Read-Host 'Admin-Passwort (mind. 8 Zeichen)' -AsSecureString", '(ConvertTo-SecureString $env:MP_CI_PW -AsPlainText -Force)')
+    if ($s.Contains('Read-Host')) { throw "Setup_Windows.ps1 in $folder enthaelt unbekannte Abfragen (Read-Host)." }
+    Utf8Bom $f $s
+    return $f
 }
 function Run-PS([string]$script, [string[]]$extra, [string]$log) {
     # Wie in der Praxis: Windows PowerShell 5.1, als Administrator
@@ -66,13 +78,7 @@ $zip = Join-Path $Work 'old.zip'
 if ($LASTEXITCODE -ne 0) { throw "git archive $OldCommit fehlgeschlagen (fetch-depth: 0 gesetzt?)" }
 Expand-Archive -LiteralPath $zip -DestinationPath $old
 Patch-Lan $old $ip
-$setup = Join-Path $old 'Setup_Windows.ps1'
-$t = [IO.File]::ReadAllText($setup)
-$n0 = $t.Length
-$t = $t.Replace("Read-Host 'Trotzdem fortfahren? (j/N)'", "'j'").Replace("Read-Host 'Erster Admin-Benutzername'", "'admin'")
-$t = $t.Replace("Read-Host 'Admin-Passwort (mind. 8 Zeichen)' -AsSecureString", '(ConvertTo-SecureString $env:MP_CI_PW -AsPlainText -Force)')
-if ($t.Contains('Read-Host')) { throw 'Setup_Windows.ps1 des alten Stands enthaelt unbekannte Abfragen (Read-Host).' }
-Utf8Bom $setup $t
+$setup = Patch-Setup $old
 $env:MP_CI_PW = $AdminPw
 $code = Run-PS $setup @() (Join-Path $Work 'setup.log')
 Check ($code -eq 0) "alter Stand $OldCommit installiert (Setup_Windows.ps1, Exitcode $code)"
@@ -249,6 +255,59 @@ $jobState = Get-Content -LiteralPath $jobPath -Raw | ConvertFrom-Json
 Check ($jobState.stage -eq 'failed' -and $jobState.rolledBack) 'Rollback-Healthcheck erfolgreich und Fehlerstatus gespeichert'
 Check (Py fingerprint --url $Url --seed (Join-Path $Work 'seed.json') --out (Join-Path $Work 'after_rollback.json')) 'Fingerabdruck nach Rollback'
 Check (Py same --a (Join-Path $Work 'before_rollback.json') --b (Join-Path $Work 'after_rollback.json')) 'Migrationsfehler verliert keine Daten/Revision/History/Config'
+
+# ---------------- 8. #52: Neuinstallation mit dem aktuellen Setup_Windows.ps1 (HTTPS als Standard) ----------------
+# Unabhaengig vom alten Stand, daher nur im Szenario ci (spart Laufzeit). Der Bestand aus 1-7 wird dafuer entfernt.
+function Remove-Live([string]$tag) {
+    $code = Run-PS (Join-Path $Base 'Deinstallieren.ps1') @() (Join-Path $Work "deinst_$tag.log")
+    Check ($code -eq 0) "Deinstallieren.ps1 vor $tag (Exitcode $code)"
+}
+function Remove-Folder([string]$path) {
+    for ($i = 0; $i -lt 10 -and (Test-Path -LiteralPath $path); $i++) {
+        Remove-Item -LiteralPath $path -Recurse -Force -ErrorAction SilentlyContinue
+        if (Test-Path -LiteralPath $path) { Start-Sleep -Seconds 2 }
+    }
+    return (-not (Test-Path -LiteralPath $path))
+}
+if ($Scenario -eq 'ci') {
+    $UrlTls = "https://${ip}:8765"
+    $tlsDir = Join-Path $Base 'config\tls'
+    $newSetup = Patch-Setup $new
+
+    # 8a. Frische Installation mit -OhneHttps: HTTP wie bisher, kein config\tls.
+    Remove-Live 'ohne_https'
+    Check (Remove-Folder $Base) 'Live-Ordner fuer die Neuinstallation entfernt'
+    $code = Run-PS $newSetup @('-OhneHttps') (Join-Path $Work 'setup_ohne_https.log')
+    Check ($code -eq 0) "Setup_Windows.ps1 -OhneHttps (Exitcode $code)"
+    Check (-not (Test-Path -LiteralPath $tlsDir)) '-OhneHttps: kein config\tls'
+    Check ((Health $Url) -eq $newVer) "-OhneHttps: Server antwortet per HTTP (V$newVer)"
+
+    # 8b. Erneutes Setup auf der bestehenden HTTP-Installation (Datenbank fehlt, LAN_CONFIG.json bleibt): kein TLS.
+    Remove-Live 'reparatur'
+    Get-ChildItem -LiteralPath (Join-Path $Base 'data') -Filter 'maschinenplanung.sqlite3*' -ErrorAction SilentlyContinue | Remove-Item -Force
+    $code = Run-PS $newSetup @() (Join-Path $Work 'setup_reparatur.log')
+    $txt = Get-Content -LiteralPath (Join-Path $Work 'setup_reparatur.log') -Raw
+    Check ($code -eq 0 -and $txt -match 'Bestehende Installation erkannt') "erneutes Setup erkennt die bestehende Installation (Exitcode $code)"
+    Check (-not (Test-Path -LiteralPath $tlsDir)) 'erneutes Setup: HTTP bleibt HTTP (kein config\tls)'
+    Check ((Health $Url) -eq $newVer) 'erneutes Setup: Server antwortet weiter per HTTP'
+
+    # 8c. Echte Neuinstallation ohne Schalter: HTTPS als Standard.
+    Remove-Live 'https'
+    Check (Remove-Folder $Base) 'Live-Ordner fuer die HTTPS-Neuinstallation entfernt'
+    $code = Run-PS $newSetup @() (Join-Path $Work 'setup_https.log')
+    Check ($code -eq 0) "Setup_Windows.ps1 ohne Schalter (Exitcode $code)"
+    Check ((Test-Path -LiteralPath (Join-Path $tlsDir 'server.crt')) -and (Test-Path -LiteralPath (Join-Path $tlsDir 'server.key'))) 'Neuinstallation legt config\tls (server.crt/server.key) an'
+    $pub = Join-Path $Base 'Firmen-CA.crt'
+    $trusted = $false
+    if (Test-Path -LiteralPath $pub) {
+        $ca = New-Object Security.Cryptography.X509Certificates.X509Certificate2($pub)
+        $trusted = [bool](Get-ChildItem -LiteralPath ('Cert:\LocalMachine\Root\' + $ca.Thumbprint) -ErrorAction SilentlyContinue)
+    }
+    Check $trusted 'Firmen-CA.crt im Live-Ordner und in LocalMachine\Root vertraut'
+    # Ohne -SkipCertificateCheck: das Zertifikat muss ueber die eben vertraute Firmen-CA gueltig sein.
+    Check ((Health $UrlTls) -eq $newVer) "Neuinstallation: Server antwortet per HTTPS ($UrlTls, V$newVer)"
+    Check (-not (Health $Url)) 'Neuinstallation: kein unverschluesseltes HTTP mehr'
+}
 
 if ($Fail -gt 0) { Write-Host "$Fail Pruefung(en) fehlgeschlagen" -ForegroundColor Red; exit 1 }
 Write-Host 'Alle Pruefungen bestanden' -ForegroundColor Green
