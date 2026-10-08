@@ -164,5 +164,32 @@ class RoleProfiles(unittest.TestCase):
         self.assertEqual(self.req('GET', '/api/state', None, ck)[0], 401)
 
 
+class ProductionOnlyProjects(RoleProfiles):
+    '''„Nur Produktion“: Projekt direkt an die Produktion, ohne Entwicklung & Vertrieb.'''
+    def test_production_only_project(self):
+        self.user('pm1', 'project_management')
+        _, ck, _ = self.login('pm1')
+        def save(mutate):
+            _, state, _ = self.req('GET', '/api/state', None, ck)
+            mutate(state['data'])
+            return self.req('PUT', '/api/state', state, ck)
+        base = {'number': 'P-PO-1', 'customer': 'Kunde', 'name': 'Teil', 'log': [], 'processes': [], 'offer': {}}
+        st, r, _ = save(lambda d: d['projects'].append({**base, 'id': 'p_po0', 'phase': 'accepted', 'ab': 'AB-PO-0', 'dueDate': '2026-11-30'}))
+        self.assertEqual(st, 403, f'Direkt angenommen nur mit „Nur Produktion“ {r}')
+        st, r, _ = save(lambda d: d['projects'].append({**base, 'id': 'p_po1', 'phase': 'accepted', 'productionOnly': True, 'ab': 'AB-PO-1', 'dueDate': ''}))
+        self.assertEqual((st, r.get('errorCode')), (400, 'MP-PM-009'), 'AB und Liefertermin bleiben Pflicht')
+        st, r, _ = save(lambda d: d['projects'].append({**base, 'id': 'p_po2', 'phase': 'accepted', 'productionOnly': True, 'ab': 'AB-PO-2', 'dueDate': '2026-11-30'}))
+        self.assertEqual(st, 200, r)
+        st, r, _ = save(lambda d: next(p for p in d['projects'] if p['id'] == 'p_po2').update(productionOnly=False))
+        self.assertEqual(st, 403, '„Nur Produktion“ bleibt nach dem Anlegen fest')
+        st, r, _ = save(lambda d: d['projects'].append({**base, 'id': 'p_po3', 'phase': 'pm', 'productionOnly': 'ja'}))
+        self.assertEqual(st, 400, 'Feld muss ja/nein sein')
+
+    # Basisklassen-Tests nicht doppelt ausführen
+    test_profile_validation_and_management = None
+    test_av_profile_is_enforced_on_server = None
+    test_actions_and_endpoints = None
+
+
 if __name__ == '__main__':
     unittest.main(verbosity=2)

@@ -73,6 +73,19 @@ try {
   const p2 = await browser.newPage(); await p2.goto(BASE); await p2.fill('#loginUser', 'av-lesend'); await p2.fill('#loginPassword', PASS); await p2.click('#loginBtn'); await p2.waitForTimeout(700);
   check((await p2.locator('body').innerText()).includes('deaktiviert'), 'Deaktivierte Rolle: Anmeldung mit Hinweis abgewiesen');
 
+  // „Nur Produktion“: Projekt ohne Entwicklung & Vertrieb direkt an die Produktion
+  await admin.click('#navOrders'); await admin.locator('#projectNew').click(); await admin.locator('#newProjectModal.show').waitFor();
+  check(await admin.locator('#npWorkflow').isVisible() && await admin.locator('#npAb').isHidden(), 'Neues Projekt: Standard mit Workflow');
+  await admin.check('#npProdOnly');
+  check(await admin.locator('#npWorkflow').isHidden() && await admin.locator('#npAb').isVisible() && await admin.locator('#npProdDue').isVisible(), '„Nur Produktion“: AB und Liefertermin statt Workflow');
+  await admin.fill('#npCustomer', 'Direktkunde'); await admin.fill('#npName', 'Serienteil'); await admin.fill('#npAb', 'AB-DIREKT-1'); await admin.fill('#npProdDue', '2026-11-30');
+  await admin.click('#npCreate'); await admin.locator('#projectModal.show').waitFor(); await admin.waitForTimeout(500);
+  const po = await admin.evaluate(async () => (await (await fetch('/api/state')).json()).data.projects.find(p => p.ab === 'AB-DIREKT-1'));
+  check(po?.phase === 'accepted' && po.productionOnly === true && po.dueDate === '2026-11-30', 'Server speichert das Projekt direkt als „An Produktion übergeben“');
+  const body = await admin.locator('#projectModalBody').innerText();
+  check(!body.includes('Status meldet die jeweilige Abteilung') && (await admin.locator('#projectModalBody .fSec.prod .fNum').innerText()).trim() === '1' && await admin.locator('#projectNewOrder').isVisible(), 'Projektfenster ohne Entwicklung & Vertrieb, Produktion als Schritt 1 mit FA-Anlage');
+  await admin.keyboard.press('Escape');
+
   const mobile = await login('admin', { width: 390, height: 844 });
   await mobile.click('#navSystem').catch(() => {}); await mobile.evaluate(() => { const b = document.querySelector('[data-systab="roles"]'); b?.click(); });
   await mobile.waitForTimeout(500);

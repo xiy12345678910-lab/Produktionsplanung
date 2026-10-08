@@ -2522,6 +2522,8 @@ def validate_projects(old: dict, projects: list) -> tuple[bool, str, str]:
         for f, limit in (("wt", 80), ("name", 200), ("customer", 200), ("contact", 200), ("note", 2000)):
             if len(str(project.get(f) or "")) > limit:
                 return False, "MP-PM-002", f"Projekt '{label}': Feld '{f}' ist zu lang."
+        if "productionOnly" in project and not isinstance(project.get("productionOnly"), bool):
+            return False, "MP-PM-002", f"Projekt '{label}': „Nur Produktion“ ist ungültig."
         if not isinstance(project.get("development") or {}, dict) or not isinstance(project.get("offer") or {}, dict):
             return False, "MP-PM-002", f"Projekt '{label}': Angebots-/Entwicklungsdaten sind ungültig."
         processes = project.get("processes") or []
@@ -3682,6 +3684,8 @@ def project_changes_allowed(old: dict, new: dict, role: str, username: str, depa
                 pass
             elif role in {"project_management", "production_planning"} and str(b.get("phase")) in {"inquiry", "pm"}:
                 pass
+            elif role in {"project_management", "production_planning"} and str(b.get("phase")) == "accepted" and b.get("productionOnly") is True:
+                pass  # V12.23.0: „Nur Produktion“ – direkt an die Produktion (AB/Termin prüft validate_projects)
             else:
                 return False, f"Diese Rolle darf kein Projekt in dieser Phase anlegen ({label})."
             if any(str(x.get("actor") or "") != username for x in (b.get("log") or [])):

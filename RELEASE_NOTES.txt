@@ -7,6 +7,11 @@ FA EINPLANEN IM FENSTER
   Terminwarnung). Übernahme mit derselben Auswirkungsprüfung wie in der Auftragsliste; „In Auftragsliste
   öffnen“ bleibt möglich. Konfektionsstunden bleiben AV-Vorgabe.
 
+NUR PRODUKTION
+- „Neues Projekt“ hat die Auswahl „Nur Produktion“: mit AB-Nummer und Liefertermin wird das Projekt direkt
+  an die Produktion übergeben. Entwicklung & Vertrieb, Workflow und Kundenplan entfallen; im Projekt steht
+  Produktion als Schritt 1 mit FA-Anlage. Ohne Haken bleibt alles wie bisher. Die Wahl ist danach fest.
+
 ROLLEN & RECHTE (#63, #55)
 - System > Rollen & Rechte: eigene Rollen auf Basis einer Systemrolle anlegen, duplizieren, deaktivieren und
   löschen. Rechte je Funktion (Kein Zugriff / Lesen / Bearbeiten, höchstens wie die Systemrolle) und
