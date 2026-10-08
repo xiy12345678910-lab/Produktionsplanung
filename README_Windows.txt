@@ -30,6 +30,21 @@ MASCHINENPLANUNG V12.21.0 - WINDOWS-SERVER (LAN ONLY)
    BRANCH-SCHUTZ (GitHub -> Settings -> Branches -> main): "Require a pull request before merging",
    "Do not allow bypassing", kein Force-Push; Tags v* unter Settings -> Rules schuetzen.
 
+2c. HTTPS IM LAN (ab V12.21.0, empfohlen)
+   Ohne HTTPS gehen Passwoerter und Sitzungen unverschluesselt durchs LAN. Einmalig als Administrator:
+        cd C:\ProgramData\Maschinenplanung
+        .\HTTPS_Einrichten.ps1                       (optional: -Name mp.firma.local)
+   - Legt config\tls an (Firmen-CA + Serverzertifikat, nur SYSTEM/Administratoren lesbar), vertraut der CA
+     auf dem Server und startet ihn neu. Adresse danach: https://<LAN-IP>:8765 bzw. https://<PC-Name>:8765
+   - Arbeitsplaetze: Datei Firmen-CA.crt (im Live-Ordner) EINMAL als vertrauenswuerdige Stammzertifizierungs-
+     stelle importieren - per Gruppenrichtlinie oder je PC als Administrator:
+        certutil -addstore -f Root \\<Server>\<Freigabe>\Firmen-CA.crt
+     Ohne Import zeigt der Browser eine Zertifikatswarnung. Firefox nutzt den Windows-Speicher, wenn die
+     Richtlinie "Enterprise Roots" aktiv ist.
+   - Neue LAN-IP oder Ablauf (< 30 Tage): Server erneuert das Zertifikat beim Start selbst; die Firmen-CA
+     bleibt, kein neuer Import. Zurueck auf HTTP: config\tls umbenennen, Neustart_Server.ps1.
+   - Fehler MP-TLS-001: siehe FEHLERCODES.txt.
+
 2a. FIRMENDATEN (config\firma.json)
    - Liegt in C:\ProgramData\Maschinenplanung\config\ (neben data\): firma.json, logo.png|jpg, lizenz.key.
    - Updates, Rollback, Umzug und Vorabtest behalten sie; UPDATE_LIVE.ps1 kopiert nur Programmdateien.

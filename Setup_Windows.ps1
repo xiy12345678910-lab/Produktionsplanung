@@ -60,12 +60,12 @@ Start-ScheduledTask -TaskName $MP_TaskName
 
 $health = Wait-MPHealth $Base $Version 30
 if (-not $health) { throw "Server V$Version antwortet nicht. Bitte Server_Status.ps1 pruefen." }
-Assert-MPPrivatePaths $health.Config
+Assert-MPPrivatePaths $health.Config $health.Url
 
 Write-Host ''
 Write-Host "=== FERTIG - Maschinenplanung V$Version (LAN only) ===" -ForegroundColor Green
 Write-Host "Installationsordner: $Base (nur Administratoren duerfen aendern)"
-Write-Host "Adresse fuer Benutzer: http://$($health.Config.lan_ip):$($health.Config.port)"
+Write-Host "Adresse fuer Benutzer: $($health.Url)"
 Write-Host 'Backups: zweimal taeglich automatisch (12:15 / 22:15) nach backups\'
 Write-Host 'Empfehlung: Zweitziel in BACKUP_ZIEL.txt eintragen (z. B. Netzlaufwerk).'
 Write-Host "Pruefen mit: $Base\CHECK_LAN_SICHERHEIT.ps1"

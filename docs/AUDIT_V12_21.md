@@ -46,7 +46,7 @@ Blocks F, G, H, I, J, K (siehe Tabelle). Block E nur Datenfelder.
 | `tests/e2e_lazy_loading.mjs` | Mitarbeiter mit Stammmaschine → Personalrevision ohne sichtbare Änderung | Prüfung konnte nicht fehlschlagen bzw. schlug immer fehl | behoben |
 | 19 weitere `tests/*.mjs` | gleiche fehlende Config-Isolation (`ui_smoke`/`e2e_admin_v12191` schrieben `config/firma.json`) | wie oben | behoben (eigener Config-Ordner im Temp-Verzeichnis) |
 | `e2e_effort`, `e2e_blocks`, `e2e_av_handoff` | prüften nicht aktive Ansichten bzw. `waitForFunction` mit async-Prädikat | nach Lazy Loading rot | behoben |
-| `server.py` HTTP | kein TLS, Cookie ohne `Secure` | Mitlesen von Passwort/Sitzung im LAN | **offen, P1** |
+| `server.py` HTTP | kein TLS, Cookie ohne `Secure` | Mitlesen von Passwort/Sitzung im LAN | behoben (opt-in): `HTTPS_Einrichten.ps1`, README 2c |
 
 Kein Datenverlust-, Scope-Leak- oder Mengenfehler gefunden: Direkter State-PUT kann Bestand, Ereignisse, Historie und Runtime-Felder nicht fälschen (403/400, per HTTP geprüft).
 

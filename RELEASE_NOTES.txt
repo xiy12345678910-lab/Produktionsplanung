@@ -15,6 +15,16 @@ ANSICHTEN BEI BEDARF UND FA-DIALOG JE ABTEILUNG
   AV-Konfektionsstunden, operative Bereichsplanung und bestehende Schreibrechte bleiben maßgeblich.
 - Block E und die weiteren Blocks bleiben separate Aufgaben. Abnahme: docs/V12_21_0.md.
 
+HTTPS IM LAN (Altbefund B-H1, Deep Audit #64)
+- Optional verschlüsselt: HTTPS_Einrichten.ps1 (Administrator, Live-Ordner) legt eine eigene Firmen-CA und ein
+  Serverzertifikat in config\tls an, vertraut der CA auf dem Server und startet ihn per HTTPS neu.
+  Ohne diesen Schritt bleibt alles wie bisher (HTTP); Updates behalten config\tls.
+- Per HTTPS trägt das Sitzungscookie Secure, Schreibzugriffe akzeptieren nur https-Herkunft, TLS ab 1.2.
+- Neue LAN-IP oder Ablauf in weniger als 30 Tagen: Der Server erneuert sein Zertifikat beim Start selbst,
+  die Firmen-CA bleibt – Arbeitsplätze importieren Firmen-CA.crt nur einmal (README_Windows.txt 2c).
+- Sicherheitscheck meldet fehlendes HTTPS als Warnung und prüft, dass der private Schlüssel nur für
+  SYSTEM/Administratoren lesbar ist. Fehlercode MP-TLS-001. Tests: test_tls.py, e2e_https.mjs.
+
 MASCHINENPLANUNG V12.20.0 - RELEASE NOTES
 =========================================
 Datum: 07.10.2026 · Basis: V12.19.1 · Update gemäß README_Windows.txt 2b, Daten bleiben erhalten

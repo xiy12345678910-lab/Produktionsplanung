@@ -31,7 +31,7 @@ $MP_AppFiles = @(
     'Run_Server_LAN.ps1', 'Start_Server.ps1', 'Stop_Server.ps1', 'Neustart_Server.ps1',
     'Server_Status.ps1', 'CHECK_LAN_SICHERHEIT.ps1', 'Deinstallieren.ps1',
     'README_Windows.txt', 'BENUTZER_KURZANLEITUNG.txt', 'FEHLERCODES.txt', 'RELEASE_NOTES.txt',
-    'Update_von_GitHub.ps1', 'Restore_Datenbank.ps1', 'Firma_Einrichten.ps1', 'requirements.txt',
+    'Update_von_GitHub.ps1', 'Restore_Datenbank.ps1', 'Firma_Einrichten.ps1', 'HTTPS_Einrichten.ps1', 'requirements.txt',
     'vorlage_werbetechnik.json', 'vorlage_metall_cnc.json', 'vorlage_leer.json', 'vorlage_demo.json'
 )
 
@@ -156,6 +156,9 @@ function Protect-MPInstall([string]$Base) {
     foreach ($sub in @('data', 'backups', 'update_backups', 'updates')) {
         Set-MPFolderAcl (Join-Path $Base $sub) $false
     }
+    # V12.21.0: private HTTPS-Schluessel nur fuer SYSTEM und Administratoren (config\ selbst bleibt lesbar).
+    $tls = Join-Path (Join-Path $Base $MP_ConfigDir) 'tls'
+    if (Test-Path -LiteralPath $tls) { Set-MPFolderAcl $tls $false }
 }
 
 function Get-MPTaskResultText([int64]$Result) {
@@ -262,13 +265,24 @@ function Read-MPConfig([string]$Base) {
     return $null
 }
 
+# V12.21.0: HTTPS, sobald config\tls\server.crt und server.key vorliegen (HTTPS_Einrichten.ps1).
+# Windows PowerShell 5.1 bietet TLS 1.2 nicht auf jedem System von selbst an.
+try { [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12 } catch { }
+
+function Get-MPScheme([string]$Base) {
+    $tls = Join-Path (Join-Path $Base $MP_ConfigDir) 'tls'
+    if ((Test-Path -LiteralPath (Join-Path $tls 'server.crt')) -and (Test-Path -LiteralPath (Join-Path $tls 'server.key'))) { return 'https' }
+    return 'http'
+}
+
 function Get-MPHealth([string]$Base, [int]$TimeoutSec = 3) {
     $c = Read-MPConfig $Base
     if (-not $c) { return $null }
+    $url = '{0}://{1}:{2}' -f (Get-MPScheme $Base), $c.lan_ip, $c.port
     try {
-        $r = Invoke-RestMethod -Uri "http://$($c.lan_ip):$($c.port)/api/health" -TimeoutSec $TimeoutSec
-        return [PSCustomObject]@{ Config = $c; Health = $r }
-    } catch { return [PSCustomObject]@{ Config = $c; Health = $null } }
+        $r = Invoke-RestMethod -Uri "$url/api/health" -TimeoutSec $TimeoutSec
+        return [PSCustomObject]@{ Config = $c; Health = $r; Url = $url }
+    } catch { return [PSCustomObject]@{ Config = $c; Health = $null; Url = $url } }
 }
 
 function Wait-MPHealth([string]$Base, [string]$ExpectedVersion, [int]$Seconds = 30) {
@@ -280,11 +294,12 @@ function Wait-MPHealth([string]$Base, [string]$ExpectedVersion, [int]$Seconds = 
     return $null
 }
 
-function Assert-MPPrivatePaths([object]$Config) {
+function Assert-MPPrivatePaths([object]$Config, [string]$Url = '') {
+    if (-not $Url) { $Url = "http://$($Config.lan_ip):$($Config.port)" }
     foreach ($path in @('/server.py', '/data/maschinenplanung.sqlite3', '/backups/test.sqlite3', '/update_backups/test.txt', '/LAN_CONFIG.json')) {
         $exposed = $false
         try {
-            $resp = Invoke-WebRequest -UseBasicParsing -Uri "http://$($Config.lan_ip):$($Config.port)$path" -TimeoutSec 3
+            $resp = Invoke-WebRequest -UseBasicParsing -Uri "$Url$path" -TimeoutSec 3
             if ([int]$resp.StatusCode -lt 400) { $exposed = $true }
         } catch {
             $status = $null
@@ -333,7 +348,7 @@ function Invoke-MPPreflight([string]$NewSource, [string]$PythonExe, [string]$DbC
         for ($i = 0; $i -lt 45 -and -not $proc.HasExited; $i++) {
             Start-Sleep -Seconds 1
             try {
-                $r = Invoke-RestMethod -Uri "http://$($Config.lan_ip):$port/api/health" -TimeoutSec 2
+                $r = Invoke-RestMethod -Uri ("{0}://{1}:{2}/api/health" -f (Get-MPScheme $dir), $Config.lan_ip, $port) -TimeoutSec 2
                 if ($r.ok -and [string]$r.version -eq $ExpectedVersion) { $ok = $true; break }
             } catch { }
         }

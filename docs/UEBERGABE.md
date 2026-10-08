@@ -2,7 +2,7 @@
 
 Stand: **V12.21.0 in Vorbereitung** · Lazy Loading und FA-Dialog: `docs/V12_21_0.md` · AV und Projekte live: `docs/V12_20_0.md` · V12.20.0 vom Nutzer erfolgreich unter Windows installiert; Sicherheitscheck bestätigt
 
-Aktuelle Priorität: Lazy Loading nach Rolle/Berechtigung im Branch `codex/lazy-loading`; einheitlicher FA-Dialog je Abteilung für Rollen mit Anlegerechten. AV erfasst Stunden nur für Konfektion; die Abteilung plant operativ. Block E (#46) folgt separat, F–I ebenfalls separat. Windows-Updates ausschließlich über `README_Windows.txt` 2b, keine Remote-Desktop-Nutzung.
+Aktuelle Priorität (Roadmap 08.10.2026): #69 Lazy Loading/FA-Dialog plus HTTPS im LAN als V12.21.0 (PR #70) → Block E (#46) → Rollen & Rechte nach V9 (#63) → Blocks F–I. Ist-Übersicht: `docs/AUDIT_V12_21.md`. Windows-Updates ausschließlich über `README_Windows.txt` 2b, HTTPS über 2c; keine Remote-Desktop-Nutzung.
 
 ## 1. Bisher veröffentlichte Funktionen
 

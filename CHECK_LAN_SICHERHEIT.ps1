@@ -59,7 +59,17 @@ $h = Get-MPHealth $Base
 if ($h -and $h.Health -and $h.Health.ok -and [string]$h.Health.version -eq $Expected) { Pass "Server-Health V$($h.Health.version)" }
 elseif ($h -and $h.Health) { Fail "Server laeuft V$($h.Health.version), Paket im Ordner ist V$Expected." }
 else { Fail 'Server ist ueber die konfigurierte LAN-IP nicht erreichbar.' }
-try { Assert-MPPrivatePaths $c; Pass 'Programm-, Daten- und Backupdateien sind nicht per HTTP abrufbar.' } catch { Fail $_.Exception.Message }
+try { Assert-MPPrivatePaths $c $(if ($h) { $h.Url }); Pass 'Programm-, Daten- und Backupdateien sind nicht per HTTP abrufbar.' } catch { Fail $_.Exception.Message }
+# V12.21.0: HTTPS und Schutz des privaten Schluessels
+if ((Get-MPScheme $Base) -eq 'https') {
+    Pass 'HTTPS aktiv: Passwoerter und Sitzungen gehen verschluesselt durchs LAN.'
+    $readers = @()
+    foreach ($ace in @((Get-Acl -LiteralPath (Join-Path (Join-Path $Base $MP_ConfigDir) 'tls')).Access)) {
+        try { $sid = $ace.IdentityReference.Translate([Security.Principal.SecurityIdentifier]).Value } catch { $sid = [string]$ace.IdentityReference }
+        if ($ace.AccessControlType -eq 'Allow' -and @('S-1-5-32-545', 'S-1-1-0', 'S-1-5-11') -contains $sid) { $readers += [string]$ace.IdentityReference }
+    }
+    if ($readers.Count) { Fail "config\tls (privater HTTPS-Schluessel) ist lesbar fuer: $($readers -join ', ')" } else { Pass 'HTTPS-Schluessel nur fuer SYSTEM und Administratoren lesbar.' }
+} else { Warn 'HTTPS nicht eingerichtet: Passwoerter gehen unverschluesselt durchs LAN (HTTPS_Einrichten.ps1, README_Windows.txt Abschnitt 2c).' }
 
 # --- Windows: Task, Ordnerrechte, Python ------------------------------------------------
 $task = Get-ScheduledTask -TaskName $MP_TaskName -ErrorAction SilentlyContinue

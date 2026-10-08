@@ -3,9 +3,10 @@ MASCHINENPLANUNG V12.21.0 - KURZANLEITUNG FUER BENUTZER
 
 ANMELDEN
 1. Browser oeffnen (Edge, Chrome oder Firefox).
-2. Adresse oeffnen, die der Admin nennt, z. B. http://192.168.10.89:8765
+2. Adresse oeffnen, die der Admin nennt, z. B. https://192.168.10.89:8765 (ohne HTTPS: http://...)
 3. Benutzername und Passwort eingeben.
-Auf dem Benutzer-PC muss nichts installiert werden.
+Auf dem Benutzer-PC muss nichts installiert werden. Bei HTTPS spielt der Admin einmal das Firmenzertifikat
+ein; erscheint trotzdem eine Zertifikatswarnung, den Admin informieren und nichts eingeben.
 
 EIGENES PASSWORT AENDERN
 - Oben rechts auf das Schluessel-Symbol (🔑) klicken.

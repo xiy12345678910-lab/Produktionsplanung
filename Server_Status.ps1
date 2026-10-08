@@ -21,7 +21,7 @@ if ($h) {
     Write-Host "Bind-IP: $($h.Config.lan_ip) | Subnetz: $($h.Config.subnet) | Netzprofil: $($h.Config.profile)"
     if ($h.Health -and $h.Health.ok) {
         $color = if ([string]$h.Health.version -eq $expected) { 'Green' } else { 'Yellow' }
-        Write-Host "Server: laeuft V$($h.Health.version) (Paket V$expected)" -ForegroundColor $color
+        Write-Host "Server: laeuft V$($h.Health.version) (Paket V$expected) auf $($h.Url)" -ForegroundColor $color
     } else { Write-Host 'Server: NICHT ERREICHBAR' -ForegroundColor Red }
 } else { Write-Host 'LAN_CONFIG.json fehlt oder ist gerade nicht lesbar.' -ForegroundColor Red }
 $last = Get-ChildItem (Join-Path $Base 'backups') -Filter 'maschinenplanung_*.sqlite3' | Sort-Object LastWriteTime -Descending | Select-Object -First 1
