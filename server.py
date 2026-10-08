@@ -28,7 +28,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 MP_DEBUG_ABORTS = os.environ.get('MP_DEBUG_ABORTS') == '1'
-APP_VERSION = "12.23.0"
+APP_VERSION = "12.24.0"
 HOST = os.environ.get("MP_HOST", "0.0.0.0")
 PORT = int(os.environ.get("MP_PORT", "8765"))
 BASE = Path(__file__).resolve().parent
@@ -2787,6 +2787,8 @@ def validate_state(old: dict, new: dict) -> tuple[bool, str, str]:
         ptype = str(dep.get("planningType") or "")
         if any(k in dep and not isinstance(dep[k], bool) for k in ("formats", "sharedOperators")):
             return False, "MP-DEPT-007", f"Bereich '{did}': Eigenschaften formats/sharedOperators sind true/false."
+        if "dryingHours" in dep and (_finite_float(dep["dryingHours"]) is None or not 0 <= float(dep["dryingHours"]) <= 720 or isinstance(dep["dryingHours"], bool)):
+            return False, "MP-DEPT-007", f"Bereich '{did}': Trocknungszeit muss 0–720 Stunden sein."
         if did in dept_ids:
             return False, "MP-DEPT-002", f"Doppelte Bereichs-ID '{did}'."
         if ptype not in valid_types:
@@ -2871,6 +2873,8 @@ def validate_state(old: dict, new: dict) -> tuple[bool, str, str]:
             return False, "MP-STEP-014", f"Arbeitsgang '{sid}': FA/AB/WT ist zu lang."
         if "avNote" in step and (not isinstance(step["avNote"], str) or len(step["avNote"]) > 500):
             return False, "MP-STEP-014", f"Arbeitsgang '{sid}': AV-Notiz ist ungültig oder zu lang."
+        if "dryingHours" in step and (isinstance(step["dryingHours"], bool) or _finite_float(step["dryingHours"]) is None or not 0 <= float(step["dryingHours"]) <= 720):
+            return False, "MP-STEP-014", f"Arbeitsgang '{sid}': Trocknungszeit muss 0–720 Stunden sein."
         if pid:
             linked = next((p for p in projects if str(p.get("id")) == pid), None)
             if linked and ab_ref and ab_ref.casefold() != str(linked.get("ab") or "").strip().casefold():
@@ -3998,7 +4002,7 @@ def department_change_allowed(old: dict, new: dict, department_id: str) -> tuple
             if "handoffUnassigned" in before:
                 if "handoffUnassigned" not in rec:
                     return False, "Die AV-Herkunft einer Bereichsübergabe bleibt erhalten."
-                for field in ("fa", "faNumber", "projectId", "ab", "wt", "targetQty", "sequence", "predecessorIds", "avNote"):
+                for field in ("fa", "faNumber", "projectId", "ab", "wt", "targetQty", "sequence", "predecessorIds", "avNote", "dryingHours"):
                     if canonical(before.get(field)) != canonical(rec.get(field)):
                         return False, "FA, Projekt, Menge und Vorgänger pflegt die Arbeitsvorbereitung."
         resource = next((m for m in old.get("machines") or [] if m.get("id") == (before or {}).get("machineId")), {})

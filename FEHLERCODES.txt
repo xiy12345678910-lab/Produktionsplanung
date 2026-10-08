@@ -1,4 +1,4 @@
-MASCHINENPLANUNG V12.23.0 - FEHLERCODES
+MASCHINENPLANUNG V12.24.0 - FEHLERCODES
 ======================================
 
 Jeder Fehler wird dem Mitarbeiter als Klartext + Code angezeigt.
@@ -274,6 +274,7 @@ MP-PLAN-061  Freigabe muss die aktuell gültige Besetzung der Linie einfrieren.
 MP-PLAN-062  Termin liegt nach dem AV-Termin. Früher planen ist erlaubt, später nicht.
 MP-PLAN-063  Hinweis: Auftrag wird erst nach dem AV-Termin fertig (Karte rot).
 MP-PLAN-064  Takt-Rechner: Menge und Takt eintragen.
+MP-PLAN-070  Fixer Start liegt in der Trocknungszeit des Vorgaengers. Spaeter starten oder Trocknung pruefen.
 MP-PLAN-065  Bereichsuebergabe ungueltig: unzugeordneter FA darf keine Ressource, Freigabe oder operative Planung enthalten.
 
 [PM - Projektmanagement / AB-Aufträge]
@@ -309,6 +310,8 @@ MP-STEP-019  Arbeitsgang … hat eine ungültige Planwoche.
 
 [AV - Arbeitsvorbereitung]
 MP-AV-030  Arbeitsvorbereitung darf nur geplante Aufträge/Arbeitsgänge anlegen, ändern, löschen und mit einer AB verknüpfen. Freigabe, Stornierung, Produktion, Personal, Maschinen und Einstellungen sind gesperrt.
+MP-AV-034  AV-Notiz zu einem Bereich ist zu lang (max. 500 Zeichen).
+MP-AV-035  Trocknungszeit muss 0–720 Stunden sein.
 
 [PM - Projekt-Lebenszyklus (V12.6)]
 MP-PM-006  Projektnummer fehlt oder ist doppelt.
