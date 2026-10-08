@@ -5346,7 +5346,18 @@ class Handler(BaseHTTPRequestHandler):
             if before and canonical(before) != canonical({**profile, "createdAt": before.get("createdAt"), "updatedAt": before.get("updatedAt"), "updatedBy": before.get("updatedBy")}):
                 # Geänderte Rechte gelten sofort: betroffene Sitzungen neu anmelden lassen.
                 con.execute("DELETE FROM sessions WHERE user_id IN (SELECT id FROM users WHERE profile_id=?)", (rid,))
-            con.execute("INSERT INTO server_audit(ts,username,action,detail,revision) VALUES(?,?,?,?,NULL)", (stamp, user["username"], "Rolle gespeichert", json.dumps(profile, ensure_ascii=False)))
+            # V12.26.0 (#55): Audit mit alten und neuen Rechten (nur geänderte Einträge), damit Rechteänderungen nachvollziehbar sind.
+            changes = {}
+            for key in ("name", "baseRole", "active", "description"):
+                if (before or {}).get(key) != profile.get(key):
+                    changes[key] = {"alt": (before or {}).get(key), "neu": profile.get(key)}
+            for group in ("rights", "actions"):
+                old_g, new_g = (before or {}).get(group) or {}, profile.get(group) or {}
+                for key in sorted(set(old_g) | set(new_g)):
+                    if old_g.get(key) != new_g.get(key):
+                        changes[f"{group}.{key}"] = {"alt": old_g.get(key), "neu": new_g.get(key)}
+            detail = {"rolle": rid, "neu": before is None, "aenderungen": changes, "profil": profile}
+            con.execute("INSERT INTO server_audit(ts,username,action,detail,revision) VALUES(?,?,?,?,NULL)", (stamp, user["username"], "Rolle angelegt" if before is None else "Rolle geändert", json.dumps(detail, ensure_ascii=False)))
         return self.json_response(200, {"ok": True, "profile": profile, "users": assigned})
 
     def require_rights(self, user, function=None, level="read", action=None) -> bool:

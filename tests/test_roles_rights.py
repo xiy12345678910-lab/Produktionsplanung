@@ -222,5 +222,25 @@ class ParallelProjects(RoleProfiles):
     test_actions_and_endpoints = None
 
 
+class RoleAudit(RoleProfiles):
+    '''V12.26.0 (#55): Audit nennt bei Rollenänderungen alte und neue Rechte.'''
+    def test_audit_old_and_new_rights(self):
+        st, _, _ = self.put_role('audit-av', {'name': 'Audit AV', 'baseRole': 'production_planning', 'rights': {'projects': 'edit'}})
+        self.assertEqual(st, 200)
+        st, _, _ = self.put_role('audit-av', {'name': 'Audit AV', 'baseRole': 'production_planning', 'rights': {'projects': 'read'}, 'actions': {'confectionHours': False}})
+        self.assertEqual(st, 200)
+        with server.db_session() as con:
+            rows = [json.loads(r['detail']) for r in con.execute("SELECT detail FROM server_audit WHERE action IN ('Rolle angelegt','Rolle geändert') ORDER BY id")]
+        last = [r for r in rows if r.get('rolle') == 'audit-av'][-1]
+        self.assertFalse(last['neu'])
+        self.assertEqual(last['aenderungen']['rights.projects'], {'alt': 'edit', 'neu': 'read'}, last)
+        self.assertIn('actions.confectionHours', last['aenderungen'])
+        self.assertNotIn('name', last['aenderungen'], 'Unveränderte Felder stehen nicht im Audit')
+
+    test_profile_validation_and_management = None
+    test_av_profile_is_enforced_on_server = None
+    test_actions_and_endpoints = None
+
+
 if __name__ == '__main__':
     unittest.main(verbosity=2)
