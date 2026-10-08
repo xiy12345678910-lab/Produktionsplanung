@@ -60,8 +60,11 @@ jobs:
           python tests/test_av_hours_flag.py
           python tests/test_no_quantity.py
           python tests/test_shared_operators_flag.py
+          python tests/test_security_negative.py
       - name: Backup/Restore
-        run: python tests/test_backup.py
+        run: |
+          python tests/test_backup.py
+          python tests/test_backup_target.py
       - name: Datenerhalt bei Updates (alte Staende -> aktuell)
         env:
           MP_UPGRADE_STRICT: '1'
