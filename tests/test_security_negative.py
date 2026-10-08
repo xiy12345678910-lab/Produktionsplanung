@@ -160,8 +160,15 @@ class SecurityNegative(unittest.TestCase):
         s.sendall((f'POST /api/users HTTP/1.1\r\nHost: 127.0.0.1:{self.port}\r\nCookie: {self.admin}\r\n'
                    f'Content-Type: application/json\r\nX-MP-Client-Version: {server.APP_VERSION}\r\n'
                    f'Content-Length: {server.MAX_BODY + 1}\r\n\r\n').encode())
-        head = s.recv(4096).decode('latin-1')
+        # Bis Verbindungsende lesen: ein einzelnes recv() liefert auf CI teils nur die Header, nicht den JSON-Body.
+        chunks = []
+        while True:
+            part = s.recv(4096)
+            if not part:
+                break
+            chunks.append(part)
         s.close()
+        head = b''.join(chunks).decode('latin-1')
         status = int(head.split(' ', 2)[1])
         self.assertIn(status, (400, 413), head)
         self.assertIn('MP-DATA-013', head)
