@@ -49,7 +49,10 @@ try {
     p.locator('#errorModal.show').waitFor({ timeout: 30000 }).then(async () => { throw new Error('Client meldet: ' + (await p.locator('#errorMessage').innerText())); })
   ]);
   const settle = async (p, response) => { const r = await response; check(r.ok(), `Bedarfsaktion ${new URL(r.url()).pathname} erfolgreich (${r.status()})`); await p.waitForTimeout(150); };
-  const form = async (p, values) => { for (const [k, v] of Object.entries(values)) { const el = p.locator('#dm_' + k); if (await el.evaluate(e => e.tagName) === 'SELECT') await el.selectOption(v); else await el.fill(String(v)); } const r = done(p); await p.click('#demandOk'); await settle(p, r); };
+  const form = async (p, values) => { for (const [k, v] of Object.entries(values)) { const el = p.locator('#dm_' + k); if (await el.evaluate(e => e.tagName) === 'SELECT') await el.selectOption(v); else await el.fill(String(v)); }
+    // Werte vor dem Absenden zurücklesen: ein verlorenes Feld soll hier auffallen, nicht erst als falsche Menge im FA.
+    for (const [k, v] of Object.entries(values)) { const got = await p.locator('#dm_' + k).inputValue(); if (got !== String(v)) throw new Error(`Formularfeld ${k}: erwartet ${v}, gefunden ${got}`); }
+    const r = done(p); await p.click('#demandOk'); await settle(p, r); };
   const ask = async (p, value) => { if (value != null) await p.fill('#askInput', String(value)); const r = done(p); await p.click('#askOk'); await settle(p, r); };
 
   const av = await login('av');
@@ -60,11 +63,13 @@ try {
   check((await av.locator('#demandBody').innerText()).includes('RA-500'), 'Rahmenauftrag über die Oberfläche angelegt');
   await av.click('#demandStockNew');
   await form(av, { articleId: 'SCHILD-9', departmentId: 'cnc', physicalQty: 300, targetQty: 0, description: 'Schild 9' });
+  let st = await getState(av);
+  check(st.inventory.some(i => i.articleId === 'SCHILD-9' && i.departmentId === 'cnc' && i.physicalQty === 300), `Bestand 300 SCHILD-9/cnc gespeichert (${JSON.stringify(st.inventory.map(i => [i.articleId, i.departmentId, i.physicalQty, i.reservedQty]))})`);
   await av.click('[data-frame-calloff]');
   await form(av, { qty: 500, dueDate: '2026-10-30' });
-  let st = await getState(av);
+  st = await getState(av);
   const co = st.callOffs[0];
-  check(co?.qty === 500 && co.status === 'open', 'Abruf 500 angelegt');
+  check(co?.qty === 500 && co.status === 'open', `Abruf 500 angelegt (reserviert ${co?.reservedQty})`);
   await av.click(`[data-co-act="fa"][data-id="${co.id}"]`); await ask(av, 'FA-RA-1');
   st = await getState(av);
   const fa = st.workSteps.find(x => x.fa === 'FA-RA-1');

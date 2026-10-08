@@ -847,7 +847,7 @@ ROLE_ACTIONS = (("faCreate", "FA anlegen"), ("faPlan", "FA einplanen"), ("prodSt
                 ("userAdmin", "Benutzer verwalten"), ("updates", "Updates installieren"))
 LEGACY_PRODUCTION_ACTION = "production"
 FA_PLAN_FIELDS = ("machineId", "altMachineId", "allowAlternative", "laneIndex", "pos", "direction", "anchorMode",
-                  "requiredStart", "requiredFinish", "dryingHours")
+                  "requiredStart", "requiredFinish", "dryingHours", "taktId")
 
 
 def effective_actions(actions) -> dict:
@@ -866,9 +866,12 @@ FUNCTION_DATA = {
     "projects": ("projects", "processTemplates"),
     "personnel": ("employees", "personnelAssignments", "personnelAbsences", "weeklyEmployeeDeployments", "departmentStaffNeeds"),
     "formats": ("formats", "baseFormats"),
+    "history": ("history",),
     "system": ("machines", "departments", "shiftTemplates", "yearRules", "weekRules", "exceptions", "operatorCapacity", "personnelGate", "palletTemplates"),
 }
 # Planung und System bleiben sichtbar: Scheduler und Projekt-Liveansicht brauchen Ressourcen und FA.
+# V12.27.0 (Rechte-Audit): Schreibbare Schlüssel der GF-Rolle (siehe gf_change_allowed); gilt nur für Benutzer der Rolle gf.
+GF_FUNCTION_KEYS = ("departmentStaffNeeds", "weeklyEmployeeDeployments", "exceptions", "employees", "departments", "machines")
 FUNCTION_HIDDEN = {"projects": ("projects", "processTemplates"), "personnel": FUNCTION_DATA["personnel"],
                    "formats": FUNCTION_DATA["formats"], "frameOrders": ("frameOrders", "callOffs"), "history": ("history",)}
 
@@ -916,6 +919,12 @@ def user_level(user: dict, function: str) -> str:
     return (user.get("rights") or {}).get(function, "edit")
 
 
+def av_hours_department(state_or_deps, did) -> bool:
+    """V12.27.0: Bereich, für den die AV die Sollstunden vorgibt (Bereichs-Eigenschaft avHours, nicht der Name)."""
+    deps = state_or_deps.get("departments") if isinstance(state_or_deps, dict) else state_or_deps
+    return any(isinstance(d, dict) and str(d.get("id")) == str(did) and d.get("avHours") is True for d in (deps or []))
+
+
 def user_action(user: dict, action: str) -> bool:
     return bool((user.get("actions") or {}).get(action, True))
 
@@ -961,6 +970,10 @@ def rights_change_error(old: dict, incoming: dict, user: dict) -> str:
             for key in keys:
                 if canonical(old.get(key)) != canonical(incoming.get(key)):
                     return f"Für „{label}“ besteht nur Leserecht."
+    if user.get("role") == "gf" and user_level(user, "gf") != "edit":
+        for key in GF_FUNCTION_KEYS:
+            if canonical(old.get(key)) != canonical(incoming.get(key)):
+                return "Für „GF-Steuerung“ besteht nur Leserecht."
     before_ws = _record_map(old.get("workSteps"))
     after_ws = _record_map(incoming.get("workSteps"))
     if not user_action(user, "faCreate") and any(rid not in before_ws for rid in after_ws):
@@ -974,12 +987,11 @@ def rights_change_error(old: dict, incoming: dict, user: dict) -> str:
                     (canonical(prev.get("handoffUnassigned")) != canonical(after.get("handoffUnassigned")) and prev.get("handoffUnassigned") and not after.get("handoffUnassigned")):
                 return "FA einplanen ist für diese Rolle gesperrt."
     if not user_action(user, "confectionHours"):
-        dep_names = {str(d.get("id")): str(d.get("name") or "") for d in old.get("departments") or [] if isinstance(d, dict)}
         before = _record_map(old.get("workSteps"))
         for rid, after in _record_map(incoming.get("workSteps")).items():
             prev = before.get(rid) or {}
             dep = str(after.get("departmentId") or "")
-            confection = "konf" in dep.casefold() or "konf" in dep_names.get(dep, "").casefold() or after.get("planningType") == "LABOR_HOURS"
+            confection = av_hours_department(old, dep) or after.get("planningType") == "LABOR_HOURS"
             if confection and (canonical(prev.get("hours", 0)) != canonical(after.get("hours", 0)) or canonical(prev.get("requiredHours")) != canonical(after.get("requiredHours"))):
                 return "Konfektionsstunden vorgeben ist für diese Rolle gesperrt."
     return ""
@@ -1052,9 +1064,9 @@ LEGACY_MACHINES = [
 ]
 LEGACY_DEPARTMENTS = [
     {"id": "cnc", "name": "CNC", "planningType": "MACHINE", "active": True, "sharedOperators": True},
-    {"id": "konf1", "name": "Konfektion 1", "planningType": "LABOR_HOURS", "active": True},
-    {"id": "konf2", "name": "Konfektion 2", "planningType": "LABOR_HOURS", "active": True},
-    {"id": "konf3", "name": "Konfektion 3", "planningType": "LABOR_HOURS", "active": True},
+    {"id": "konf1", "name": "Konfektion 1", "planningType": "LABOR_HOURS", "active": True, "avHours": True},
+    {"id": "konf2", "name": "Konfektion 2", "planningType": "LABOR_HOURS", "active": True, "avHours": True},
+    {"id": "konf3", "name": "Konfektion 3", "planningType": "LABOR_HOURS", "active": True, "avHours": True},
     {"id": "screenprint", "name": "Siebdruck", "planningType": "PROCESS", "active": True},
     {"id": "thermoforming", "name": "Tiefziehen", "planningType": "CYCLE", "active": True, "formats": True},
 ]
@@ -1188,6 +1200,7 @@ def init_db(seed: str = "neutral") -> None:
         migrate_state_v1216(con)
         migrate_state_v1218(con)
         migrate_state_v1219(con)
+        migrate_state_v12270(con)
         if not con.execute("SELECT 1 FROM chat_channels WHERE kind='all'").fetchone():
             con.execute("INSERT INTO chat_channels(kind,name,members,created_by,created_at) VALUES('all','Alle','[]','Server',?)", (now_iso(),))
         migrate_chat_v1291(con)
@@ -1299,6 +1312,25 @@ def migrate_state_v1216(con: sqlite3.Connection) -> None:
         con.execute("UPDATE state SET json=?,updated_at=?,updated_by=? WHERE id=1",
                     (json.dumps(state, ensure_ascii=False, separators=(",", ":")), now_iso(), "V12.16.0 migration"))
         print("DB-MIGRATION state: V12.16.0 Bereichs-Eigenschaften (formats, sharedOperators)")
+
+
+def migrate_state_v12270(con: sqlite3.Connection) -> None:
+    """V12.27.0: Bereichs-Eigenschaft avHours ("Stunden gibt die AV vor") statt Namenserkennung. Additiv und idempotent:
+    Bereiche OHNE den Schluessel bekommen avHours=true, wenn die alte Erkennung ("konf" in ID/Name) zutraf; sonst bleibt
+    der Schluessel abwesend (= false). Vorhandene Werte werden nie ueberschrieben."""
+    row = con.execute("SELECT json FROM state WHERE id=1").fetchone()
+    if not row:
+        return
+    state = json.loads(row["json"])
+    changed = False
+    for d in state.get("departments") or []:
+        if isinstance(d, dict) and "avHours" not in d and "konf" in (str(d.get("id") or "") + " " + str(d.get("name") or "")).casefold():
+            d["avHours"] = True
+            changed = True
+    if changed:
+        con.execute("UPDATE state SET json=?,updated_at=?,updated_by=? WHERE id=1",
+                    (json.dumps(state, ensure_ascii=False, separators=(",", ":")), now_iso(), "V12.27.0 migration"))
+        print("DB-MIGRATION state: V12.27.0 Bereichs-Eigenschaft avHours (AV gibt Stunden vor)")
 
 
 def migrate_state_v1242(con: sqlite3.Connection) -> None:
@@ -1673,6 +1705,17 @@ def verify_password(password: str, salt_b64: str, digest_b64: str) -> bool:
 
 
 DUMMY_SALT, DUMMY_HASH = hash_password(secrets.token_urlsafe(16))
+
+
+META_KEYS = {"revision", "serverRevision", "actor", "storage", "createdAt", "serverReady", "clientVersion"}
+MAX_UI_BYTES = 20 * 1024
+
+
+def password_policy_error(password: str) -> str:
+    """V12.27.0: Regel für NEUE/geänderte Passwörter (bestehende bleiben gültig); leer = ok."""
+    if len(password) < 10 or not any(c.isalpha() for c in password) or not any(c.isdigit() for c in password):
+        return "Passwort muss mindestens 10 Zeichen sowie Buchstaben und Ziffern enthalten."
+    return ""
 
 
 def create_or_reset_admin(username: str, password: str) -> None:
@@ -2634,6 +2677,10 @@ def _validate_machine_format_fields(m: dict) -> tuple[bool, str]:
             return False, "Taktname fehlt oder ist zu lang."
         if not _num_in(t.get("sec"), 1, 3600):
             return False, f"Takt „{t.get('name')}“: Sekunden müssen zwischen 1 und 3600 liegen."
+        if t.get("unit") not in (None, "") and t.get("unit") not in ("s", "min", "perHour"):
+            return False, f"Takt „{t.get('name')}“: Einheit muss s, min oder perHour sein."
+        if t.get("parts") not in (None, "") and not _num_in(t.get("parts"), 1, 1000, True):
+            return False, f"Takt „{t.get('name')}“: Stück je Takt muss eine ganze Zahl von 1 bis 1000 sein."
     return True, ""
 
 
@@ -2817,8 +2864,8 @@ def validate_state(old: dict, new: dict) -> tuple[bool, str, str]:
             return False, "MP-DEPT-002", "Produktionsbereich hat eine ungültige ID."
         did = str(dep["id"])
         ptype = str(dep.get("planningType") or "")
-        if any(k in dep and not isinstance(dep[k], bool) for k in ("formats", "sharedOperators")):
-            return False, "MP-DEPT-007", f"Bereich '{did}': Eigenschaften formats/sharedOperators sind true/false."
+        if any(k in dep and not isinstance(dep[k], bool) for k in ("formats", "sharedOperators", "avHours", "noQuantity")):
+            return False, "MP-DEPT-007", f"Bereich '{did}': Eigenschaften formats/sharedOperators/avHours/noQuantity sind true/false."
         if "dryingHours" in dep and (_finite_float(dep["dryingHours"]) is None or not 0 <= float(dep["dryingHours"]) <= 720 or isinstance(dep["dryingHours"], bool)):
             return False, "MP-DEPT-007", f"Bereich '{did}': Trocknungszeit muss 0–720 Stunden sein."
         if did in dept_ids:
@@ -2905,6 +2952,8 @@ def validate_state(old: dict, new: dict) -> tuple[bool, str, str]:
             return False, "MP-STEP-014", f"Arbeitsgang '{sid}': FA/AB/WT ist zu lang."
         if "avNote" in step and (not isinstance(step["avNote"], str) or len(step["avNote"]) > 500):
             return False, "MP-STEP-014", f"Arbeitsgang '{sid}': AV-Notiz ist ungültig oder zu lang."
+        if "taktId" in step and (not isinstance(step["taktId"], str) or len(step["taktId"]) > 80):
+            return False, "MP-STEP-014", f"Arbeitsgang '{sid}': Takt-ID ist ungültig oder zu lang."
         if "dryingHours" in step and (isinstance(step["dryingHours"], bool) or _finite_float(step["dryingHours"]) is None or not 0 <= float(step["dryingHours"]) <= 720):
             return False, "MP-STEP-014", f"Arbeitsgang '{sid}': Trocknungszeit muss 0–720 Stunden sein."
         if pid:
@@ -3611,7 +3660,7 @@ def _gf_departments_change(old: dict, new: dict) -> tuple[bool, str]:
     for did, b in db.items():
         a = da.get(did)
         if a is None:
-            if set(b) - {"id", "name", "kind", "active", "planningType"} or str(b.get("planningType") or "") != "MACHINE":
+            if set(b) - {"id", "name", "kind", "active", "planningType", "avHours", "noQuantity"} or b.get("avHours", False) is not False or b.get("noQuantity", False) is not False or str(b.get("planningType") or "") != "MACHINE":
                 return False, "Neuer Bereich: nur Name, Art und aktiv (Planung über Maschinen/Linien)."
             continue
         diff = {k for k in set(a) | set(b) if canonical(a.get(k)) != canonical(b.get(k))}
@@ -3902,7 +3951,6 @@ def production_planning_change_allowed(old: dict, new: dict) -> tuple[bool, str]
         if key not in allowed_root and canonical(old.get(key)) != canonical(new.get(key)):
             return False, f"Arbeitsvorbereitung darf '{key}' nicht ändern."
     a, b = _record_map(old.get("workSteps")), _record_map(new.get("workSteps"))
-    dep_names = {str(d.get("id")): str(d.get("name") or d.get("id") or "") for d in (new.get("departments") or []) if isinstance(d, dict)}
     for rid in set(a) | set(b):
         if canonical(a.get(rid)) == canonical(b.get(rid)):
             continue
@@ -3916,17 +3964,17 @@ def production_planning_change_allowed(old: dict, new: dict) -> tuple[bool, str]
             return False, "Die Bereichsplanung übernimmt offene AV-Aufträge über die Planen-Aktion."
         if before is None and after is not None:
             did = str(after.get("departmentId") or "")
-            is_confection = "konf" in did.casefold() or "konf" in dep_names.get(did, "").casefold()
+            is_confection = av_hours_department(new, did)
             if not after.get("handoffUnassigned") or str(after.get("machineId") or "") or str(after.get("altMachineId") or "") or after.get("allowAlternative") or after.get("baselinePlan") is not None or after.get("planningWeek") or str(after.get("direction") or "forward") != "forward" or str(after.get("anchorMode") or "none") != "none" or after.get("requiredStart") or after.get("requiredFinish") or after.get("laneIndex"):
                 return False, "Neue AV-Aufträge müssen ohne Ressource und Terminanker an die Bereichsplanung gehen."
             if not is_confection and (_finite_float(after.get("hours", 0)) or 0) > 0:
                 return False, "Arbeitsvorbereitung darf Stunden nur für Konfektion vorgeben."
         if after is not None and canonical((before or {}).get("hours", 0)) != canonical(after.get("hours", 0)):
             dept = str(after.get("departmentId") or "")
-            if ("konf" not in dept.casefold() and "konf" not in dep_names.get(dept, "").casefold()) and (_finite_float(after.get("hours", 0)) or 0) > 0:
+            if not av_hours_department(new, dept) and (_finite_float(after.get("hours", 0)) or 0) > 0:
                 return False, "Arbeitsvorbereitung darf Stunden nur für Konfektion vorgeben."
         if before and after:
-            for field in ("machineId", "altMachineId", "allowAlternative", "laneIndex", "pos", "direction", "anchorMode", "requiredStart", "requiredFinish", "planningWeek", "baselinePlan"):
+            for field in ("machineId", "altMachineId", "allowAlternative", "laneIndex", "pos", "direction", "anchorMode", "requiredStart", "requiredFinish", "planningWeek", "baselinePlan", "taktId"):
                 if canonical(before.get(field)) != canonical(after.get(field)):
                     return False, "Operative Planung übernimmt die zuständige Abteilung."
         # V12.24.0: Trocknung nach dem Arbeitsgang entscheidet die Abteilungsleitung, nicht die AV.
@@ -4045,8 +4093,7 @@ def department_change_allowed(old: dict, new: dict, department_id: str) -> tuple
                         return False, "FA, Projekt, Menge und Vorgänger pflegt die Arbeitsvorbereitung."
         resource = next((m for m in old.get("machines") or [] if m.get("id") == (before or {}).get("machineId")), {})
         dep = str((before or rec).get("departmentId") or "")
-        dep_name = next((str(d.get("name") or "") for d in (old.get("departments") or []) if str(d.get("id")) == dep), "")
-        if before is not None and ("konf" in dep.casefold() or "konf" in dep_name.casefold() or resource.get("kind") == "line" or resource.get("effortScaling")) and canonical(before.get("hours")) != canonical(rec.get("hours")):
+        if before is not None and (av_hours_department(old, dep) or resource.get("kind") == "line" or resource.get("effortScaling")) and canonical(before.get("hours")) != canonical(rec.get("hours")):
             return False, "Konfektionsstunden pflegt die Arbeitsvorbereitung."
         if before is not None and before.get("planningType") == "LABOR_HOURS" and canonical(before.get("requiredHours")) != canonical(rec.get("requiredHours")):
             return False, "Konfektionsstunden pflegt die Arbeitsvorbereitung."
@@ -4359,6 +4406,11 @@ def production_replan(state, order, stamp, crew):
     order["remainingHours"] = sum((local_dt(x["end"])-local_dt(x["start"])).total_seconds()/3600 for x in locked)
 
 
+def department_no_quantity(state, did):
+    """V12.27.0: Bereich ohne Mengenmeldung (Eigenschaft noQuantity)."""
+    return any(isinstance(d, dict) and str(d.get("id")) == str(did) and d.get("noQuantity") is True for d in (state.get("departments") or []))
+
+
 def production_apply(state, user, oid, action, body, stamp=None):
     """One authoritative runtime for every FA source and planning type."""
     stamp = stamp or now_iso()
@@ -4446,7 +4498,13 @@ def production_apply(state, user, oid, action, body, stamp=None):
         order["pausedAt"], order["status"] = stamp, "paused"
         production_replan(state, order, stamp, order["productionPhases"][-1]["crew"])
     elif action in {"partial", "finish", "abort"}:
-        target = int(order.get("targetQty") or order.get("quantity") or 0)
+        no_qty = department_no_quantity(state, order.get("departmentId"))
+        if no_qty:
+            # V12.27.0: Bereich ohne Mengenmeldung (z. B. Formbau): nur Start/Pause/Stopp, keine Teilmeldung, Mengen immer 0.
+            if action == "partial" or any(body.get(k) not in (None, 0) for k in ("goodQty", "scrapQty")):
+                raise ProductionError("MP-PROD-060", "Bereich meldet keine Mengen.")
+            body = {**body, "goodQty": 0, "scrapQty": 0}
+        target = 0 if no_qty else int(order.get("targetQty") or order.get("quantity") or 0)
         previous_good, previous_scrap = int(order.get("goodQty") or 0), int(order.get("scrapQty") or 0)
         good = body.get("goodQty", max(0, target-previous_good-previous_scrap) if action == "finish" else 0)
         scrap = body.get("scrapQty", 0)
@@ -4469,7 +4527,7 @@ def production_apply(state, user, oid, action, body, stamp=None):
                 finished.update(recordType="cancelled", status="cancelled", abortReason=body["reason"].strip())
             state["history"].insert(0, finished)
             state["workSteps"].remove(order)
-            if order.get("sourceType") in DEMAND_SOURCES:
+            if order.get("sourceType") in DEMAND_SOURCES and not no_qty:
                 # Auch ein Abbruch bucht bereits gefertigte Gutteile: sie liegen physisch vor.
                 demand_book_completion(state, order, finished)
     elif action == "label":
@@ -5141,7 +5199,7 @@ def template_merge(state: dict, tpl: dict) -> tuple[dict, dict]:
             summary["skipped"] += 1
             continue
         rec = {"id": did, "name": name[:60], "planningType": d["planningType"], "active": True}
-        for flag in ("formats", "sharedOperators"):
+        for flag in ("formats", "sharedOperators", "avHours", "noQuantity"):
             if d.get(flag) is True:
                 rec[flag] = True
         deps.append(rec)
@@ -5802,6 +5860,8 @@ class Handler(BaseHTTPRequestHandler):
             user = self.require_user()
             if not user:
                 return
+            if not self.require_rights(user, "notifications"):
+                return
             if not self.require_current_client():
                 return
             if not module_on("notifications"):
@@ -5818,6 +5878,8 @@ class Handler(BaseHTTPRequestHandler):
                 with REVISION_CONDITION:
                     REVISION_CONDITION.notify_all()
             return self.json_response(status, payload)
+        # Rechte-Audit V12.27.0: Produktions-/Bedarfsaktionen prüfen bewusst NICHT die Funktionsstufe „planning“;
+        # dafür gelten die eigenen Aktionsrechte prodStartPause/prodFinish (siehe ROLE_ACTIONS).
         production_path = re.fullmatch(r"/api/production/([A-Za-z0-9_-]{1,80})/(release|start|pause|resume|partial|finish|abort|label)", path)
         if production_path:
             user = self.require_user(["admin", *DEPARTMENT_ROLES, "production"])
@@ -5920,6 +5982,8 @@ class Handler(BaseHTTPRequestHandler):
                     state = json.loads(con.execute("SELECT json FROM state WHERE id=1").fetchone()[0])
                 if department_id not in {str(d.get("id")) for d in state.get("departments") or []}:
                     return self.json_response(400, mp_error("MP-AUTH-010", "Bereich ist ungültig."))
+            if password_policy_error(password) and len(username) >= 2 and role in ROLES:
+                return self.json_response(400, mp_error("MP-AUTH-017", password_policy_error(password)))
             if len(username) < 2 or len(password) < 8 or role not in ROLES or (role in DEPARTMENT_ROLES | {"production"} and not department_id):
                 return self.json_response(400, mp_error("MP-AUTH-010", "Benutzername, Passwort, Rolle oder Bereich ungültig."))
             if len(username) > 40 or any(ch in username for ch in "⟦⟧|<>\"'`") or any(ord(ch) < 32 for ch in username):
@@ -5954,8 +6018,8 @@ class Handler(BaseHTTPRequestHandler):
             return
         current = str(body.get("currentPassword", ""))
         new_pw = str(body.get("newPassword", ""))
-        if len(new_pw) < 8:
-            return self.json_response(400, mp_error("MP-AUTH-017", "Passwort muss mindestens 8 Zeichen haben."))
+        if password_policy_error(new_pw):
+            return self.json_response(400, mp_error("MP-AUTH-017", password_policy_error(new_pw)))
         ip = self.client_address[0]
         stamp = login_attempt_reserve(ip, user["username"])
         if stamp is None:
@@ -6081,8 +6145,8 @@ class Handler(BaseHTTPRequestHandler):
             vals = [role, department_id, active, now_iso(), profile_id]
             if "password" in body:
                 pw = str(body["password"])
-                if len(pw) < 8:
-                    return self.json_response(400, mp_error("MP-AUTH-017", "Passwort muss mindestens 8 Zeichen haben."))
+                if password_policy_error(pw):
+                    return self.json_response(400, mp_error("MP-AUTH-017", password_policy_error(pw)))
                 salt, digest = hash_password(pw)
                 fields += ["salt=?", "password_hash=?"]
                 vals += [salt, digest]
@@ -6230,6 +6294,11 @@ class Handler(BaseHTTPRequestHandler):
                 if not ok:
                     con.execute("ROLLBACK")
                     return self.json_response(403, mp_error("MP-LOG-001", reason))
+            # V12.27.0 (Rechte-Audit): meta nur mit bekannten Schlüsseln, ui nur als kleines Objekt.
+            incoming["meta"] = {k: v for k, v in (incoming.get("meta") or {}).items() if k in META_KEYS}
+            if len(canonical(incoming.get("ui") or {}).encode("utf-8")) > MAX_UI_BYTES:
+                con.execute("ROLLBACK")
+                return self.json_response(400, mp_error("MP-SYNC-003", "UI-Einstellungen sind zu groß (max. 20 KB)."))
             # MP-AUD-017: fachlich unveränderter Stand erzeugt keine neue Revision.
             if canonical({k: v for k, v in incoming.items() if k != "meta"}) == canonical({k: v for k, v in old.items() if k != "meta"}):
                 con.execute("ROLLBACK")

@@ -1,0 +1,460 @@
+{
+ "admin": {
+  "baseFormats": "empty",
+  "callOffs": "empty",
+  "departmentStaffNeeds": "empty",
+  "departments": [
+   200
+  ],
+  "employees": [
+   200
+  ],
+  "exceptions": "empty",
+  "formats": "empty",
+  "frameOrders": "empty",
+  "history": "empty",
+  "inventory": "empty",
+  "machineBlocks": "empty",
+  "machines": [
+   200
+  ],
+  "operatorCapacity": [
+   200
+  ],
+  "palletLabels": "empty",
+  "palletTemplates": "empty",
+  "personnelAbsences": "empty",
+  "personnelAssignments": "empty",
+  "personnelGate": "scalar-skip",
+  "planVersions": "empty",
+  "processTemplates": [
+   200
+  ],
+  "productionEvents": "empty",
+  "projects": [
+   200
+  ],
+  "shiftTemplates": [
+   200
+  ],
+  "version": "scalar-skip",
+  "weekRules": "empty",
+  "weeklyEmployeeDeployments": "empty",
+  "workSteps": [
+   200
+  ],
+  "yearRules": "empty"
+ },
+ "av1": {
+  "baseFormats": "empty",
+  "callOffs": "empty",
+  "departmentStaffNeeds": "empty",
+  "departments": [
+   403,
+   "MP-AV-030"
+  ],
+  "employees": [
+   403,
+   "MP-AV-030"
+  ],
+  "exceptions": "empty",
+  "formats": "empty",
+  "frameOrders": "empty",
+  "history": "empty",
+  "inventory": "empty",
+  "machineBlocks": "empty",
+  "machines": [
+   403,
+   "MP-AV-030"
+  ],
+  "operatorCapacity": [
+   403,
+   "MP-AV-030"
+  ],
+  "palletLabels": "empty",
+  "palletTemplates": "empty",
+  "personnelAbsences": "empty",
+  "personnelAssignments": "empty",
+  "personnelGate": "scalar-skip",
+  "planVersions": "empty",
+  "processTemplates": [
+   403,
+   "MP-TPL-030"
+  ],
+  "productionEvents": "empty",
+  "projects": [
+   200
+  ],
+  "shiftTemplates": [
+   403,
+   "MP-AV-030"
+  ],
+  "version": "scalar-skip",
+  "weekRules": "empty",
+  "weeklyEmployeeDeployments": "empty",
+  "workSteps": [
+   200
+  ],
+  "yearRules": "empty"
+ },
+ "dep1": {
+  "baseFormats": "empty",
+  "callOffs": "empty",
+  "departmentStaffNeeds": "empty",
+  "departments": [
+   403,
+   "MP-DEPT-030"
+  ],
+  "employees": [
+   200
+  ],
+  "exceptions": "empty",
+  "formats": "empty",
+  "frameOrders": "empty",
+  "history": "empty",
+  "inventory": "empty",
+  "machineBlocks": "empty",
+  "machines": [
+   200
+  ],
+  "operatorCapacity": [
+   403,
+   "MP-DEPT-030"
+  ],
+  "palletLabels": "empty",
+  "palletTemplates": "empty",
+  "personnelAbsences": "empty",
+  "personnelAssignments": "empty",
+  "personnelGate": "scalar-skip",
+  "planVersions": "empty",
+  "processTemplates": [
+   403,
+   "MP-DEPT-030"
+  ],
+  "productionEvents": "empty",
+  "projects": "empty",
+  "shiftTemplates": [
+   403,
+   "MP-DEPT-030"
+  ],
+  "version": "scalar-skip",
+  "weekRules": "empty",
+  "weeklyEmployeeDeployments": "empty",
+  "workSteps": [
+   200
+  ],
+  "yearRules": "empty"
+ },
+ "gf1": {
+  "baseFormats": "empty",
+  "callOffs": "empty",
+  "departmentStaffNeeds": "empty",
+  "departments": [
+   200
+  ],
+  "employees": [
+   403,
+   "MP-GF-030"
+  ],
+  "exceptions": "empty",
+  "formats": "empty",
+  "frameOrders": "empty",
+  "history": "empty",
+  "inventory": "empty",
+  "machineBlocks": "empty",
+  "machines": [
+   403,
+   "MP-GF-030"
+  ],
+  "operatorCapacity": [
+   403,
+   "MP-GF-030"
+  ],
+  "palletLabels": "empty",
+  "palletTemplates": "empty",
+  "personnelAbsences": "empty",
+  "personnelAssignments": "empty",
+  "personnelGate": "scalar-skip",
+  "planVersions": "empty",
+  "processTemplates": [
+   403,
+   "MP-GF-030"
+  ],
+  "productionEvents": "empty",
+  "projects": [
+   403,
+   "MP-GF-030"
+  ],
+  "shiftTemplates": [
+   403,
+   "MP-GF-030"
+  ],
+  "version": "scalar-skip",
+  "weekRules": "empty",
+  "weeklyEmployeeDeployments": "empty",
+  "workSteps": [
+   403,
+   "MP-GF-030"
+  ],
+  "yearRules": "empty"
+ },
+ "lead1": {
+  "baseFormats": "empty",
+  "callOffs": "empty",
+  "departmentStaffNeeds": "empty",
+  "departments": [
+   403,
+   "MP-DEPT-030"
+  ],
+  "employees": [
+   200
+  ],
+  "exceptions": "empty",
+  "formats": "empty",
+  "frameOrders": "empty",
+  "history": "empty",
+  "inventory": "empty",
+  "machineBlocks": "empty",
+  "machines": [
+   200
+  ],
+  "operatorCapacity": [
+   403,
+   "MP-DEPT-030"
+  ],
+  "palletLabels": "empty",
+  "palletTemplates": "empty",
+  "personnelAbsences": "empty",
+  "personnelAssignments": "empty",
+  "personnelGate": "scalar-skip",
+  "planVersions": "empty",
+  "processTemplates": [
+   403,
+   "MP-DEPT-030"
+  ],
+  "productionEvents": "empty",
+  "projects": "empty",
+  "shiftTemplates": [
+   403,
+   "MP-DEPT-030"
+  ],
+  "version": "scalar-skip",
+  "weekRules": "empty",
+  "weeklyEmployeeDeployments": "empty",
+  "workSteps": [
+   200
+  ],
+  "yearRules": "empty"
+ },
+ "pm1": {
+  "baseFormats": "empty",
+  "callOffs": "empty",
+  "departmentStaffNeeds": "empty",
+  "departments": [
+   403,
+   "MP-PM-030"
+  ],
+  "employees": [
+   403,
+   "MP-PM-030"
+  ],
+  "exceptions": "empty",
+  "formats": "empty",
+  "frameOrders": "empty",
+  "history": "empty",
+  "inventory": "empty",
+  "machineBlocks": "empty",
+  "machines": [
+   403,
+   "MP-PM-030"
+  ],
+  "operatorCapacity": [
+   403,
+   "MP-PM-030"
+  ],
+  "palletLabels": "empty",
+  "palletTemplates": "empty",
+  "personnelAbsences": "empty",
+  "personnelAssignments": "empty",
+  "personnelGate": "scalar-skip",
+  "planVersions": "empty",
+  "processTemplates": [
+   200
+  ],
+  "productionEvents": "empty",
+  "projects": [
+   200
+  ],
+  "shiftTemplates": [
+   403,
+   "MP-PM-030"
+  ],
+  "version": "scalar-skip",
+  "weekRules": "empty",
+  "weeklyEmployeeDeployments": "empty",
+  "workSteps": [
+   403,
+   "MP-PM-030"
+  ],
+  "yearRules": "empty"
+ },
+ "prod1": {
+  "baseFormats": "empty",
+  "callOffs": "empty",
+  "departmentStaffNeeds": "empty",
+  "departments": [
+   403,
+   "MP-AUTH-002"
+  ],
+  "employees": [
+   403,
+   "MP-AUTH-002"
+  ],
+  "exceptions": "empty",
+  "formats": "empty",
+  "frameOrders": "empty",
+  "history": "empty",
+  "inventory": "empty",
+  "machineBlocks": "empty",
+  "machines": [
+   403,
+   "MP-AUTH-002"
+  ],
+  "operatorCapacity": [
+   403,
+   "MP-AUTH-002"
+  ],
+  "palletLabels": "empty",
+  "palletTemplates": "empty",
+  "personnelAbsences": "empty",
+  "personnelAssignments": "empty",
+  "personnelGate": "scalar-skip",
+  "planVersions": "empty",
+  "processTemplates": [
+   403,
+   "MP-AUTH-002"
+  ],
+  "productionEvents": "empty",
+  "projects": "empty",
+  "shiftTemplates": [
+   403,
+   "MP-AUTH-002"
+  ],
+  "version": "scalar-skip",
+  "weekRules": "empty",
+  "weeklyEmployeeDeployments": "empty",
+  "workSteps": [
+   403,
+   "MP-AUTH-002"
+  ],
+  "yearRules": "empty"
+ },
+ "view1": {
+  "baseFormats": "empty",
+  "callOffs": "empty",
+  "departmentStaffNeeds": "empty",
+  "departments": [
+   403,
+   "MP-AUTH-002"
+  ],
+  "employees": [
+   403,
+   "MP-AUTH-002"
+  ],
+  "exceptions": "empty",
+  "formats": "empty",
+  "frameOrders": "empty",
+  "history": "empty",
+  "inventory": "empty",
+  "machineBlocks": "empty",
+  "machines": [
+   403,
+   "MP-AUTH-002"
+  ],
+  "operatorCapacity": [
+   403,
+   "MP-AUTH-002"
+  ],
+  "palletLabels": "empty",
+  "palletTemplates": "empty",
+  "personnelAbsences": "empty",
+  "personnelAssignments": "empty",
+  "personnelGate": "scalar-skip",
+  "planVersions": "empty",
+  "processTemplates": [
+   403,
+   "MP-AUTH-002"
+  ],
+  "productionEvents": "empty",
+  "projects": [
+   403,
+   "MP-AUTH-002"
+  ],
+  "shiftTemplates": [
+   403,
+   "MP-AUTH-002"
+  ],
+  "version": "scalar-skip",
+  "weekRules": "empty",
+  "weeklyEmployeeDeployments": "empty",
+  "workSteps": [
+   403,
+   "MP-AUTH-002"
+  ],
+  "yearRules": "empty"
+ },
+ "vt1": {
+  "baseFormats": "empty",
+  "callOffs": "empty",
+  "departmentStaffNeeds": "empty",
+  "departments": [
+   403,
+   "MP-SALES-030"
+  ],
+  "employees": [
+   403,
+   "MP-SALES-030"
+  ],
+  "exceptions": "empty",
+  "formats": "empty",
+  "frameOrders": "empty",
+  "history": "empty",
+  "inventory": "empty",
+  "machineBlocks": "empty",
+  "machines": [
+   403,
+   "MP-SALES-030"
+  ],
+  "operatorCapacity": [
+   403,
+   "MP-SALES-030"
+  ],
+  "palletLabels": "empty",
+  "palletTemplates": "empty",
+  "personnelAbsences": "empty",
+  "personnelAssignments": "empty",
+  "personnelGate": "scalar-skip",
+  "planVersions": "empty",
+  "processTemplates": [
+   403,
+   "MP-SALES-030"
+  ],
+  "productionEvents": "empty",
+  "projects": [
+   403,
+   "MP-PM-031"
+  ],
+  "shiftTemplates": [
+   403,
+   "MP-SALES-030"
+  ],
+  "version": "scalar-skip",
+  "weekRules": "empty",
+  "weeklyEmployeeDeployments": "empty",
+  "workSteps": [
+   403,
+   "MP-SALES-030"
+  ],
+  "yearRules": "empty"
+ }
+}

@@ -306,5 +306,62 @@ class ActionRightsV1227(RoleProfiles):
     test_actions_and_endpoints = None
 
 
+class RightsAuditV1227(RoleProfiles):
+    '''V12.27.0 Rechte-Audit: GF-/Historie-Schreibschutz, Benachrichtigungen, Passwortregel, meta/ui.'''
+    def _save(self, ck, mutate):
+        _, state, _ = self.req('GET', '/api/state', None, ck)
+        mutate(state['data'])
+        return self.req('PUT', '/api/state', state, ck)
+
+    def test_gf_profile_write_guard(self):
+        self.assertEqual(self.put_role('gf-lesen', {'name': 'GF lesen', 'baseRole': 'gf', 'rights': {'gf': 'read'}})[0], 200)
+        self.assertEqual(self.put_role('gf-edit', {'name': 'GF edit', 'baseRole': 'gf', 'rights': {'gf': 'edit'}})[0], 200)
+        self.user('gf-r', 'gf', '', 'gf-lesen')
+        self.user('gf-e', 'gf', '', 'gf-edit')
+        rename = lambda d: d['departments'][0].update(name='Umbenannt-GF')
+        st, body, _ = self._save(self.login('gf-r')[1], rename)
+        self.assertEqual((st, body.get('errorCode')), (403, 'MP-ROLE-010'), body)
+        st, body, _ = self._save(self.login('gf-e')[1], rename)
+        self.assertEqual(st, 200, body)
+
+    def test_history_profile_write_guard(self):
+        self.assertEqual(self.put_role('lead-hist-r', {'name': 'Leitung Historie lesen', 'baseRole': 'department_lead', 'rights': {'history': 'read'}})[0], 200)
+        self.user('lead-hist', 'department_lead', DEP, 'lead-hist-r')
+        st, body, _ = self._save(self.login('lead-hist')[1], lambda d: d['history'][0].update(fa='FA-GEAENDERT'))
+        self.assertEqual((st, body.get('errorCode')), (403, 'MP-ROLE-010'), body)
+
+    def test_password_policy(self):
+        for i, pw in enumerate(('kurzes1', 'nurbuchstabenlang', '1234567890123')):
+            st, body, _ = self.req('POST', '/api/users', {'username': f'pw-bad{i}', 'password': pw, 'role': 'viewer'}, self.admin)
+            self.assertEqual((st, body.get('errorCode')), (400, 'MP-AUTH-017'), pw)
+        st, body, _ = self.req('POST', '/api/users', {'username': 'pw-gut', 'password': 'Gutes-Passwort-12', 'role': 'viewer'}, self.admin)
+        self.assertEqual(st, 201, body)
+        ck = self.req('POST', '/api/login', {'username': 'pw-gut', 'password': 'Gutes-Passwort-12'})[2]
+        self.assertEqual(self.req('POST', '/api/password', {'currentPassword': 'Gutes-Passwort-12', 'newPassword': 'zukurz1'}, ck)[0], 400)
+        self.assertEqual(self.req('POST', '/api/password', {'currentPassword': 'Gutes-Passwort-12', 'newPassword': 'Anderes-Passwort-34'}, ck)[0], 200)
+
+    def test_notifications_post_needs_right(self):
+        self.assertEqual(self.put_role('ohne-notif', {'name': 'Ohne Benachrichtigungen', 'baseRole': 'viewer', 'rights': {'notifications': 'none'}})[0], 200)
+        self.user('notif-none', 'viewer', '', 'ohne-notif')
+        ck = self.login('notif-none')[1]
+        for path in ('/api/notifications/read', '/api/notifications/derived'):
+            self.assertEqual(self.req('POST', path, {}, ck)[0], 403, path)
+
+    def test_meta_ui_sanitized(self):
+        def tweak(d):
+            d['meta']['fremd'] = 'x'
+            d['departments'][1 if len(d['departments']) > 1 else 0]['name'] = 'Meta-Test'
+        st, body, _ = self._save(self.admin, tweak)
+        self.assertEqual(st, 200, body)
+        _, state, _ = self.req('GET', '/api/state', None, self.admin)
+        self.assertNotIn('fremd', state['data']['meta'])
+        st, body, _ = self._save(self.admin, lambda d: d.__setitem__('ui', {'accent': '#123456', 'blob': 'x' * 30000}))
+        self.assertEqual((st, body.get('errorCode')), (400, 'MP-SYNC-003'), body)
+
+    test_profile_validation_and_management = None
+    test_av_profile_is_enforced_on_server = None
+    test_actions_and_endpoints = None
+
+
 if __name__ == '__main__':
     unittest.main(verbosity=2)

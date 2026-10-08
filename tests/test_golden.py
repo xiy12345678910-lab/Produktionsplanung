@@ -6,6 +6,7 @@ nichts unbemerkt verändern:
   1. Datenstand nach Migration/Normalisierung des realistischen Test-Datenstands (make_test_db.py)
   2. Sichtbare Daten je Rolle (Bereichs-/Rechte-Schwärzung)
   3. Rechte-Matrix: Rolle × Endpunkt → HTTP-Status (+ Fehlercode)
+  4. Schreib-Matrix: Rolle × Datenbereich (Schlüssel von /api/state) → Status/Fehlercode einer minimalen Änderung
 
 Aufruf:  python tests/test_golden.py            # vergleichen
          python tests/test_golden.py --update   # Referenz bewusst neu schreiben (nur bei gewollter Änderung)
@@ -123,7 +124,73 @@ for user, ck in COOKIES.items():
     perm['POST /api/production/<unbekannt>/start'] = [st, body.get('errorCode', '')]
     snap_perm[user] = perm
 
-SNAPS = {'state_fixture.json': snap_state, 'scope_by_role.json': snap_scope, 'permissions.json': snap_perm}
+# --- 4. Schreib-Matrix: je Rolle und Top-Level-Schlüssel eine minimale Änderung per PUT /api/state ---------------
+def admin_state():
+    b = req('GET', '/api/state', None, ADMIN)[1]
+    return b['revision'], b['data']
+
+
+ORIG_DATA = json.loads(json.dumps(admin_state()[1]))
+PROBE_FIELDS = ('name', 'note', 'description', 'label')
+
+
+def probe_change(data, key):
+    """Minimale Änderung von data[key]; liefert (neuer Wert, None) oder (None, Skip-Marke)."""
+    v = data.get(key)
+    if isinstance(v, list):
+        if not v:
+            return None, 'empty'
+        rec = v[0]
+        if not isinstance(rec, dict):
+            return None, 'nondict-skip'
+        new = list(v); rec = dict(rec)
+        field = next((f for f in PROBE_FIELDS if isinstance(rec.get(f), str)), None)
+        if field:
+            rec[field] = rec[field] + ' x'
+        else:
+            rec['goldenProbe'] = 'x'
+        new[0] = rec
+        return new, None
+    if isinstance(v, dict):
+        return {**v, 'goldenProbe': 'x'}, None
+    return None, 'scalar-skip'
+
+
+WRITE_KEYS = [k for k in sorted(ORIG_DATA) if k not in ('meta', 'ui', 'audit')]
+snap_write = {}
+for user, ck in COOKIES.items():
+    row = {}
+    for key in WRITE_KEYS:
+        st, body, _ = req('GET', '/api/state', None, ck)
+        if st != 200:
+            row[key] = ['get-' + str(st)]
+            continue
+        data = json.loads(json.dumps(body['data']))
+        new, skip = probe_change(data, key)
+        if skip:
+            row[key] = skip
+            continue
+        data[key] = new
+        st, b2, _ = req('PUT', '/api/state', {'revision': body['revision'], 'data': data, 'action': 'Golden Schreib-Matrix'}, ck)
+        row[key] = [st, b2.get('errorCode', '')] if st >= 400 else [st]
+        if st == 200:  # Fixture wiederherstellen
+            rev, _cur = admin_state()
+            rs, rb, _ = req('PUT', '/api/state', {'revision': rev, 'data': ORIG_DATA, 'action': 'Golden Restore'}, ADMIN)
+            assert rs == 200, ('restore', user, key, rs, rb)
+    snap_write[user] = row
+
+print('Schreib-Matrix (ok=200, Zahl=HTTP-Status, -=übersprungen):')
+for user, row in snap_write.items():
+    cells = []
+    for key, r in row.items():
+        if isinstance(r, str):
+            continue
+        cells.append(key + '=' + ('ok' if r[0] == 200 else str(r[0])))
+    ok_keys = [k for k, r in row.items() if not isinstance(r, str) and r[0] == 200]
+    print(f'  {user:6} ok: {",".join(ok_keys) or "-"} | ' + ' '.join(c for c in cells if not c.endswith('=ok')))
+print()
+
+SNAPS = {'state_fixture.json': snap_state, 'scope_by_role.json': snap_scope, 'permissions.json': snap_perm, 'write_matrix.json': snap_write}
 results = []
 GOLDEN.mkdir(exist_ok=True)
 for name, snap in SNAPS.items():

@@ -2,6 +2,15 @@ MASCHINENPLANUNG V12.27.0 - RELEASE NOTES
 =========================================
 Datum: 08.10.2026 · Basis: V12.26.0 · Update gemäß README_Windows.txt 2b, Daten bleiben erhalten
 
+PLANUNG AV JA/NEIN JE BEREICH
+- Neue Bereichs-Option "Planung AV" (GF-Steuerung und System > Funktionen & Bereiche). Ja: die AV gibt die Stunden je FA vor (wie Konfektion). Nein: die Abteilung plant ihre Stunden selbst.
+- Ersetzt die Namenserkennung "Konfektion". Beim Start werden Bereiche mit "konf" in ID/Name einmalig auf "ja" gesetzt, bestehende Werte bleiben. Neue Bereiche mit Personenstunden starten mit "nein".
+
+BEREICHE OHNE MENGENMELDUNG, Z. B. FORMBAU
+- Neue Bereichs-Option "Ohne Mengenmeldung" (GF-Steuerung und System > Funktionen & Bereiche, nur Admin). Produktion meldet nur Start/Pause/Stopp; keine Gut-/Ausschussmengen, keine Teilfertigmeldung.
+- "Fertig" meldet immer 0/0, bucht keinen Bestand. Server: MP-PROD-060 bei Teilmeldung oder Menge ungleich 0.
+- Formbau-Logik: Abteilung plant ihre Stunden selbst (Planung AV = nein). Pflicht: benoetigte Stunden > 0 und Titel (Artikel/Beschreibung), sonst MP-PLAN-071 (nur in solchen Bereichen).
+
 REINIGUNG NACH FA JE MASCHINE (Block F)
 - Neues optionales Maschinenfeld "Reinigung" (hh:mm, 0-24 h) in den Maschineneinstellungen, neben Umrüsten min.
 - Nach jedem FA (geplant, gesperrt, freigegeben) ist die Maschine für diese Zeit belegt (Arbeitszeit der Maschine/des Platzes).
@@ -9,11 +18,24 @@ REINIGUNG NACH FA JE MASCHINE (Block F)
 - Fertig gemeldete FA blockieren die Maschine bis Fertigmeldung + Reinigung.
 - Server prüft die Eingabe (MP-MACH-018). Ohne Reinigungszeit unveränderte Planung (Referenztest unverändert).
 
+TAKT MIT EINHEIT UND TAKT JE PRODUKT (Block F)
+- Takt-Eingabe mit Einheit: Takte/Stunde, Sekunden/Takt oder Minuten/Takt (z. B. 1200 Takte/Stunde = 3 s). Gespeichert werden Sekunden plus die Anzeige-Einheit.
+- Takte (z. B. "Blockbodenbeutel 300 g") sind fuer jede Maschine/Linie pflegbar (Maschineneinstellungen > Takte), optional mit "Stueck je Takt" (1-1000).
+- Einplanen-Popup: Auswahl "Takt (Produkt)" berechnet die Laufzeit = Menge / Stueck je Takt x Takt, auf 0,25 h aufgerundet; weiterhin editierbar. Der Takt wird am FA gemerkt. Nicht in AV-Stunden-Bereichen (Konfektion).
+- Server prueft Einheit und Stueck je Takt (MP-MACH-014) und die Takt-ID am FA; das Setzen gehoert zur operativen Planung der Abteilung.
+
 FEINERE AKTIONSRECHTE IN ROLLEN (#55)
 - Eigene Rollen: neue Aktionsrechte "FA anlegen", "FA einplanen", "Produktion starten/pausieren", "Produktion fertigmelden".
 - Rechte schraenken nur ein (Standard = erlaubt, soweit die Systemrolle es kann). Ohne eigene Rolle aendert sich nichts.
 - Altes Recht "Produktion melden" = aus: wirkt wie beide neuen Produktionsrechte aus.
 - Server prueft verbindlich (MP-ROLE-001 bei Produktion, MP-ROLE-010 beim Speichern); Schaltflaechen werden ausgeblendet bzw. gesperrt.
+
+Rechte-Audit
+- GF-/Historie-Schreibschutz fuer Rollenprofile: gf=Lesen sperrt GF-Aenderungen, history=Lesen sperrt Historie (MP-ROLE-010).
+- Benachrichtigungen: POST /api/notifications/read und /derived pruefen das Recht 'Benachrichtigungen'.
+- PUT /api/state: meta nur bekannte Schluessel, ui max. 20 KB (MP-SYNC-003).
+- Passwortregel fuer neue/geaenderte Passwoerter: mind. 10 Zeichen, Buchstabe + Ziffer (MP-AUTH-017).
+- Produktionsaktionen pruefen bewusst nicht die Stufe 'Planung' (eigene Aktionsrechte).
 
 MASCHINENPLANUNG V12.26.0 - RELEASE NOTES
 =========================================
