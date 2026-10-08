@@ -2869,6 +2869,8 @@ def validate_state(old: dict, new: dict) -> tuple[bool, str, str]:
             return False, "MP-STEP-017", f"Arbeitsgang '{sid}' hat einen ungültigen Status."
         if any(len(v) > 80 for v in (fa, ab_ref, wt_ref)):
             return False, "MP-STEP-014", f"Arbeitsgang '{sid}': FA/AB/WT ist zu lang."
+        if "avNote" in step and (not isinstance(step["avNote"], str) or len(step["avNote"]) > 500):
+            return False, "MP-STEP-014", f"Arbeitsgang '{sid}': AV-Notiz ist ungültig oder zu lang."
         if pid:
             linked = next((p for p in projects if str(p.get("id")) == pid), None)
             if linked and ab_ref and ab_ref.casefold() != str(linked.get("ab") or "").strip().casefold():
@@ -3996,7 +3998,7 @@ def department_change_allowed(old: dict, new: dict, department_id: str) -> tuple
             if "handoffUnassigned" in before:
                 if "handoffUnassigned" not in rec:
                     return False, "Die AV-Herkunft einer Bereichsübergabe bleibt erhalten."
-                for field in ("fa", "faNumber", "projectId", "ab", "wt", "targetQty", "sequence", "predecessorIds"):
+                for field in ("fa", "faNumber", "projectId", "ab", "wt", "targetQty", "sequence", "predecessorIds", "avNote"):
                     if canonical(before.get(field)) != canonical(rec.get(field)):
                         return False, "FA, Projekt, Menge und Vorgänger pflegt die Arbeitsvorbereitung."
         resource = next((m for m in old.get("machines") or [] if m.get("id") == (before or {}).get("machineId")), {})

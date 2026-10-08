@@ -27,6 +27,7 @@ ROLLEN & RECHTE (#63, #55)
 - Benutzerverwaltung: eigene Rolle je Benutzer wählbar (nur Admin).
 - Ressourcen: Ressourcentyp Maschine / Linie / Arbeitsplatz-Prozessplatz; Berechnungsart des Bereichs wird
   angezeigt. Oberfläche nennt „Module“ jetzt „Funktionen“ (Config-Schlüssel unverändert).
+- FA anlegen: derselbe Bereich mehrfach (eigener Arbeitsgang je Zeile mit Vorgaenger, Fertig bis und AV-Notiz), z. B. Tiefziehen auf zwei Maschinen.
 - Projekte ohne Uebergabe-Schritte: PM und AV legen an und arbeiten gleichzeitig (PM: Entwicklung & Vertrieb, AV: FA). Einzige Statusaktion "Produktion fertig" (AB Pflicht).
 - Tests: test_roles_rights.py, e2e_roles_rights.mjs. Abnahme: docs/V12_23_0.md.
 
