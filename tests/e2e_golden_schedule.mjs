@@ -87,11 +87,20 @@ try {
 
   // Gegenprobe: dieselbe Planung mit der alten linearen Belegungsprüfung und ohne Kalender-Zwischenspeicher (V12.26.0).
   {
-    const n = Number(process.env.MP_EQUIV || 300), fast = await build(n);
-    await ev(() => { window.__fh = firstHit; window.__wi = workIntervalsForDate; firstHit = function (segments, blocks, lanes = 1) { if (lanes > 1) return laneHit(segments, blocks, lanes); let hit = null; for (const s of segments) for (const b of blocks) if (segOverlap(s, b) && (!hit || b.start < hit.start)) hit = b; return hit }; workIntervalsForDate = workIntervalsForDateRaw; });
-    const slow = await build(n), diff = Object.keys(fast.out).filter(k => JSON.stringify(fast.out[k]) !== JSON.stringify(slow.out[k]));
-    await ev(() => { firstHit = window.__fh; workIntervalsForDate = window.__wi; });
-    check(diff.length === 0, `Gegenprobe ${n} FA: optimierte und lineare Logik identisch (${diff.length} Abweichungen; ${Math.round(fast.ms)} ms vs ${Math.round(slow.ms)} ms)`);
+    const n = Number(process.env.MP_EQUIV || 300);
+    // Alte (lineare) Fassungen aus V12.25.0, unverändert übernommen.
+    const OLD = { laneHit: 'function laneHit(segments,blocks,lanes,latest=false){let hit=null;for(const s of segments){const rel=blocks.filter(b=>segOverlap(s,b));if(rel.length<lanes)continue;const t0=s.start.getTime(),t1=s.end.getTime(),pts=[...new Set([t0,t1,...rel.flatMap(b=>[b.start.getTime(),b.end.getTime()])])].filter(t=>t>=t0&&t<=t1).sort((a,b)=>a-b);for(let i=0;i<pts.length-1;i++){const m=(pts[i]+pts[i+1])/2,act=rel.filter(b=>b.start.getTime()<m&&b.end.getTime()>m);if(act.length<lanes)continue;const h={start:new Date(Math.max(...act.map(b=>b.start.getTime()))),end:new Date(Math.min(...act.map(b=>b.end.getTime()))),lanes,count:act.length};if(!hit||(latest?h.end>hit.end:h.start<hit.start))hit=h}}return hit}', operatorConflict: "function operatorConflict(candidate,globalSegs,mid=''){if(!candidate.length)return null;if(mid&&!deptShared(deptOfMachine(mid)))return null;globalSegs=globalSegs.filter(x=>!x.machineId||deptShared(deptOfMachine(x.machineId)));const all=[...globalSegs.map(s=>({...s,candidate:false})),...candidate.map(s=>({...s,candidate:true}))];const min=Math.min(...candidate.map(s=>s.start.getTime())),max=Math.max(...candidate.map(s=>s.end.getTime()));const events=[...new Set(all.filter(s=>s.end>min&&s.start<max).flatMap(s=>[Math.max(min,s.start.getTime()),Math.min(max,s.end.getTime())]))].sort((a,b)=>a-b);for(let i=0;i<events.length-1;i++){const a=events[i],b=events[i+1];if(b<=a)continue;const mid=(a+b)/2,active=all.filter(s=>s.start.getTime()<mid&&s.end.getTime()>mid);if(!active.some(s=>s.candidate))continue;const cap=Math.min(...active.map(s=>operatorCapForShift(s.shift)));if(active.length>cap)return {start:new Date(a),end:new Date(b),count:active.length,cap}}return null}" };
+    const linear = () => ev(src => { window.__fn = { firstHit, laneHit, operatorConflict, workIntervalsForDate }; const o = eval('(' + src + ')'); firstHit = function (segments, blocks, lanes = 1) { if (lanes > 1) return laneHit(segments, blocks, lanes); let hit = null; for (const s of segments) for (const b of blocks) if (segOverlap(s, b) && (!hit || b.start < hit.start)) hit = b; return hit }; laneHit = o.laneHit; operatorConflict = o.operatorConflict; workIntervalsForDate = workIntervalsForDateRaw; }, '{laneHit:' + OLD.laneHit + ',operatorConflict:' + OLD.operatorConflict + '}');
+    const restore = () => ev(() => { ({ firstHit, laneHit, operatorConflict, workIntervalsForDate } = window.__fn); });
+    const compare = async (label, setup) => {
+      await ev(setup); const f = await build(n); await linear(); const sl = await build(n); await restore();
+      const diff = Object.keys(f.out).filter(k => JSON.stringify(f.out[k]) !== JSON.stringify(sl.out[k]));
+      check(diff.length === 0, `Gegenprobe ${label} ${n} FA: optimierte und lineare Logik identisch (${diff.length} Abweichungen; ${Math.round(f.ms)} ms vs ${Math.round(sl.ms)} ms)`);
+    };
+    await compare('1 Platz', () => {});
+    // Parallelplätze (laneHit) und gemeinsame Bediener (operatorConflict) aktiv.
+    await compare('2 Plätze + gemeinsame Bediener', () => { window.__lanes = data.machines.map(m => [m, m.lanes]); data.machines.forEach((m, k) => { if (k % 2 === 0) m.lanes = 2 }); window.__shared = data.departments.map(d => [d, d.sharedOperators]); data.departments.forEach(d => { d.sharedOperators = true }) });
+    await ev(() => { for (const [m, l] of window.__lanes) { if (l === undefined) delete m.lanes; else m.lanes = l } for (const [d, v] of window.__shared) { if (v === undefined) delete d.sharedOperators; else d.sharedOperators = v } });
   }
   const bench = await build(BENCH_ORDERS);
   console.log(`BENCH Scheduler: ${BENCH_ORDERS} FA auf ${bench.machines} Ressourcen in ${Math.round(bench.ms)} ms`);

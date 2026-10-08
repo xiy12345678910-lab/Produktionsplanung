@@ -7,6 +7,11 @@ PLANUNG SCHNELLER (Roadmap #73, P1)
   Arbeitszeiten je Tag und Ressource werden während eines Planungslaufs zwischengespeichert.
 - Gleiches Ergebnis: Referenztest (120 FA) unverändert, Gegenprobe gegen die alte Logik (300 bzw. 600 FA) ohne Abweichung.
 - Laufzeit lokal: 300 FA 2,5 s -> 0,3 s · 600 FA 16 s -> 1,5 s · 1500 FA 186 s -> 9 s.
+- Auch Parallelplaetze und gemeinsame Bediener: 300 FA 20,8 s -> 1,7 s (Gegenprobe ohne Abweichung).
+
+WEITERES
+- Rollen-Audit (#55): Aenderungen an Rollen zeigen im Audit je Recht alt -> neu.
+- Server-Benchmark (Phase 0): 2000 FA speichern 0,8 s, laden 0,05 s (tests/test_bench_state.py).
 
 MASCHINENPLANUNG V12.25.0
 =========================
