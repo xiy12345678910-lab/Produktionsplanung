@@ -13,6 +13,12 @@ REINIGUNG NACH FA JE MASCHINE (Block F)
 - Fertig gemeldete FA blockieren die Maschine bis Fertigmeldung + Reinigung.
 - Server prüft die Eingabe (MP-MACH-018). Ohne Reinigungszeit unveränderte Planung (Referenztest unverändert).
 
+TAKT MIT EINHEIT UND TAKT JE PRODUKT (Block F)
+- Takt-Eingabe mit Einheit: Takte/Stunde, Sekunden/Takt oder Minuten/Takt (z. B. 1200 Takte/Stunde = 3 s). Gespeichert werden Sekunden plus die Anzeige-Einheit.
+- Takte (z. B. "Blockbodenbeutel 300 g") sind fuer jede Maschine/Linie pflegbar (Maschineneinstellungen > Takte), optional mit "Stueck je Takt" (1-1000).
+- Einplanen-Popup: Auswahl "Takt (Produkt)" berechnet die Laufzeit = Menge / Stueck je Takt x Takt, auf 0,25 h aufgerundet; weiterhin editierbar. Der Takt wird am FA gemerkt. Nicht in AV-Stunden-Bereichen (Konfektion).
+- Server prueft Einheit und Stueck je Takt (MP-MACH-014) und die Takt-ID am FA; das Setzen gehoert zur operativen Planung der Abteilung.
+
 FEINERE AKTIONSRECHTE IN ROLLEN (#55)
 - Eigene Rollen: neue Aktionsrechte "FA anlegen", "FA einplanen", "Produktion starten/pausieren", "Produktion fertigmelden".
 - Rechte schraenken nur ein (Standard = erlaubt, soweit die Systemrolle es kann). Ohne eigene Rolle aendert sich nichts.

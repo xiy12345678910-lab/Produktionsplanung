@@ -847,7 +847,7 @@ ROLE_ACTIONS = (("faCreate", "FA anlegen"), ("faPlan", "FA einplanen"), ("prodSt
                 ("userAdmin", "Benutzer verwalten"), ("updates", "Updates installieren"))
 LEGACY_PRODUCTION_ACTION = "production"
 FA_PLAN_FIELDS = ("machineId", "altMachineId", "allowAlternative", "laneIndex", "pos", "direction", "anchorMode",
-                  "requiredStart", "requiredFinish", "dryingHours")
+                  "requiredStart", "requiredFinish", "dryingHours", "taktId")
 
 
 def effective_actions(actions) -> dict:
@@ -2659,6 +2659,10 @@ def _validate_machine_format_fields(m: dict) -> tuple[bool, str]:
             return False, "Taktname fehlt oder ist zu lang."
         if not _num_in(t.get("sec"), 1, 3600):
             return False, f"Takt „{t.get('name')}“: Sekunden müssen zwischen 1 und 3600 liegen."
+        if t.get("unit") not in (None, "") and t.get("unit") not in ("s", "min", "perHour"):
+            return False, f"Takt „{t.get('name')}“: Einheit muss s, min oder perHour sein."
+        if t.get("parts") not in (None, "") and not _num_in(t.get("parts"), 1, 1000, True):
+            return False, f"Takt „{t.get('name')}“: Stück je Takt muss eine ganze Zahl von 1 bis 1000 sein."
     return True, ""
 
 
@@ -2930,6 +2934,8 @@ def validate_state(old: dict, new: dict) -> tuple[bool, str, str]:
             return False, "MP-STEP-014", f"Arbeitsgang '{sid}': FA/AB/WT ist zu lang."
         if "avNote" in step and (not isinstance(step["avNote"], str) or len(step["avNote"]) > 500):
             return False, "MP-STEP-014", f"Arbeitsgang '{sid}': AV-Notiz ist ungültig oder zu lang."
+        if "taktId" in step and (not isinstance(step["taktId"], str) or len(step["taktId"]) > 80):
+            return False, "MP-STEP-014", f"Arbeitsgang '{sid}': Takt-ID ist ungültig oder zu lang."
         if "dryingHours" in step and (isinstance(step["dryingHours"], bool) or _finite_float(step["dryingHours"]) is None or not 0 <= float(step["dryingHours"]) <= 720):
             return False, "MP-STEP-014", f"Arbeitsgang '{sid}': Trocknungszeit muss 0–720 Stunden sein."
         if pid:
@@ -3950,7 +3956,7 @@ def production_planning_change_allowed(old: dict, new: dict) -> tuple[bool, str]
             if not av_hours_department(new, dept) and (_finite_float(after.get("hours", 0)) or 0) > 0:
                 return False, "Arbeitsvorbereitung darf Stunden nur für Konfektion vorgeben."
         if before and after:
-            for field in ("machineId", "altMachineId", "allowAlternative", "laneIndex", "pos", "direction", "anchorMode", "requiredStart", "requiredFinish", "planningWeek", "baselinePlan"):
+            for field in ("machineId", "altMachineId", "allowAlternative", "laneIndex", "pos", "direction", "anchorMode", "requiredStart", "requiredFinish", "planningWeek", "baselinePlan", "taktId"):
                 if canonical(before.get(field)) != canonical(after.get(field)):
                     return False, "Operative Planung übernimmt die zuständige Abteilung."
         # V12.24.0: Trocknung nach dem Arbeitsgang entscheidet die Abteilungsleitung, nicht die AV.
