@@ -1,3 +1,36 @@
+MASCHINENPLANUNG V12.23.0 - RELEASE NOTES
+=========================================
+Datum: 08.10.2026 · Basis: V12.22.0 · Update gemäß README_Windows.txt 2b, Daten bleiben erhalten
+
+FA EINPLANEN IM FENSTER
+- „Planen“ im Bereichsvorrat öffnet ein Fenster mit FA-Daten, Ressource, Laufzeit und Vorschau (Start/Ende,
+  Terminwarnung). Übernahme mit derselben Auswirkungsprüfung wie in der Auftragsliste; „In Auftragsliste
+  öffnen“ bleibt möglich. Konfektionsstunden bleiben AV-Vorgabe.
+
+FUNKTIONEN & DRAG & DROP
+- „Rahmenaufträge“ ist jetzt eine eigene, abschaltbare Funktion (System > Funktionen & Bereiche); aus = Menü
+  und Aktionen gesperrt, Daten bleiben erhalten.
+- Wochenplan: Drag & Drop eines geplanten FA auf andere Ressource/Tag ist durch einen Browsertest abgesichert.
+
+NUR PRODUKTION
+- „Neues Projekt“ hat die Auswahl „Nur Produktion“: mit AB-Nummer und Liefertermin wird das Projekt direkt
+  an die Produktion übergeben. Entwicklung & Vertrieb, Workflow und Kundenplan entfallen; im Projekt steht
+  Produktion als Schritt 1 mit FA-Anlage. Ohne Haken bleibt alles wie bisher. Die Wahl ist danach fest.
+
+ROLLEN & RECHTE (#63, #55)
+- System > Rollen & Rechte: eigene Rollen auf Basis einer Systemrolle anlegen, duplizieren, deaktivieren und
+  löschen. Rechte je Funktion (Kein Zugriff / Lesen / Bearbeiten, höchstens wie die Systemrolle) und
+  Zusatzrechte: Produktion melden, Konfektionsstunden vorgeben, Benutzer verwalten, Updates installieren.
+- Der Server setzt die Rechte durch: ausgeblendete Daten werden nicht ausgeliefert, Leserecht verhindert
+  Änderungen, gesperrte Aktionen und Endpunkte werden abgewiesen (MP-ROLE-0xx). Rechteänderungen gelten
+  sofort (Neuanmeldung). Admin bleibt immer vollständig berechtigt; ohne eigene Rolle gilt die Systemrolle.
+- Benutzerverwaltung: eigene Rolle je Benutzer wählbar (nur Admin).
+- Ressourcen: Ressourcentyp Maschine / Linie / Arbeitsplatz-Prozessplatz; Berechnungsart des Bereichs wird
+  angezeigt. Oberfläche nennt „Module“ jetzt „Funktionen“ (Config-Schlüssel unverändert).
+- FA anlegen: derselbe Bereich mehrfach (eigener Arbeitsgang je Zeile mit Vorgaenger, Fertig bis und AV-Notiz), z. B. Tiefziehen auf zwei Maschinen.
+- Projekte ohne Uebergabe-Schritte: PM und AV legen an und arbeiten gleichzeitig (PM: Entwicklung & Vertrieb, AV: FA). Einzige Statusaktion "Produktion fertig" (AB Pflicht).
+- Tests: test_roles_rights.py, e2e_roles_rights.mjs. Abnahme: docs/V12_23_0.md.
+
 MASCHINENPLANUNG V12.22.0 - RELEASE NOTES
 =========================================
 Datum: 08.10.2026 · Basis: V12.21.0 · Update gemäß README_Windows.txt 2b, Daten bleiben erhalten

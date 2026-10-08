@@ -62,7 +62,7 @@ class AVHandoffAuthorization(unittest.TestCase):
 
     def test_department_cannot_change_av_fa_project_quantity_or_predecessors(self):
         old = {"departments": copy.deepcopy(DEPARTMENTS), "machines": [{"id": "m1", "departmentId": "cnc"}], "workSteps": [step(machineId="m1", handoffUnassigned=False, fa="4711", projectId="p1", targetQty=8, sequence=10, predecessorIds=[])]}
-        for field, value in (("fa", "changed"), ("projectId", "p2"), ("targetQty", 9), ("sequence", 20), ("predecessorIds", ["other"])):
+        for field, value in (("fa", "changed"), ("projectId", "p2"), ("targetQty", 9), ("sequence", 20), ("predecessorIds", ["other"]), ("avNote", "vom Bereich")):
             new = copy.deepcopy(old)
             new["workSteps"][0][field] = value
             self.assertFalse(server.department_change_allowed(old, new, "cnc")[0], field)
@@ -92,6 +92,25 @@ class AVHandoffAuthorization(unittest.TestCase):
             bad = copy.deepcopy(old)
             bad["workSteps"][0].update(patch)
             self.assertFalse(server.department_change_allowed(old, bad, "cnc")[0], patch)
+
+    def test_same_department_twice_and_av_note(self):
+        """V12.23.0: Ein FA darf denselben Bereich mehrfach enthalten; die AV-Notiz ist Text bis 500 Zeichen."""
+        with tempfile.TemporaryDirectory() as tmp:
+            server.DATA_DIR = Path(tmp); server.DB_PATH = server.DATA_DIR / "t.sqlite3"
+            server.init_db(seed="werbetechnik")
+            with server.db_session() as con:
+                old = json.loads(con.execute("SELECT json FROM state WHERE id=1").fetchone()["json"])
+        dep = old["departments"][0]["id"]
+        new = copy.deepcopy(old); new["workSteps"] = []
+        base = dict(departmentId=dep, projectId="", fa="FA-MULTI", order="FA-MULTI", status="planned", hours=0, targetQty=10, pos=9001, description="")
+        new["workSteps"] = [step(id="ws_a", sequence=10, **base), step(id="ws_b", sequence=20, avNote="zweite Maschine", **{**base, "pos": 9002})]
+        ok, code, reason = server.validate_state({**old, "workSteps": []}, new)
+        self.assertTrue(ok, f"{code} {reason}")
+        for bad in ("x" * 501, 5):
+            new["workSteps"][1]["avNote"] = bad
+            ok, code, _ = server.validate_state({**old, "workSteps": []}, new)
+            self.assertEqual((ok, code), (False, "MP-STEP-014"), bad)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

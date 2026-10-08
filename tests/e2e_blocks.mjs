@@ -99,8 +99,8 @@ try {
  if(!project)console.log('Projektzustand: '+JSON.stringify(await ev(av,()=>({projects:data.projects,lastServerProjects:lastServerState?.projects,remoteDirty,remoteSaving,remoteSaveError,serverMode,serverReachable,user:sessionUser,error:document.getElementById('errorModal').textContent}))));
  check(!!project?.id&&projectFocusRetained,'AV erstellt ein Projekt über die reale Oberfläche und behält den gewählten Eingabefokus');
  await ev(av,id=>openProject(id),project.id);await av.fill('[data-pfield="ab"]','AB-4711');await av.fill('[data-pfield="dueDate"]','2026-10-30');await av.locator('[data-pfield="dueDate"]').blur();
- await ev(av,async()=>{if(!await flushNow())throw new Error('AV speichern: '+document.getElementById('errorModal').textContent)});await av.locator('[data-project-go="accepted"]').click();await ev(av,async()=>{if(!await flushNow())throw new Error('AV speichern: '+document.getElementById('errorModal').textContent)});await ev(av,()=>closeProject());
- check(await ev(av,id=>projectById(id).phase,project.id)==='accepted','AV übergibt das Projekt mit AB und Termin an die Produktion');
+ await ev(av,async()=>{if(!await flushNow())throw new Error('AV speichern: '+document.getElementById('errorModal').textContent)});await av.click('#projectSaveFields');await ev(av,async()=>{if(!await flushNow())throw new Error('AV speichern: '+document.getElementById('errorModal').textContent)});const noHandoff=await av.locator('[data-project-go="accepted"]').count()===0&&await av.locator('#projectNewOrder').isVisible();await ev(av,()=>closeProject());
+ check(noHandoff&&await ev(av,id=>projectById(id).phase,project.id)==='pm','Ohne Übergabe-Schritt: AV legt FA direkt im laufenden Projekt an (PM arbeitet parallel)');
  let focusedFieldRetained=true;
  for(const [fa,hours] of [['AV-4711-A','16'],['AV-4711-B','']]){
   // Change focus immediately after opening, before the old 50-ms autofocus fired.

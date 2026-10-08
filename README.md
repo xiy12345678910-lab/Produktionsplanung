@@ -1,12 +1,13 @@
 # Produktionsplanung
 
-Maschinenplanung V12.22.0 – Wochen-/Ressourcenplanung je Bereich (Maschinen & Linien), Projekte,
+Maschinenplanung V12.23.0 – Wochen-/Ressourcenplanung je Bereich (Maschinen & Linien), Projekte,
 Formate (Tiefziehen), Personal und Nachrichten. Zentraler Windows-LAN-Server, Browser-Oberfläche.
 
 - `server.py` – Python-Server (nur Standardbibliothek, SQLite), `index.html` – Oberfläche, `release_gates.py` – Freigabeprüfung, `app_updates.py` – allgemeine Releaseupdates
 - Windows: `README_Windows.txt` (Installation, Update, Update direkt von GitHub), `BENUTZER_KURZANLEITUNG.txt`
 - A–D: `docs/BLOCKS_A_D.md` · Admin-Updates (I 7a): `docs/ADMIN_UPDATES.md`
 - Änderungen: `RELEASE_NOTES.txt` · Fehlercodes: `FEHLERCODES.txt` · Übergabe: `docs/UEBERGABE.md`
+- Rollen & Rechte, FA-Einplanungsfenster V12.23.0: `docs/V12_23_0.md`
 - Rahmenaufträge, Abrufe & Bestand (Block E) V12.22.0: `docs/V12_22_0.md`
 - Lazy Loading, FA-Dialog und HTTPS V12.21.0: `docs/V12_21_0.md`
 - AV-Dialog und Projekt-Liveverfolgung V12.20.0: `docs/V12_20_0.md`
@@ -17,6 +18,8 @@ Formate (Tiefziehen), Personal und Nachrichten. Zentraler Windows-LAN-Server, Br
 ```
 python tests/test_blocks.py                   # A–D: Migration, Planung, Rechte, atomare Produktion
 python tests/test_updates.py                  # I 7a: Folgeversionen, Paketprüfung, Status, Wiederherstellung
+python tests/test_roles_rights.py             # Eigene Rollen: Rechte je Funktion/Aktion serverseitig
+node tests/e2e_roles_rights.mjs              # System > Rollen & Rechte bis zur Wirkung beim Benutzer
 python tests/test_demand.py                   # Block E: Rahmenauftrag, Abruf, Bestand, Bedarf → FA
 node tests/e2e_demand.mjs                    # Bedarf über die Oberfläche bis zur Bereichsplanung
 python tests/test_project_live.py             # Produktion: Projekt-Lesescope und Schreibschutz

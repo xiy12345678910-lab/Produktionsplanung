@@ -28,7 +28,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 MP_DEBUG_ABORTS = os.environ.get('MP_DEBUG_ABORTS') == '1'
-APP_VERSION = "12.22.0"
+APP_VERSION = "12.23.0"
 HOST = os.environ.get("MP_HOST", "0.0.0.0")
 PORT = int(os.environ.get("MP_PORT", "8765"))
 BASE = Path(__file__).resolve().parent
@@ -54,7 +54,7 @@ CONFIG_SCHEMA = 1
 CONFIG_KEEP_BAK = 20
 CONFIG_LOGO_MAX = 420 * 1024
 CONFIG_LOCK = threading.RLock()
-CONFIG_MODULES = ("projects", "formats", "personnel", "chat", "notifications", "postcalc", "kpi", "palletLabels")
+CONFIG_MODULES = ("projects", "formats", "personnel", "chat", "notifications", "postcalc", "kpi", "palletLabels", "frameOrders")
 CONFIG_MODULE_DEFAULTS = {k: True for k in CONFIG_MODULES} | {"palletLabels": False}
 CONFIG_TEMPLATES = {"werbetechnik", "neutral", "metall_cnc", "leer", "demo"}
 CONFIG_HEX = re.compile(r"^#[0-9a-fA-F]{6}$")
@@ -631,7 +631,8 @@ def public_config(cfg: dict | None = None) -> dict:
 # die Daten bleiben vollständig erhalten. kpi hängt an postcalc (aus -> auch kpi aus).
 # ---------------------------------------------------------------------------------------------
 MODULE_LABELS = {"projects": "Projekte", "formats": "Formate", "personnel": "Personal", "chat": "Nachrichten",
-                 "notifications": "Benachrichtigungen", "postcalc": "Auswertung", "kpi": "Kennzahlen", "palletLabels": "Palettenetiketten"}
+                 "notifications": "Benachrichtigungen", "postcalc": "Auswertung", "kpi": "Kennzahlen", "palletLabels": "Palettenetiketten",
+                 "frameOrders": "Rahmenaufträge"}
 MODULE_DEPS = {"kpi": ("postcalc",)}
 # Datensammlungen im Datenstand, die ein Modul besitzt (Schreiben nur bei eingeschaltetem Modul).
 MODULE_STATE_KEYS = {
@@ -640,6 +641,7 @@ MODULE_STATE_KEYS = {
     "personnel": ("employees", "personnelAssignments", "personnelAbsences", "weeklyEmployeeDeployments",
                   "departmentStaffNeeds", "personnelGate"),
     "palletLabels": ("palletTemplates", "palletLabels"),
+    "frameOrders": ("frameOrders", "callOffs"),
 }
 
 
@@ -657,7 +659,7 @@ def module_on(name: str) -> bool:
 
 
 def module_error(name: str) -> dict:
-    return mp_error("MP-MOD-001", f"Modul „{MODULE_LABELS.get(name, name)}“ ist abgeschaltet.", module=name)
+    return mp_error("MP-MOD-001", f"Funktion „{MODULE_LABELS.get(name, name)}“ ist abgeschaltet.", module=name)
 
 
 def _norm_coll(v):
@@ -672,7 +674,7 @@ def module_state_guard(old: dict, new: dict) -> tuple[str, str]:
             continue
         for k in keys:
             if _norm_coll(old.get(k)) != _norm_coll(new.get(k)):
-                return mod, f"Modul „{MODULE_LABELS[mod]}“ ist abgeschaltet: '{k}' kann nicht geändert werden."
+                return mod, f"Funktion „{MODULE_LABELS[mod]}“ ist abgeschaltet: '{k}' kann nicht geändert werden."
     return "", ""
 
 
@@ -828,6 +830,127 @@ def db_session():
             yield con
     finally:
         con.close()
+
+
+# ---------------------------------------------------------------------------------------------
+# V12.23.0 (#63/#55): Rollen & Rechte. Eigene Rollen (Rollenprofile) beruhen auf einer Systemrolle und
+# schränken sie je Funktion (Kein Zugriff / Lesen / Bearbeiten) und je Aktion ein – nie darüber hinaus.
+# Durchsetzung am Server: Datenstand (ausblenden), Speichern (Leserecht = unveränderlich) und Endpunkte.
+# ---------------------------------------------------------------------------------------------
+ROLE_FUNCTIONS = (("planning", "Planung & Produktion"), ("projects", "Projekte"), ("frameOrders", "Rahmenaufträge"),
+                  ("personnel", "Personal"), ("formats", "Formate"), ("gf", "GF-Steuerung"), ("report", "Report"),
+                  ("history", "Historie"), ("chat", "Chat"), ("notifications", "Benachrichtigungen"), ("system", "System"))
+ROLE_ACTIONS = (("production", "Produktion melden (Start, Pause, Fertig)"), ("confectionHours", "Konfektionsstunden vorgeben"),
+                ("userAdmin", "Benutzer verwalten"), ("updates", "Updates installieren"))
+ROLE_LEVELS = ("none", "read", "edit")
+# Bei „Lesen" unveränderlich, bei „Kein Zugriff" zusätzlich ausgeblendet (FUNCTION_HIDDEN).
+FUNCTION_DATA = {
+    "planning": ("workSteps", "machineBlocks", "planVersions"),
+    "projects": ("projects", "processTemplates"),
+    "personnel": ("employees", "personnelAssignments", "personnelAbsences", "weeklyEmployeeDeployments", "departmentStaffNeeds"),
+    "formats": ("formats", "baseFormats"),
+    "system": ("machines", "departments", "shiftTemplates", "yearRules", "weekRules", "exceptions", "operatorCapacity", "personnelGate", "palletTemplates"),
+}
+# Planung und System bleiben sichtbar: Scheduler und Projekt-Liveansicht brauchen Ressourcen und FA.
+FUNCTION_HIDDEN = {"projects": ("projects", "processTemplates"), "personnel": FUNCTION_DATA["personnel"],
+                   "formats": FUNCTION_DATA["formats"], "frameOrders": ("frameOrders", "callOffs"), "history": ("history",)}
+
+
+def migrate_role_profiles(con: sqlite3.Connection) -> None:
+    con.execute("CREATE TABLE IF NOT EXISTS role_profiles(id TEXT PRIMARY KEY, json TEXT NOT NULL, updated_at TEXT NOT NULL)")
+    if "profile_id" not in {row["name"] for row in con.execute("PRAGMA table_info(users)")}:
+        con.execute("ALTER TABLE users ADD COLUMN profile_id TEXT NOT NULL DEFAULT ''")
+
+
+def resolve_profile_id(con, actor: dict, role: str, requested, current: str = "") -> str:
+    """Rollenprofil für einen Benutzer prüfen: nur Admin weist zu; Profil aktiv und zur Systemrolle passend."""
+    if requested is None:
+        found = con.execute("SELECT json FROM role_profiles WHERE id=?", (current,)).fetchone() if current else None
+        return current if found and json.loads(found["json"]).get("baseRole") == role else ""
+    pid = str(requested or "")
+    if pid and actor["role"] != "admin":
+        raise PermissionError("Rollenprofile weist nur der Admin zu.")
+    if not pid:
+        return ""
+    found = con.execute("SELECT json FROM role_profiles WHERE id=?", (pid,)).fetchone()
+    profile = json.loads(found["json"]) if found else None
+    if not profile or not profile.get("active", True) or profile.get("baseRole") != role:
+        raise ValueError("Rollenprofil fehlt, ist deaktiviert oder passt nicht zur Systemrolle.")
+    return pid
+
+
+def role_profiles(con) -> dict:
+    return {r["id"]: json.loads(r["json"]) for r in con.execute("SELECT id,json FROM role_profiles ORDER BY id")}
+
+
+def attach_rights(user: dict, profile: dict | None) -> dict:
+    """Effektive Rechte am Benutzer: Profil schränkt die Systemrolle ein; ohne Profil volle Systemrolle."""
+    user["profileId"] = profile["id"] if profile else ""
+    user["profileName"] = profile["name"] if profile else ""
+    user["rights"] = {k: (profile or {}).get("rights", {}).get(k, "edit") for k, _ in ROLE_FUNCTIONS}
+    user["actions"] = {k: bool((profile or {}).get("actions", {}).get(k, True)) for k, _ in ROLE_ACTIONS}
+    return user
+
+
+def user_level(user: dict, function: str) -> str:
+    return (user.get("rights") or {}).get(function, "edit")
+
+
+def user_action(user: dict, action: str) -> bool:
+    return bool((user.get("actions") or {}).get(action, True))
+
+
+def user_public(user: dict) -> dict:
+    return {"id": user["id"], "username": user["username"], "role": user["role"], "departmentId": user.get("department_id", ""),
+            "profileId": user.get("profileId", ""), "profileName": user.get("profileName", ""),
+            "rights": user.get("rights") or {}, "actions": user.get("actions") or {}}
+
+
+def validate_role_profile(body: dict, rid: str) -> dict:
+    if not re.fullmatch(r"[a-z0-9_-]{2,40}", rid):
+        raise ValueError("Rollen-ID: 2–40 Zeichen a–z, 0–9, _ oder -.")
+    name = str(body.get("name") or "").strip()
+    if not 1 <= len(name) <= 60:
+        raise ValueError("Rollenname fehlt oder ist zu lang (max. 60).")
+    base = body.get("baseRole")
+    if base not in ROLES - {"admin"}:
+        raise ValueError("Basisrolle ungültig (Admin ist immer vollständig berechtigt).")
+    rights = body.get("rights") or {}
+    actions = body.get("actions") or {}
+    if not isinstance(rights, dict) or any(k not in dict(ROLE_FUNCTIONS) or v not in ROLE_LEVELS for k, v in rights.items()):
+        raise ValueError("Rechte je Funktion: nur none, read oder edit.")
+    if not isinstance(actions, dict) or any(k not in dict(ROLE_ACTIONS) or not isinstance(v, bool) for k, v in actions.items()):
+        raise ValueError("Aktionsrechte: nur ja/nein.")
+    return {"id": rid, "name": name, "baseRole": base, "description": str(body.get("description") or "").strip()[:300],
+            "active": body.get("active", True) is not False,
+            "rights": {k: rights.get(k, "edit") for k, _ in ROLE_FUNCTIONS}, "actions": {k: actions.get(k, True) for k, _ in ROLE_ACTIONS}}
+
+
+def restrict_state_for_rights(out: dict, user: dict) -> None:
+    for function, keys in FUNCTION_HIDDEN.items():
+        if user_level(user, function) == "none":
+            for key in keys:
+                out[key] = []
+
+
+def rights_change_error(old: dict, incoming: dict, user: dict) -> str:
+    """Leserechte und gesperrte Aktionen beim Speichern; leerer Text = erlaubt."""
+    for function, keys in FUNCTION_DATA.items():
+        if user_level(user, function) != "edit":
+            label = dict(ROLE_FUNCTIONS)[function]
+            for key in keys:
+                if canonical(old.get(key)) != canonical(incoming.get(key)):
+                    return f"Für „{label}“ besteht nur Leserecht."
+    if not user_action(user, "confectionHours"):
+        dep_names = {str(d.get("id")): str(d.get("name") or "") for d in old.get("departments") or [] if isinstance(d, dict)}
+        before = _record_map(old.get("workSteps"))
+        for rid, after in _record_map(incoming.get("workSteps")).items():
+            prev = before.get(rid) or {}
+            dep = str(after.get("departmentId") or "")
+            confection = "konf" in dep.casefold() or "konf" in dep_names.get(dep, "").casefold() or after.get("planningType") == "LABOR_HOURS"
+            if confection and (canonical(prev.get("hours", 0)) != canonical(after.get("hours", 0)) or canonical(prev.get("requiredHours")) != canonical(after.get("requiredHours"))):
+                return "Konfektionsstunden vorgeben ist für diese Rolle gesperrt."
+    return ""
 
 
 def migrate_users_schema(con: sqlite3.Connection) -> None:
@@ -995,6 +1118,7 @@ def init_db(seed: str = "neutral") -> None:
         con.execute("CREATE TABLE IF NOT EXISTS production_requests(username TEXT NOT NULL, request_id TEXT NOT NULL, fingerprint TEXT NOT NULL, result TEXT NOT NULL, PRIMARY KEY(username,request_id))")
         con.execute("CREATE TABLE IF NOT EXISTS retired_usernames(username TEXT PRIMARY KEY COLLATE NOCASE,retired_at TEXT NOT NULL)")
         migrate_users_schema(con)
+        migrate_role_profiles(con)
         con.execute("UPDATE users SET department_id='' WHERE role IN ('admin','gf','project_management','production_planning','sales') AND department_id<>''")
         row = con.execute("SELECT id FROM state WHERE id=1").fetchone()
         if not row:
@@ -1490,7 +1614,8 @@ def normalize_state_v1270(con: sqlite3.Connection) -> None:
     for m in state.get("machines") or []:
         if not isinstance(m, dict):
             continue
-        kind = "line" if m.get("kind") == "line" else "machine"
+        # V12.23.0: Ressourcentyp workplace (Arbeitsplatz/Prozessplatz) plant wie eine Maschine.
+        kind = m.get("kind") if m.get("kind") in {"line", "workplace"} else "machine"
         crew_raw = _finite_float(m.get("crew", 1))
         crew = int(max(1, min(99, math.floor(crew_raw)))) if crew_raw is not None else 1
         if m.get("kind") != kind or m.get("crew") != crew:
@@ -2399,6 +2524,8 @@ def validate_projects(old: dict, projects: list) -> tuple[bool, str, str]:
         for f, limit in (("wt", 80), ("name", 200), ("customer", 200), ("contact", 200), ("note", 2000)):
             if len(str(project.get(f) or "")) > limit:
                 return False, "MP-PM-002", f"Projekt '{label}': Feld '{f}' ist zu lang."
+        if "productionOnly" in project and not isinstance(project.get("productionOnly"), bool):
+            return False, "MP-PM-002", f"Projekt '{label}': „Nur Produktion“ ist ungültig."
         if not isinstance(project.get("development") or {}, dict) or not isinstance(project.get("offer") or {}, dict):
             return False, "MP-PM-002", f"Projekt '{label}': Angebots-/Entwicklungsdaten sind ungültig."
         processes = project.get("processes") or []
@@ -2742,6 +2869,8 @@ def validate_state(old: dict, new: dict) -> tuple[bool, str, str]:
             return False, "MP-STEP-017", f"Arbeitsgang '{sid}' hat einen ungültigen Status."
         if any(len(v) > 80 for v in (fa, ab_ref, wt_ref)):
             return False, "MP-STEP-014", f"Arbeitsgang '{sid}': FA/AB/WT ist zu lang."
+        if "avNote" in step and (not isinstance(step["avNote"], str) or len(step["avNote"]) > 500):
+            return False, "MP-STEP-014", f"Arbeitsgang '{sid}': AV-Notiz ist ungültig oder zu lang."
         if pid:
             linked = next((p for p in projects if str(p.get("id")) == pid), None)
             if linked and ab_ref and ab_ref.casefold() != str(linked.get("ab") or "").strip().casefold():
@@ -2877,7 +3006,7 @@ def validate_state(old: dict, new: dict) -> tuple[bool, str, str]:
         lanes = m.get("lanes")
         if lanes not in (None, "") and not _num_in(lanes, 1, 20, True):
             return False, "MP-MACH-015", f"Parallelplätze von '{m.get('name') or mid}' müssen eine ganze Zahl von 1 bis 20 sein."
-        if str(m.get("kind") or "machine") not in {"machine", "line"}:
+        if str(m.get("kind") or "machine") not in {"machine", "line", "workplace"}:
             return False, "MP-MACH-011", f"Ressource '{m.get('name') or mid}' hat einen ungültigen Typ."
     if len(mids) != len(set(mids)):
         return False, "MP-MACH-002", "Doppelte Maschinen-ID."
@@ -3514,12 +3643,15 @@ def sales_change_allowed(old: dict, new: dict) -> tuple[bool, str]:
     return True, ""
 
 
-# Phasenwechsel je Rolle (Admin: alle). Nach der Annahme wird der Produktionsstand
-# nicht gespeichert, sondern aus den verknüpften FA abgeleitet.
+# Phasenwechsel je Rolle (Admin: alle). Der Produktionsstand wird nicht gespeichert,
+# sondern aus den verknüpften FA abgeleitet.
+# V12.23.0: Keine Übergabe mehr – PM (Entwicklung & Vertrieb) und AV (Produktion) arbeiten ab Anlage
+# gleichzeitig. Offene Projekte (inquiry/pm/offer_sent/accepted) werden direkt „Produktion fertig“;
+# der Wechsel nach „accepted“ bleibt für Altbestände und ältere Clients erlaubt.
+_PROJECT_OPEN_PHASES = ("inquiry", "pm", "offer_sent", "accepted")
 PROJECT_TRANSITIONS = {
-    # PM legt an und übergibt an die Produktion; alte Phasen (Eingang/Angebot) gelten als PM.
-    "project_management": {("pm", "accepted"), ("inquiry", "accepted"), ("offer_sent", "accepted"), ("accepted", "closed")},
-    "production_planning": {("pm", "accepted"), ("inquiry", "accepted"), ("offer_sent", "accepted"), ("accepted", "closed")},
+    role: {(a, "accepted") for a in _PROJECT_OPEN_PHASES if a != "accepted"} | {(a, "closed") for a in _PROJECT_OPEN_PHASES}
+    for role in ("project_management", "production_planning")
 }
 PROJECT_BASE_FIELDS = {"customer", "contact", "name", "note", "wt", "workflow", "quantity"}
 PROJECT_FIELDS = {
@@ -3559,6 +3691,8 @@ def project_changes_allowed(old: dict, new: dict, role: str, username: str, depa
                 pass
             elif role in {"project_management", "production_planning"} and str(b.get("phase")) in {"inquiry", "pm"}:
                 pass
+            elif role in {"project_management", "production_planning"} and str(b.get("phase")) == "accepted" and b.get("productionOnly") is True:
+                pass  # V12.23.0: „Nur Produktion“ – direkt an die Produktion (AB/Termin prüft validate_projects)
             else:
                 return False, f"Diese Rolle darf kein Projekt in dieser Phase anlegen ({label})."
             if any(str(x.get("actor") or "") != username for x in (b.get("log") or [])):
@@ -3864,7 +3998,7 @@ def department_change_allowed(old: dict, new: dict, department_id: str) -> tuple
             if "handoffUnassigned" in before:
                 if "handoffUnassigned" not in rec:
                     return False, "Die AV-Herkunft einer Bereichsübergabe bleibt erhalten."
-                for field in ("fa", "faNumber", "projectId", "ab", "wt", "targetQty", "sequence", "predecessorIds"):
+                for field in ("fa", "faNumber", "projectId", "ab", "wt", "targetQty", "sequence", "predecessorIds", "avNote"):
                     if canonical(before.get(field)) != canonical(rec.get(field)):
                         return False, "FA, Projekt, Menge und Vorgänger pflegt die Arbeitsvorbereitung."
         resource = next((m for m in old.get("machines") or [] if m.get("id") == (before or {}).get("machineId")), {})
@@ -4691,6 +4825,7 @@ def redact_state(state: dict, user: dict) -> dict:
         out["projects"] = [{k: v for k, v in p.items() if k not in {"customerPlan", "offer", "development"}}
                            for p in out.get("projects") or []]
     out["audit"] = [_masked_audit(a) if isinstance(a, dict) and user.get("role") not in ABSENCE_FULL_ROLES else a for a in (out.get("audit") or [])]
+    restrict_state_for_rights(out, user)
     return out
 
 
@@ -4700,6 +4835,10 @@ def unredact_incoming(old: dict, incoming: dict, user: dict) -> None:
     Geänderte Datensätze bleiben wie gesendet; darüber entscheiden die Rechteprüfungen.
     """
     incoming.pop("dependencyStatus", None)
+    for function, keys in FUNCTION_HIDDEN.items():
+        if user_level(user, function) == "none":
+            for key in keys:
+                incoming[key] = json.loads(json.dumps(old.get(key) or []))
     scoped = read_scope(old, user)
     if scoped:
         projected = redact_state(old, user)
@@ -5176,6 +5315,43 @@ class Handler(BaseHTTPRequestHandler):
         except ProductionError as e:
             return self.json_response(e.status, mp_error(e.code, e.message))
 
+    def save_role_profile(self, rid: str):
+        user = self.require_user(["admin"])
+        if not user or not self.require_current_client():
+            return
+        try:
+            body = self.read_json()
+            profile = validate_role_profile(body, rid)
+        except ValueError as e:
+            return self.json_response(400, mp_error("MP-ROLE-006", str(e)))
+        with DB_LOCK, db_session() as con:
+            con.execute("BEGIN IMMEDIATE")
+            row = con.execute("SELECT json FROM role_profiles WHERE id=?", (rid,)).fetchone()
+            before = json.loads(row["json"]) if row else None
+            assigned = con.execute("SELECT count(*) FROM users WHERE profile_id=?", (rid,)).fetchone()[0]
+            if before and assigned and before.get("baseRole") != profile["baseRole"]:
+                return self.json_response(409, mp_error("MP-ROLE-007", "Die Systemrolle einer zugewiesenen Rolle bleibt fest."))
+            if any(p["name"].casefold() == profile["name"].casefold() and pid != rid for pid, p in role_profiles(con).items()):
+                return self.json_response(409, mp_error("MP-ROLE-008", "Rollenname existiert bereits."))
+            stamp = now_iso()
+            profile.update(createdAt=(before or {}).get("createdAt", stamp), updatedAt=stamp, updatedBy=user["username"])
+            con.execute("INSERT INTO role_profiles(id,json,updated_at) VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET json=excluded.json,updated_at=excluded.updated_at", (rid, json.dumps(profile, ensure_ascii=False), stamp))
+            if before and canonical(before) != canonical({**profile, "createdAt": before.get("createdAt"), "updatedAt": before.get("updatedAt"), "updatedBy": before.get("updatedBy")}):
+                # Geänderte Rechte gelten sofort: betroffene Sitzungen neu anmelden lassen.
+                con.execute("DELETE FROM sessions WHERE user_id IN (SELECT id FROM users WHERE profile_id=?)", (rid,))
+            con.execute("INSERT INTO server_audit(ts,username,action,detail,revision) VALUES(?,?,?,?,NULL)", (stamp, user["username"], "Rolle gespeichert", json.dumps(profile, ensure_ascii=False)))
+        return self.json_response(200, {"ok": True, "profile": profile, "users": assigned})
+
+    def require_rights(self, user, function=None, level="read", action=None) -> bool:
+        """Rechte des Rollenprofils (#63) zusätzlich zur Systemrolle prüfen."""
+        if function and ROLE_LEVELS.index(user_level(user, function)) < ROLE_LEVELS.index(level):
+            self.json_response(403, mp_error("MP-ROLE-001", f"Rolle hat für „{dict(ROLE_FUNCTIONS)[function]}“ kein {'Bearbeitungs' if level == 'edit' else 'Lese'}recht."))
+            return False
+        if action and not user_action(user, action):
+            self.json_response(403, mp_error("MP-ROLE-001", f"Aktion „{dict(ROLE_ACTIONS)[action]}“ ist für diese Rolle gesperrt."))
+            return False
+        return True
+
     def cookie_secure(self) -> str:
         return "; Secure" if getattr(self.server, "ssl_context", None) is not None else ""
 
@@ -5240,12 +5416,18 @@ class Handler(BaseHTTPRequestHandler):
         with DB_LOCK, db_session() as con:
             prune_sessions(con)
             row = con.execute(
-                "SELECT u.id,u.username,u.role,u.department_id,u.active,s.expires_at FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=?",
+                "SELECT u.id,u.username,u.role,u.department_id,u.active,u.profile_id,s.expires_at FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=?",
                 (token_hash,),
             ).fetchone()
             if not row or not row["active"] or row["expires_at"] < int(time.time()):
                 return None
-            return dict(row)
+            profile = None
+            if row["profile_id"]:
+                found = con.execute("SELECT json FROM role_profiles WHERE id=?", (row["profile_id"],)).fetchone()
+                profile = json.loads(found["json"]) if found else None
+                if not profile or not profile.get("active", True) or profile.get("baseRole") != row["role"]:
+                    return None
+            return attach_rights(dict(row), profile)
 
     def require_user(self, roles=None):
         user = self.session_user()
@@ -5281,7 +5463,7 @@ class Handler(BaseHTTPRequestHandler):
             user = self.require_user()
             if not user:
                 return
-            return self.json_response(200, {"user": {"id": user["id"], "username": user["username"], "role": user["role"], "departmentId": user.get("department_id", "")}})
+            return self.json_response(200, {"user": user_public(user)})
         if path == "/api/state":
             user = self.require_user()
             if not user:
@@ -5293,6 +5475,8 @@ class Handler(BaseHTTPRequestHandler):
             user = self.require_user()
             if not user:
                 return
+            if not self.require_rights(user, "chat"):
+                return
             if not module_on("chat"):
                 return self.json_response(403, module_error("chat"))
             with DB_LOCK, db_session() as con:
@@ -5301,6 +5485,8 @@ class Handler(BaseHTTPRequestHandler):
         if path.startswith("/api/notifications"):
             user = self.require_user()
             if not user:
+                return
+            if not self.require_rights(user, "notifications"):
                 return
             if not module_on("notifications"):
                 return self.json_response(403, module_error("notifications"))
@@ -5332,6 +5518,8 @@ class Handler(BaseHTTPRequestHandler):
             # Ältere Ist-Historie (nur lesen), neueste zuerst. Filter: from/to (YYYY-MM-DD, Fertigmeldung), limit/offset.
             user = self.require_user()
             if not user:
+                return
+            if not self.require_rights(user, "history"):
                 return
             qs = parse_qs(parsed.query)
             date_from, date_to = qs.get("from", [""])[0], qs.get("to", [""])[0]
@@ -5400,15 +5588,26 @@ class Handler(BaseHTTPRequestHandler):
                         break
                     REVISION_CONDITION.wait(remaining)
             return self.json_response(200, {"revision": row["revision"], "updatedAt": row["updated_at"], "updatedBy": row["updated_by"], "version": APP_VERSION, "notif": notif, "cfg": config_revision()})
+        if path == "/api/roles":
+            user = self.require_user(["admin"])
+            if not user:
+                return
+            with DB_LOCK, db_session() as con:
+                profiles = role_profiles(con)
+                usage = {r["profile_id"]: r["n"] for r in con.execute("SELECT profile_id,count(*) n FROM users WHERE profile_id<>'' GROUP BY profile_id")}
+            return self.json_response(200, {"functions": [list(x) for x in ROLE_FUNCTIONS], "actions": [list(x) for x in ROLE_ACTIONS],
+                                            "profiles": [{**p, "users": usage.get(pid, 0)} for pid, p in profiles.items()]})
         if path == "/api/users":
             user = self.require_user(USER_MANAGER_ROLES)
             if not user:
                 return
+            if not self.require_rights(user, action="userAdmin"):
+                return
             with DB_LOCK, db_session() as con:
                 if user["role"] == "admin":
-                    rows = con.execute("SELECT id,username,role,department_id,active,created_at,updated_at FROM users ORDER BY username COLLATE NOCASE").fetchall()
+                    rows = con.execute("SELECT id,username,role,department_id,active,created_at,updated_at,profile_id FROM users ORDER BY username COLLATE NOCASE").fetchall()
                 else:
-                    rows = con.execute("SELECT id,username,role,department_id,active,created_at,updated_at FROM users WHERE department_id=? ORDER BY username COLLATE NOCASE", (str(user.get("department_id") or ""),)).fetchall()
+                    rows = con.execute("SELECT id,username,role,department_id,active,created_at,updated_at,profile_id FROM users WHERE department_id=? ORDER BY username COLLATE NOCASE", (str(user.get("department_id") or ""),)).fetchall()
                     manageable = MANAGEABLE_ROLES.get(user["role"], set())
                     rows = [r for r in rows if r["role"] in manageable]
             return self.json_response(200, {"users": [dict(r) for r in rows]})
@@ -5532,6 +5731,8 @@ class Handler(BaseHTTPRequestHandler):
             user = self.require_user()
             if not user:
                 return
+            if not self.require_rights(user, "chat", "edit"):
+                return
             if not self.require_current_client():
                 return
             if not module_on("chat"):
@@ -5565,7 +5766,7 @@ class Handler(BaseHTTPRequestHandler):
         production_path = re.fullmatch(r"/api/production/([A-Za-z0-9_-]{1,80})/(release|start|pause|resume|partial|finish|abort|label)", path)
         if production_path:
             user = self.require_user(["admin", *DEPARTMENT_ROLES, "production"])
-            if not user or not self.require_current_client():
+            if not user or not self.require_rights(user, action="production") or not self.require_current_client():
                 return
             if production_path.group(2) == "label" and not module_on("palletLabels"):
                 return self.json_response(403, module_error("palletLabels"))
@@ -5582,8 +5783,10 @@ class Handler(BaseHTTPRequestHandler):
         demand_path = re.fullmatch(r"/api/demand/([a-z-]{1,40})", path)
         if demand_path:
             user = self.require_user(sorted(DEMAND_WRITE_ROLES))
-            if not user or not self.require_current_client():
+            if not user or not self.require_rights(user, "frameOrders", "edit") or not self.require_current_client():
                 return
+            if not module_on("frameOrders"):
+                return self.json_response(403, module_error("frameOrders"))
             action = demand_path.group(1)
             if action not in DEMAND_ACTIONS:
                 return self.json_response(404, mp_error("MP-DEM-000", "Unbekannte Bedarfsaktion."))
@@ -5606,6 +5809,13 @@ class Handler(BaseHTTPRequestHandler):
                 ok = False
             if not ok:
                 return self.json_response(401, mp_error("MP-AUTH-004", "Benutzer oder Passwort falsch."))
+            profile = None
+            if row["profile_id"]:
+                with DB_LOCK, db_session() as con:
+                    found = con.execute("SELECT json FROM role_profiles WHERE id=?", (row["profile_id"],)).fetchone()
+                profile = json.loads(found["json"]) if found else None
+                if not profile or not profile.get("active", True) or profile.get("baseRole") != row["role"]:
+                    return self.json_response(403, mp_error("MP-ROLE-002", "Die zugewiesene Rolle ist deaktiviert. Bitte den Admin ansprechen."))
             login_attempt_succeeded(ip, username, stamp)
             token = secrets.token_urlsafe(32)
             token_hash = hashlib.sha256(token.encode()).hexdigest()
@@ -5613,7 +5823,7 @@ class Handler(BaseHTTPRequestHandler):
             with DB_LOCK, db_session() as con:
                 con.execute("INSERT INTO sessions(token_hash,user_id,expires_at,created_at) VALUES(?,?,?,?)", (token_hash, row["id"], expires, now_iso()))
             cookie = f"mp_session={token}; Path=/; HttpOnly; SameSite=Strict; Max-Age={SESSION_TTL}" + self.cookie_secure()
-            return self.json_response(200, {"user": {"id": row["id"], "username": row["username"], "role": row["role"], "departmentId": row["department_id"]}}, cookie)
+            return self.json_response(200, {"user": user_public(attach_rights(dict(row), profile))}, cookie)
         if path == "/api/logout":
             c = SimpleCookie(self.headers.get("Cookie", ""))
             token = c.get("mp_session")
@@ -5625,6 +5835,8 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/users":
             user = self.require_user(USER_MANAGER_ROLES)
             if not user:
+                return
+            if not self.require_rights(user, action="userAdmin"):
                 return
             if not self.require_current_client():
                 return
@@ -5654,9 +5866,15 @@ class Handler(BaseHTTPRequestHandler):
                 with DB_LOCK, db_session() as con:
                     if con.execute("SELECT 1 FROM retired_usernames WHERE username=?", (username,)).fetchone():
                         return self.json_response(409, mp_error("MP-AUTH-013", "Dieser Benutzername bleibt für historische Nachweise reserviert. Bitte einen neuen Namen wählen."))
-                    cur = con.execute("INSERT INTO users(username,salt,password_hash,role,department_id,active,created_at,updated_at) VALUES(?,?,?,?,?,1,?,?)", (username, salt, digest, role, department_id, ts, ts))
+                    try:
+                        profile_id = resolve_profile_id(con, user, role, body.get("profileId", ""))
+                    except PermissionError as e:
+                        return self.json_response(403, mp_error("MP-ROLE-003", str(e)))
+                    except ValueError as e:
+                        return self.json_response(400, mp_error("MP-ROLE-003", str(e)))
+                    cur = con.execute("INSERT INTO users(username,salt,password_hash,role,department_id,active,created_at,updated_at,profile_id) VALUES(?,?,?,?,?,1,?,?,?)", (username, salt, digest, role, department_id, ts, ts, profile_id))
                     con.execute("INSERT INTO server_audit(ts,username,action,detail,revision) VALUES(?,?,?,?,NULL)", (ts, user["username"], "Benutzer angelegt", username))
-                return self.json_response(201, {"id": cur.lastrowid, "username": username, "role": role, "departmentId": department_id, "active": True})
+                return self.json_response(201, {"id": cur.lastrowid, "username": username, "role": role, "departmentId": department_id, "active": True, "profileId": profile_id})
             except sqlite3.IntegrityError:
                 return self.json_response(409, mp_error("MP-AUTH-013", "Benutzername existiert bereits."))
         if path == "/api/password":
@@ -5704,6 +5922,17 @@ class Handler(BaseHTTPRequestHandler):
         if not user or not self.require_current_client():
             return
         path = urlparse(self.path).path
+        role_path = re.fullmatch(r"/api/roles/([a-z0-9_-]{2,40})", path)
+        if role_path:
+            with DB_LOCK, db_session() as con:
+                con.execute("BEGIN IMMEDIATE")
+                if not con.execute("SELECT 1 FROM role_profiles WHERE id=?", (role_path.group(1),)).fetchone():
+                    return self.json_response(404, mp_error("MP-ROLE-004", "Rolle nicht gefunden."))
+                if con.execute("SELECT 1 FROM users WHERE profile_id=?", (role_path.group(1),)).fetchone():
+                    return self.json_response(409, mp_error("MP-ROLE-005", "Rolle ist Benutzern zugewiesen. Deaktivieren oder Benutzer zuerst umstellen."))
+                con.execute("DELETE FROM role_profiles WHERE id=?", (role_path.group(1),))
+                con.execute("INSERT INTO server_audit(ts,username,action,detail,revision) VALUES(?,?,?,?,NULL)", (now_iso(), user["username"], "Rolle gelöscht", role_path.group(1)))
+            return self.json_response(200, {"ok": True})
         match = re.fullmatch(r"/api/users/(\d+)", path)
         if not match:
             return self.json_response(404, mp_error("MP-REQ-404", "Nicht gefunden."))
@@ -5747,7 +5976,7 @@ class Handler(BaseHTTPRequestHandler):
         user = self.require_user(USER_MANAGER_ROLES)
         if not user:
             return
-        if not self.require_current_client():
+        if not self.require_rights(user, action="userAdmin") or not self.require_current_client():
             return
         try:
             uid = int(path.rsplit("/", 1)[1])
@@ -5778,8 +6007,14 @@ class Handler(BaseHTTPRequestHandler):
             state = json.loads(con.execute("SELECT json FROM state WHERE id=1").fetchone()[0])
             if department_id and department_id not in {str(d.get("id")) for d in state.get("departments") or []}:
                 return self.json_response(400, mp_error("MP-AUTH-015", "Bereich ist ungültig."))
-            fields = ["role=?", "department_id=?", "active=?", "updated_at=?"]
-            vals = [role, department_id, active, now_iso()]
+            try:
+                profile_id = resolve_profile_id(con, user, role, body.get("profileId"), str(target["profile_id"] or ""))
+            except PermissionError as e:
+                return self.json_response(403, mp_error("MP-ROLE-003", str(e)))
+            except ValueError as e:
+                return self.json_response(400, mp_error("MP-ROLE-003", str(e)))
+            fields = ["role=?", "department_id=?", "active=?", "updated_at=?", "profile_id=?"]
+            vals = [role, department_id, active, now_iso(), profile_id]
             if "password" in body:
                 pw = str(body["password"])
                 if len(pw) < 8:
@@ -5789,7 +6024,7 @@ class Handler(BaseHTTPRequestHandler):
                 vals += [salt, digest]
             vals.append(uid)
             con.execute(f"UPDATE users SET {','.join(fields)} WHERE id=?", vals)
-            if not active or "password" in body or role != target["role"] or department_id != target["department_id"]:
+            if not active or "password" in body or role != target["role"] or department_id != target["department_id"] or profile_id != str(target["profile_id"] or ""):
                 con.execute("DELETE FROM sessions WHERE user_id=?", (uid,))
             con.execute("INSERT INTO server_audit(ts,username,action,detail,revision) VALUES(?,?,?,?,NULL)", (now_iso(), user["username"], "Benutzer geändert", target["username"]))
         return self.json_response(200, {"ok": True})
@@ -5799,6 +6034,8 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/notifications/prefs":
             user = self.require_user()
             if not user:
+                return
+            if not self.require_rights(user, "notifications"):
                 return
             if not self.require_current_client():
                 return
@@ -5813,6 +6050,9 @@ class Handler(BaseHTTPRequestHandler):
             return self.json_response(status, payload)
         if path == "/api/config":
             return self._config_patch()
+        role_path = re.fullmatch(r"/api/roles/([a-z0-9_-]{2,40})", path)
+        if role_path:
+            return self.save_role_profile(role_path.group(1))
         if path != "/api/state":
             return self.json_response(404, mp_error("MP-REQ-404", "Nicht gefunden."))
         user = self.require_user(WRITE_ROLES)
@@ -5843,6 +6083,10 @@ class Handler(BaseHTTPRequestHandler):
             normalize_fa_state(incoming)
             unredact_incoming(old, incoming, user)
             strip_archived_history(con, old, incoming)
+            rights_error = rights_change_error(old, incoming, user)
+            if rights_error:
+                con.execute("ROLLBACK")
+                return self.json_response(403, mp_error("MP-ROLE-010", rights_error))
             if user["role"] != "admin" and canonical(old.get("palletTemplates")) != canonical(incoming.get("palletTemplates")):
                 con.execute("ROLLBACK")
                 return self.json_response(403, mp_error("MP-AUTH-002", "Etikettenvorlagen dürfen nur Admins verwalten."))

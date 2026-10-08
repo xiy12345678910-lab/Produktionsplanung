@@ -1,4 +1,4 @@
-MASCHINENPLANUNG V12.22.0 - FEHLERCODES
+MASCHINENPLANUNG V12.23.0 - FEHLERCODES
 ======================================
 
 Jeder Fehler wird dem Mitarbeiter als Klartext + Code angezeigt.
@@ -407,6 +407,13 @@ MP-DEM-023   FA ist Vorgänger und kann nicht entfallen.              MP-DEM-030
 MP-DEM-031   Abruf oder Bestand angeben.                             MP-DEM-032   Liefermenge > reserviert.
 MP-DEM-040   Bedarf pflegt nur AV/Admin.                             MP-DEM-041   Bedarfs-FA nur über „Rahmenaufträge“.
 MP-DEM-050   Bestand nicht gefunden.                                 MP-DEM-051   Physischer Bestand kleiner als reserviert.
+MP-ROLE-001  Rolle hat für diese Funktion/Aktion kein Recht (eigene Rolle, System > Rollen & Rechte).
+MP-ROLE-002  Zugewiesene eigene Rolle ist deaktiviert: Anmeldung gesperrt, Admin stellt Benutzer um.
+MP-ROLE-003  Eigene Rolle fehlt, ist inaktiv, passt nicht zur Systemrolle oder darf nur der Admin zuweisen.
+MP-ROLE-004  Rolle nicht gefunden.                                   MP-ROLE-005  Rolle ist Benutzern zugewiesen (nicht löschbar).
+MP-ROLE-006  Rollendaten ungültig (Name, Systemrolle, Rechte).       MP-ROLE-007  Systemrolle einer zugewiesenen Rolle bleibt fest.
+MP-ROLE-008  Rollenname existiert bereits.
+MP-ROLE-010  Speichern abgewiesen: Funktion nur lesbar bzw. Konfektionsstunden für diese Rolle gesperrt.
 MP-TLS-001   HTTPS-Zertifikat in config\tls ungueltig oder nicht lesbar. Server startet nicht (kein stiller Rueckfall
              auf HTTP). HTTPS_Einrichten.ps1 erneut ausfuehren oder config\tls umbenennen (= wieder HTTP).
 MP-CFG-003   schemaVersion neuer als dieses Programm (nur Warnung): Datei wird gelesen, nicht geaendert.
@@ -425,7 +432,7 @@ MP-CFG-006   Bestandsdatenbank ohne config\firma.json und ohne Firmenname/Logo i
              (oder -Neutral), danach UPDATE_LIVE.ps1 erneut. Neuinstallationen sind nicht betroffen.
 
 V12.16.0 NEU (Branchenvorlagen, Module)
-MP-MOD-001   Modul ist abgeschaltet: Schreibzugriff bzw. Endpunkt (Chat, Benachrichtigungen, Projekte, Formate, Personal)
+MP-MOD-001   Funktion ist abgeschaltet: Schreibzugriff bzw. Endpunkt (Chat, Benachrichtigungen, Projekte, Formate, Personal)
              wird gesperrt, die Daten bleiben erhalten. Abhilfe: Admin schaltet das Modul im Firmenprofil wieder ein.
 MP-TPL-040   Branchenvorlage nicht gefunden (POST /api/templates/apply).
 MP-DEPT-007  Bereichs-Eigenschaft formats/sharedOperators ist kein true/false.
