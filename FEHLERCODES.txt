@@ -1,4 +1,4 @@
-MASCHINENPLANUNG V12.24.0 - FEHLERCODES
+MASCHINENPLANUNG V12.25.0 - FEHLERCODES
 ======================================
 
 Jeder Fehler wird dem Mitarbeiter als Klartext + Code angezeigt.

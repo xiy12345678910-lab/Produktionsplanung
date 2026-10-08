@@ -28,7 +28,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 MP_DEBUG_ABORTS = os.environ.get('MP_DEBUG_ABORTS') == '1'
-APP_VERSION = "12.24.0"
+APP_VERSION = "12.25.0"
 HOST = os.environ.get("MP_HOST", "0.0.0.0")
 PORT = int(os.environ.get("MP_PORT", "8765"))
 BASE = Path(__file__).resolve().parent
@@ -3894,6 +3894,9 @@ def production_planning_change_allowed(old: dict, new: dict) -> tuple[bool, str]
             for field in ("machineId", "altMachineId", "allowAlternative", "laneIndex", "pos", "direction", "anchorMode", "requiredStart", "requiredFinish", "planningWeek", "baselinePlan"):
                 if canonical(before.get(field)) != canonical(after.get(field)):
                     return False, "Operative Planung übernimmt die zuständige Abteilung."
+        # V12.24.0: Trocknung nach dem Arbeitsgang entscheidet die Abteilungsleitung, nicht die AV.
+        if after is not None and canonical((before or {}).get("dryingHours")) != canonical(after.get("dryingHours")):
+            return False, "Die Trocknungszeit legt die Abteilungsleitung fest."
         done_before = _finite_float((before or {}).get("doneHours", 0)) or 0.0
         done_after = _finite_float((after or {}).get("doneHours", 0)) or 0.0
         if after is not None and done_after != done_before:
@@ -4002,7 +4005,7 @@ def department_change_allowed(old: dict, new: dict, department_id: str) -> tuple
             if "handoffUnassigned" in before:
                 if "handoffUnassigned" not in rec:
                     return False, "Die AV-Herkunft einer Bereichsübergabe bleibt erhalten."
-                for field in ("fa", "faNumber", "projectId", "ab", "wt", "targetQty", "sequence", "predecessorIds", "avNote", "dryingHours"):
+                for field in ("fa", "faNumber", "projectId", "ab", "wt", "targetQty", "sequence", "predecessorIds", "avNote"):
                     if canonical(before.get(field)) != canonical(rec.get(field)):
                         return False, "FA, Projekt, Menge und Vorgänger pflegt die Arbeitsvorbereitung."
         resource = next((m for m in old.get("machines") or [] if m.get("id") == (before or {}).get("machineId")), {})

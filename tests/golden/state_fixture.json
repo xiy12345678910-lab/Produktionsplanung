@@ -1,0 +1,451 @@
+{
+ "audit": [],
+ "baseFormats": [],
+ "callOffs": [],
+ "departmentStaffNeeds": [],
+ "departments": [
+  {
+   "active": true,
+   "id": "cnc",
+   "name": "CNC",
+   "planningType": "MACHINE",
+   "sharedOperators": true
+  },
+  {
+   "active": true,
+   "id": "konf1",
+   "name": "Konfektion 1",
+   "planningType": "MACHINE"
+  },
+  {
+   "active": true,
+   "id": "konf2",
+   "name": "Konfektion 2",
+   "planningType": "MACHINE"
+  },
+  {
+   "active": true,
+   "id": "konf3",
+   "name": "Konfektion 3",
+   "planningType": "MACHINE"
+  },
+  {
+   "active": true,
+   "id": "screenprint",
+   "name": "Siebdruck",
+   "planningType": "MACHINE"
+  },
+  {
+   "active": true,
+   "formats": true,
+   "id": "thermoforming",
+   "name": "Tiefziehen",
+   "planningType": "MACHINE"
+  }
+ ],
+ "employees": [
+  {
+   "active": true,
+   "departmentId": "cnc",
+   "id": "e_cnc1",
+   "name": "Max Fräser"
+  },
+  {
+   "active": true,
+   "departmentId": "cnc",
+   "id": "e_cnc2",
+   "name": "Eva Dreher"
+  },
+  {
+   "active": true,
+   "departmentId": "konf1",
+   "id": "e_k1",
+   "name": "Ole Näher"
+  }
+ ],
+ "exceptions": [],
+ "formats": [],
+ "frameOrders": [],
+ "history": [],
+ "inventory": [],
+ "machineBlocks": [],
+ "machines": [
+  {
+   "committedUntil": "",
+   "crew": 1,
+   "crewMax": 0,
+   "defaultShiftMode": "1",
+   "departmentId": "cnc",
+   "effortScaling": false,
+   "id": "m1",
+   "kind": "machine",
+   "laneStaff": {},
+   "name": "Maschine 1",
+   "setupMinutes": 0,
+   "staffRequired": 1,
+   "start": "<ts>"
+  },
+  {
+   "committedUntil": "",
+   "crew": 1,
+   "crewMax": 0,
+   "defaultShiftMode": "1",
+   "departmentId": "cnc",
+   "effortScaling": false,
+   "id": "m2",
+   "kind": "machine",
+   "laneStaff": {},
+   "name": "Maschine 2",
+   "setupMinutes": 0,
+   "staffRequired": 1,
+   "start": "<ts>"
+  },
+  {
+   "committedUntil": "",
+   "crew": 1,
+   "crewMax": 0,
+   "defaultShiftMode": "1",
+   "departmentId": "cnc",
+   "effortScaling": false,
+   "id": "m3",
+   "kind": "machine",
+   "laneStaff": {},
+   "name": "Maschine 3",
+   "setupMinutes": 0,
+   "staffRequired": 1,
+   "start": "<ts>"
+  },
+  {
+   "committedUntil": "",
+   "crew": 1,
+   "crewMax": 0,
+   "defaultShiftMode": "1",
+   "departmentId": "konf1",
+   "effortScaling": false,
+   "id": "res_konf1",
+   "kind": "line",
+   "laneStaff": {},
+   "name": "Linie Konfektion 1",
+   "setupMinutes": 0,
+   "staffRequired": 0,
+   "start": "<ts>"
+  },
+  {
+   "committedUntil": "",
+   "crew": 1,
+   "crewMax": 0,
+   "defaultShiftMode": "1",
+   "departmentId": "konf2",
+   "effortScaling": false,
+   "id": "res_konf2",
+   "kind": "line",
+   "laneStaff": {},
+   "name": "Linie Konfektion 2",
+   "setupMinutes": 0,
+   "staffRequired": 0,
+   "start": "<ts>"
+  },
+  {
+   "committedUntil": "",
+   "crew": 1,
+   "crewMax": 0,
+   "defaultShiftMode": "1",
+   "departmentId": "konf3",
+   "effortScaling": false,
+   "id": "res_konf3",
+   "kind": "line",
+   "laneStaff": {},
+   "name": "Linie Konfektion 3",
+   "setupMinutes": 0,
+   "staffRequired": 0,
+   "start": "<ts>"
+  },
+  {
+   "committedUntil": "",
+   "crew": 1,
+   "crewMax": 0,
+   "defaultShiftMode": "1",
+   "departmentId": "screenprint",
+   "effortScaling": false,
+   "id": "res_screenprint",
+   "kind": "machine",
+   "laneStaff": {},
+   "name": "Siebdruck 1",
+   "setupMinutes": 0,
+   "staffRequired": 0,
+   "start": "<ts>"
+  },
+  {
+   "committedUntil": "",
+   "crew": 1,
+   "crewMax": 0,
+   "defaultShiftMode": "1",
+   "departmentId": "thermoforming",
+   "effortScaling": false,
+   "id": "res_thermoforming",
+   "kind": "machine",
+   "laneStaff": {},
+   "name": "Tiefziehen 1",
+   "setupMinutes": 0,
+   "staffRequired": 0,
+   "start": "<ts>"
+  }
+ ],
+ "meta": {
+  "actor": "Server",
+  "createdAt": "<ts>",
+  "revision": "<volatile>",
+  "serverReady": true,
+  "storage": "server"
+ },
+ "operatorCapacity": {
+  "early": 3,
+  "late": 3,
+  "single": 3
+ },
+ "palletLabels": [],
+ "palletTemplates": [],
+ "personnelAbsences": [],
+ "personnelAssignments": [],
+ "personnelGate": false,
+ "planVersions": [],
+ "processTemplates": [
+  {
+   "createdBy": "System",
+   "id": "tpl_pm_repeat",
+   "kind": "pm",
+   "name": "Wiederholteil",
+   "steps": [
+    {
+     "areaId": "calculation",
+     "durationDays": 2,
+     "offsetDays": 0,
+     "title": "Preis / Kalkulation prüfen"
+    },
+    {
+     "areaId": "pm",
+     "durationDays": 1,
+     "offsetDays": 2,
+     "title": "Angebot erstellen"
+    }
+   ],
+   "updatedAt": "<ts>"
+  },
+  {
+   "createdBy": "System",
+   "id": "tpl_pm_new",
+   "kind": "pm",
+   "name": "Neuteil",
+   "steps": [
+    {
+     "areaId": "engineering",
+     "durationDays": 3,
+     "offsetDays": 0,
+     "title": "Machbarkeit prüfen"
+    },
+    {
+     "areaId": "purchasing",
+     "durationDays": 5,
+     "offsetDays": 0,
+     "title": "Material / Zukauf anfragen"
+    },
+    {
+     "areaId": "calculation",
+     "durationDays": 3,
+     "offsetDays": 3,
+     "title": "Kalkulation"
+    },
+    {
+     "areaId": "pm",
+     "durationDays": 1,
+     "offsetDays": 6,
+     "title": "Angebot erstellen"
+    }
+   ],
+   "updatedAt": "<ts>"
+  },
+  {
+   "createdBy": "System",
+   "id": "tpl_pm_dev",
+   "kind": "pm",
+   "name": "Entwicklung / Muster",
+   "steps": [
+    {
+     "areaId": "engineering",
+     "durationDays": 10,
+     "offsetDays": 0,
+     "title": "Konstruktion / Entwicklung"
+    },
+    {
+     "areaId": "cnc",
+     "durationDays": 5,
+     "offsetDays": 10,
+     "title": "Muster CNC"
+    },
+    {
+     "areaId": "konf1",
+     "durationDays": 5,
+     "offsetDays": 10,
+     "title": "Muster Konfektion"
+    },
+    {
+     "areaId": "calculation",
+     "durationDays": 5,
+     "offsetDays": 10,
+     "title": "Kalkulation"
+    },
+    {
+     "areaId": "sales",
+     "durationDays": 7,
+     "offsetDays": 15,
+     "title": "Kundenfreigabe Muster einholen"
+    },
+    {
+     "areaId": "pm",
+     "durationDays": 2,
+     "offsetDays": 22,
+     "title": "Angebot erstellen"
+    }
+   ],
+   "updatedAt": "<ts>"
+  }
+ ],
+ "productionEvents": [],
+ "projects": [
+  {
+   "ab": "AB-1001",
+   "customer": "Kunde A",
+   "dueDate": "2026-12-18",
+   "id": "p_seed1",
+   "log": [],
+   "name": "Gehäuse",
+   "number": "P-2026-001",
+   "phase": "accepted",
+   "processes": []
+  },
+  {
+   "ab": "",
+   "customer": "Kunde B",
+   "dueDate": "",
+   "id": "p_seed2",
+   "log": [],
+   "name": "Anfrage Deckel",
+   "number": "P-2026-002",
+   "phase": "inquiry",
+   "processes": []
+  }
+ ],
+ "shiftTemplates": {
+  "early": {
+   "breaks": [
+    {
+     "end": "09:15",
+     "start": "09:00"
+    },
+    {
+     "end": "12:15",
+     "start": "12:00"
+    }
+   ],
+   "end": "14:30",
+   "name": "2-Schicht · Früh",
+   "start": "06:00"
+  },
+  "fridaySingle": {
+   "breaks": [
+    {
+     "end": "09:15",
+     "start": "09:00"
+    },
+    {
+     "end": "",
+     "start": ""
+    }
+   ],
+   "end": "11:45",
+   "name": "1-Schicht Freitag",
+   "start": "06:30"
+  },
+  "late": {
+   "breaks": [
+    {
+     "end": "17:15",
+     "start": "17:00"
+    },
+    {
+     "end": "19:15",
+     "start": "19:00"
+    }
+   ],
+   "end": "22:30",
+   "name": "2-Schicht · Spät",
+   "start": "14:30"
+  },
+  "single": {
+   "breaks": [
+    {
+     "end": "09:15",
+     "start": "09:00"
+    },
+    {
+     "end": "12:30",
+     "start": "12:00"
+    }
+   ],
+   "end": "16:00",
+   "name": "1-Schicht Mo–Do",
+   "start": "06:30"
+  }
+ },
+ "ui": {
+  "accent": "#1f5eff",
+  "cellH": 90
+ },
+ "version": 12,
+ "weekRules": [],
+ "weeklyEmployeeDeployments": [],
+ "workSteps": [
+  {
+   "ab": "AB-1001",
+   "actualStartedAt": "",
+   "allowAlternative": false,
+   "altMachineId": "",
+   "anchorMode": "none",
+   "articleNo": "",
+   "baselinePlan": null,
+   "createdAt": "<ts>",
+   "departmentId": "cnc",
+   "description": "Seed",
+   "direction": "forward",
+   "dueDate": "2026-11-20",
+   "fa": "FA 1001",
+   "faNumber": "FA 1001",
+   "goodQty": 0,
+   "hours": 4,
+   "id": "ws_seed1",
+   "lastStatusCheckAt": "",
+   "lockedSegments": [],
+   "lockedStart": "",
+   "machineId": "m1",
+   "order": "FA 1001",
+   "pauseIntervals": [],
+   "pausedAt": "",
+   "planningType": "MACHINE",
+   "pos": 10,
+   "predecessorIds": [],
+   "projectId": "",
+   "remainingHours": null,
+   "requiredFinish": "",
+   "requiredStart": "",
+   "runningSince": "",
+   "scrapQty": 0,
+   "sequence": 10,
+   "sourceId": "ws_seed1",
+   "sourceType": "PROJECT",
+   "status": "planned",
+   "targetQty": 5,
+   "wt": ""
+  }
+ ],
+ "yearRules": []
+}

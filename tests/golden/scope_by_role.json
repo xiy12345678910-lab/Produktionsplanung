@@ -1,0 +1,536 @@
+{
+ "admin": {
+  "audit": [],
+  "baseFormats": [],
+  "callOffs": [],
+  "departmentStaffNeeds": [],
+  "departments": [
+   "cnc",
+   "konf1",
+   "konf2",
+   "konf3",
+   "screenprint",
+   "thermoforming"
+  ],
+  "employees": [
+   "e_cnc1",
+   "e_cnc2",
+   "e_k1"
+  ],
+  "exceptions": [],
+  "formats": [],
+  "frameOrders": [],
+  "history": [],
+  "inventory": [],
+  "machineBlocks": [],
+  "machines": [
+   "m1",
+   "m2",
+   "m3",
+   "res_konf1",
+   "res_konf2",
+   "res_konf3",
+   "res_screenprint",
+   "res_thermoforming"
+  ],
+  "meta": "dict",
+  "operatorCapacity": "dict",
+  "palletLabels": [],
+  "palletTemplates": [],
+  "personnelAbsences": [],
+  "personnelAssignments": [],
+  "personnelGate": "bool",
+  "planVersions": [],
+  "processTemplates": [
+   "tpl_pm_dev",
+   "tpl_pm_new",
+   "tpl_pm_repeat"
+  ],
+  "productionEvents": [],
+  "projects": [
+   "p_seed1",
+   "p_seed2"
+  ],
+  "shiftTemplates": "dict",
+  "ui": "dict",
+  "version": "int",
+  "weekRules": [],
+  "weeklyEmployeeDeployments": [],
+  "workSteps": [
+   "ws_seed1"
+  ],
+  "yearRules": []
+ },
+ "av1": {
+  "audit": [],
+  "baseFormats": [],
+  "callOffs": [],
+  "departmentStaffNeeds": [],
+  "departments": [
+   "cnc",
+   "konf1",
+   "konf2",
+   "konf3",
+   "screenprint",
+   "thermoforming"
+  ],
+  "employees": [
+   "e_cnc1",
+   "e_cnc2",
+   "e_k1"
+  ],
+  "exceptions": [],
+  "formats": [],
+  "frameOrders": [],
+  "history": [],
+  "inventory": [],
+  "machineBlocks": [],
+  "machines": [
+   "m1",
+   "m2",
+   "m3",
+   "res_konf1",
+   "res_konf2",
+   "res_konf3",
+   "res_screenprint",
+   "res_thermoforming"
+  ],
+  "meta": "dict",
+  "operatorCapacity": "dict",
+  "palletLabels": [],
+  "palletTemplates": [],
+  "personnelAbsences": [],
+  "personnelAssignments": [],
+  "personnelGate": "bool",
+  "planVersions": [],
+  "processTemplates": [
+   "tpl_pm_dev",
+   "tpl_pm_new",
+   "tpl_pm_repeat"
+  ],
+  "productionEvents": [],
+  "projects": [
+   "p_seed1",
+   "p_seed2"
+  ],
+  "shiftTemplates": "dict",
+  "ui": "dict",
+  "version": "int",
+  "weekRules": [],
+  "weeklyEmployeeDeployments": [],
+  "workSteps": [
+   "ws_seed1"
+  ],
+  "yearRules": []
+ },
+ "dep1": {
+  "audit": [],
+  "baseFormats": [],
+  "callOffs": [],
+  "departmentStaffNeeds": [],
+  "departments": [
+   "cnc",
+   "konf1",
+   "konf2",
+   "konf3",
+   "screenprint",
+   "thermoforming"
+  ],
+  "dependencyStatus": "dict",
+  "employees": [
+   "e_cnc1",
+   "e_cnc2"
+  ],
+  "exceptions": [],
+  "formats": [],
+  "frameOrders": [],
+  "history": [],
+  "inventory": [],
+  "machineBlocks": [],
+  "machines": [
+   "m1",
+   "m2",
+   "m3"
+  ],
+  "meta": "dict",
+  "operatorCapacity": "dict",
+  "palletLabels": [],
+  "palletTemplates": [],
+  "personnelAbsences": [],
+  "personnelAssignments": [],
+  "personnelGate": "bool",
+  "planVersions": [],
+  "processTemplates": [
+   "tpl_pm_dev",
+   "tpl_pm_new",
+   "tpl_pm_repeat"
+  ],
+  "productionEvents": [],
+  "projects": [],
+  "shiftTemplates": "dict",
+  "ui": "dict",
+  "version": "int",
+  "weekRules": [],
+  "weeklyEmployeeDeployments": [],
+  "workSteps": [
+   "ws_seed1"
+  ],
+  "yearRules": []
+ },
+ "gf1": {
+  "audit": [],
+  "baseFormats": [],
+  "callOffs": [],
+  "departmentStaffNeeds": [],
+  "departments": [
+   "cnc",
+   "konf1",
+   "konf2",
+   "konf3",
+   "screenprint",
+   "thermoforming"
+  ],
+  "employees": [
+   "e_cnc1",
+   "e_cnc2",
+   "e_k1"
+  ],
+  "exceptions": [],
+  "formats": [],
+  "frameOrders": [],
+  "history": [],
+  "inventory": [],
+  "machineBlocks": [],
+  "machines": [
+   "m1",
+   "m2",
+   "m3",
+   "res_konf1",
+   "res_konf2",
+   "res_konf3",
+   "res_screenprint",
+   "res_thermoforming"
+  ],
+  "meta": "dict",
+  "operatorCapacity": "dict",
+  "palletLabels": [],
+  "palletTemplates": [],
+  "personnelAbsences": [],
+  "personnelAssignments": [],
+  "personnelGate": "bool",
+  "planVersions": [],
+  "processTemplates": [
+   "tpl_pm_dev",
+   "tpl_pm_new",
+   "tpl_pm_repeat"
+  ],
+  "productionEvents": [],
+  "projects": [
+   "p_seed1",
+   "p_seed2"
+  ],
+  "shiftTemplates": "dict",
+  "ui": "dict",
+  "version": "int",
+  "weekRules": [],
+  "weeklyEmployeeDeployments": [],
+  "workSteps": [
+   "ws_seed1"
+  ],
+  "yearRules": []
+ },
+ "lead1": {
+  "audit": [],
+  "baseFormats": [],
+  "callOffs": [],
+  "departmentStaffNeeds": [],
+  "departments": [
+   "cnc",
+   "konf1",
+   "konf2",
+   "konf3",
+   "screenprint",
+   "thermoforming"
+  ],
+  "dependencyStatus": "dict",
+  "employees": [
+   "e_cnc1",
+   "e_cnc2"
+  ],
+  "exceptions": [],
+  "formats": [],
+  "frameOrders": [],
+  "history": [],
+  "inventory": [],
+  "machineBlocks": [],
+  "machines": [
+   "m1",
+   "m2",
+   "m3"
+  ],
+  "meta": "dict",
+  "operatorCapacity": "dict",
+  "palletLabels": [],
+  "palletTemplates": [],
+  "personnelAbsences": [],
+  "personnelAssignments": [],
+  "personnelGate": "bool",
+  "planVersions": [],
+  "processTemplates": [
+   "tpl_pm_dev",
+   "tpl_pm_new",
+   "tpl_pm_repeat"
+  ],
+  "productionEvents": [],
+  "projects": [],
+  "shiftTemplates": "dict",
+  "ui": "dict",
+  "version": "int",
+  "weekRules": [],
+  "weeklyEmployeeDeployments": [],
+  "workSteps": [
+   "ws_seed1"
+  ],
+  "yearRules": []
+ },
+ "pm1": {
+  "audit": [],
+  "baseFormats": [],
+  "callOffs": [],
+  "departmentStaffNeeds": [],
+  "departments": [
+   "cnc",
+   "konf1",
+   "konf2",
+   "konf3",
+   "screenprint",
+   "thermoforming"
+  ],
+  "employees": [
+   "e_cnc1",
+   "e_cnc2",
+   "e_k1"
+  ],
+  "exceptions": [],
+  "formats": [],
+  "frameOrders": [],
+  "history": [],
+  "inventory": [],
+  "machineBlocks": [],
+  "machines": [
+   "m1",
+   "m2",
+   "m3",
+   "res_konf1",
+   "res_konf2",
+   "res_konf3",
+   "res_screenprint",
+   "res_thermoforming"
+  ],
+  "meta": "dict",
+  "operatorCapacity": "dict",
+  "palletLabels": [],
+  "palletTemplates": [],
+  "personnelAbsences": [],
+  "personnelAssignments": [],
+  "personnelGate": "bool",
+  "planVersions": [],
+  "processTemplates": [
+   "tpl_pm_dev",
+   "tpl_pm_new",
+   "tpl_pm_repeat"
+  ],
+  "productionEvents": [],
+  "projects": [
+   "p_seed1",
+   "p_seed2"
+  ],
+  "shiftTemplates": "dict",
+  "ui": "dict",
+  "version": "int",
+  "weekRules": [],
+  "weeklyEmployeeDeployments": [],
+  "workSteps": [
+   "ws_seed1"
+  ],
+  "yearRules": []
+ },
+ "prod1": {
+  "audit": [],
+  "baseFormats": [],
+  "callOffs": [],
+  "departmentStaffNeeds": [],
+  "departments": [
+   "cnc",
+   "konf1",
+   "konf2",
+   "konf3",
+   "screenprint",
+   "thermoforming"
+  ],
+  "dependencyStatus": "dict",
+  "employees": [
+   "e_cnc1",
+   "e_cnc2"
+  ],
+  "exceptions": [],
+  "formats": [],
+  "frameOrders": [],
+  "history": [],
+  "inventory": [],
+  "machineBlocks": [],
+  "machines": [
+   "m1",
+   "m2",
+   "m3"
+  ],
+  "meta": "dict",
+  "operatorCapacity": "dict",
+  "palletLabels": [],
+  "palletTemplates": [],
+  "personnelAbsences": [],
+  "personnelAssignments": [],
+  "personnelGate": "bool",
+  "planVersions": [],
+  "processTemplates": [
+   "tpl_pm_dev",
+   "tpl_pm_new",
+   "tpl_pm_repeat"
+  ],
+  "productionEvents": [],
+  "projects": [],
+  "shiftTemplates": "dict",
+  "ui": "dict",
+  "version": "int",
+  "weekRules": [],
+  "weeklyEmployeeDeployments": [],
+  "workSteps": [
+   "ws_seed1"
+  ],
+  "yearRules": []
+ },
+ "view1": {
+  "audit": [],
+  "baseFormats": [],
+  "callOffs": [],
+  "departmentStaffNeeds": [],
+  "departments": [
+   "cnc",
+   "konf1",
+   "konf2",
+   "konf3",
+   "screenprint",
+   "thermoforming"
+  ],
+  "employees": [
+   "e_cnc1",
+   "e_cnc2",
+   "e_k1"
+  ],
+  "exceptions": [],
+  "formats": [],
+  "frameOrders": [],
+  "history": [],
+  "inventory": [],
+  "machineBlocks": [],
+  "machines": [
+   "m1",
+   "m2",
+   "m3",
+   "res_konf1",
+   "res_konf2",
+   "res_konf3",
+   "res_screenprint",
+   "res_thermoforming"
+  ],
+  "meta": "dict",
+  "operatorCapacity": "dict",
+  "palletLabels": [],
+  "palletTemplates": [],
+  "personnelAbsences": [],
+  "personnelAssignments": [],
+  "personnelGate": "bool",
+  "planVersions": [],
+  "processTemplates": [
+   "tpl_pm_dev",
+   "tpl_pm_new",
+   "tpl_pm_repeat"
+  ],
+  "productionEvents": [],
+  "projects": [
+   "p_seed1",
+   "p_seed2"
+  ],
+  "shiftTemplates": "dict",
+  "ui": "dict",
+  "version": "int",
+  "weekRules": [],
+  "weeklyEmployeeDeployments": [],
+  "workSteps": [
+   "ws_seed1"
+  ],
+  "yearRules": []
+ },
+ "vt1": {
+  "audit": [],
+  "baseFormats": [],
+  "callOffs": [],
+  "departmentStaffNeeds": [],
+  "departments": [
+   "cnc",
+   "konf1",
+   "konf2",
+   "konf3",
+   "screenprint",
+   "thermoforming"
+  ],
+  "employees": [
+   "e_cnc1",
+   "e_cnc2",
+   "e_k1"
+  ],
+  "exceptions": [],
+  "formats": [],
+  "frameOrders": [],
+  "history": [],
+  "inventory": [],
+  "machineBlocks": [],
+  "machines": [
+   "m1",
+   "m2",
+   "m3",
+   "res_konf1",
+   "res_konf2",
+   "res_konf3",
+   "res_screenprint",
+   "res_thermoforming"
+  ],
+  "meta": "dict",
+  "operatorCapacity": "dict",
+  "palletLabels": [],
+  "palletTemplates": [],
+  "personnelAbsences": [],
+  "personnelAssignments": [],
+  "personnelGate": "bool",
+  "planVersions": [],
+  "processTemplates": [
+   "tpl_pm_dev",
+   "tpl_pm_new",
+   "tpl_pm_repeat"
+  ],
+  "productionEvents": [],
+  "projects": [
+   "p_seed1",
+   "p_seed2"
+  ],
+  "shiftTemplates": "dict",
+  "ui": "dict",
+  "version": "int",
+  "weekRules": [],
+  "weeklyEmployeeDeployments": [],
+  "workSteps": [
+   "ws_seed1"
+  ],
+  "yearRules": []
+ }
+}
