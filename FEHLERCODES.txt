@@ -163,6 +163,7 @@ MP-SYNC-001  Revision veraltet.
 MP-SYNC-002  Client-Version veraltet. Seite vollständig neu laden.
 MP-SYNC-003  Kontextbezogener Fehler; Klartext wird direkt in der Anwendung angezeigt.
 MP-SYNC-004  Kontextbezogener Fehler; Klartext wird direkt in der Anwendung angezeigt.
+MP-SYNC-005  Vorherige Aenderungen sind noch nicht gespeichert; die Bedarfsaktion wurde nicht gesendet. Kurz warten und erneut ausfuehren.
 
 [UI - Oberfläche / allgemeine UI-Fehler]
 MP-UI-001  Kontextbezogener Fehler; Klartext wird direkt in der Anwendung angezeigt.
