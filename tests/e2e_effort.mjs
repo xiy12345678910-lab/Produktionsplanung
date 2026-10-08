@@ -146,7 +146,7 @@ try {
   await ev(page, () => { data.employees.push({ id: 'e_9', name: 'MA 9', active: true, departmentId: machine('kf1').departmentId, skills: ['kf1'], homeMachineId: 'kf1', homeShift: 'auto', employmentType: 'permanent', weeklyHours: 40, function: '' }); data.employees.push({ id: 'e_10', name: 'MA 10', active: true, departmentId: machine('kf1').departmentId, skills: ['kf1'], homeMachineId: 'kf1', homeShift: 'auto', employmentType: 'permanent', weeklyHours: 40, function: '' }); });
   const w4 = (await plan()).wall;
   check(near(w2, 20) && near(w4, 10), `Zwei Mitarbeiter mehr zugeordnet: 20 h -> 10 h (${w2.toFixed(1)} -> ${w4.toFixed(1)})`);
-  const ui = await ev(page, () => { renderAll(); return { row: document.querySelector('#ordersBody tr')?.innerText || '', tip: document.querySelector('#ordersBody [title^="Dauer nach Besetzung"]')?.getAttribute('title') || '', kpi: document.getElementById('mLate')?.textContent }; });
+  const ui = await ev(page, () => { switchView('orders'); renderAll(); return { row: document.querySelector('#ordersBody tr')?.innerText || '', tip: document.querySelector('#ordersBody [title^="Dauer nach Besetzung"]')?.getAttribute('title') || '', kpi: document.getElementById('mLate')?.textContent }; });
   check(/40 Ph · 4 Pers\. → 10 h/.test(ui.row), 'Auftragsliste zeigt "40 Ph · 4 Pers. → 10 h" nach der Änderung');
   check(ui.tip.length > 20, 'Tooltip am Auftrag vorhanden');
 

@@ -15,7 +15,7 @@ async function loadPlaywright() {
 }
 const results = [], errors = [];
 const check = (ok, label) => { results.push([!!ok, label]); console.log((ok ? 'PASS ' : 'FAIL ') + label); };
-const dataDir = mkdtempSync(path.join(tmpdir(), 'mp-lazy-loading-'));
+const dataDir = mkdtempSync(path.join(tmpdir(), 'mp-lazy-loading-')), cfgDir = mkdtempSync(path.join(tmpdir(), 'mp-lazy-config-'));
 const py = `
 import ipaddress, json, sys, time
 from datetime import datetime, timezone
@@ -35,7 +35,7 @@ with server.DB_LOCK, server.db_session() as con:
     m.update(start='2026-10-08T06:00',setupMinutes=0,staffRequired=1,kind='machine')
     new['personnelGate']=True
     new['ui'].update(week='2026-10-05',view='overview',mode='planning')
-    new['employees']=[{'id':'e_lazy','name':'Lazy Test Person','departmentId':'cnc','skills':['m1'],'homeMachineId':'m1','homeShift':'auto','weeklyHours':40,'active':True}]
+    new['employees']=[{'id':'e_lazy','name':'Lazy Test Person','departmentId':'cnc','skills':['m1'],'homeMachineId':'','homeShift':'auto','weeklyHours':40,'active':True}]
     new['personnelAssignments']=[]
     new['projects']=[{'id':'p_lazy','number':'P-LAZY-1','phase':'accepted','name':'Initial Lazy Project','customer':'Testkunde','ab':'AB-LAZY-1','dueDate':'2026-10-30','processes':[],'log':[]}]
     new['workSteps']=[{'id':'fa_lazy','fa':'FA-LAZY-1','faNumber':'FA-LAZY-1','sourceType':'PROJECT','sourceId':'p_lazy','projectId':'p_lazy','departmentId':'cnc','planningType':'MACHINE','sequence':10,'pos':10,'machineId':'m1','altMachineId':'','allowAlternative':False,'order':'FA-LAZY-1','articleNo':'A-1','description':'Lazy live test','hours':1,'targetQty':100,'goodQty':0,'scrapQty':0,'remainingQty':100,'status':'planned','direction':'forward','anchorMode':'none','predecessorIds':[],'baselinePlan':None,'dueDate':'2026-10-30'}]
@@ -49,7 +49,7 @@ httpd=server.MPHTTPServer(('127.0.0.1',${PORT}),server.Handler)
 print('READY',flush=True)
 httpd.serve_forever()
 `;
-const srv = spawn(process.platform === 'win32' ? 'python' : 'python3', ['-c', py], { stdio: ['ignore', 'pipe', 'inherit'] });
+const srv = spawn(process.platform === 'win32' ? 'python' : 'python3', ['-c', py], { stdio: ['ignore', 'pipe', 'inherit'], env: { ...process.env, MP_CONFIG_DIR: cfgDir } });
 await new Promise((resolve, reject) => {
   const timer = setTimeout(() => reject(new Error('Server startet nicht')), 20000);
   srv.stdout.on('data', d => { const s = String(d); if (s.includes('SEED-FEHLER')) reject(new Error(s)); if (s.includes('READY')) { clearTimeout(timer); resolve(); } });
@@ -131,9 +131,9 @@ try {
   const staffing = await ev(second, async () => {
     data.personnelAssignments=[{employeeId:'e_lazy',date:'2026-10-08',machineId:'m1',shift:'single',laneIndex:1,start:'06:00',end:'14:30',breaks:[{start:'09:00',end:'09:15'},{start:'12:00',end:'12:15'}]}];
     data.projects.find(p=>p.id==='p_lazy').name='Server Revision Project';
-    save('Staffing für Lazy-Load'); return await flushNow();
+    save('Staffing für Lazy-Load'); const ok=await flushNow(); if(!ok) return document.getElementById('errorModal').textContent+' '+document.getElementById('toast')?.textContent; return ok;
   });
-  check(staffing, 'Zweite Sitzung speichert geänderte Personalbesetzung über echte State-Revision');
+  check(staffing===true, 'Zweite Sitzung speichert geänderte Personalbesetzung über echte State-Revision '+(staffing===true?'':staffing));
   const updated = await sleepless(admin, () => serverRevision > window.__lazyBaseRevision && window.__lazyCount('calcSchedule') > 0, null).then(() => true, () => false);
   check(updated, 'Aktive Planung berechnet nach neuer Serverrevision den Scheduler frisch');
   const afterStaffing = await ev(admin, () => {const s=calcSchedule().fa_lazy||{};return {value:s.conflict||'',revision:serverRevision,plan:s.start?.toISOString()||'',segments:(s.segments||[]).length}});
@@ -189,7 +189,7 @@ try {
   check(false, 'Unerwarteter Fehler: ' + (e.stack || e.message));
 } finally {
   check(errors.length===0, 'Keine JavaScript-Fehler ' + errors.slice(0, 4).join(' | '));
-  await browser.close(); srv.kill(); rmSync(dataDir, { recursive: true, force: true });
+  await browser.close(); srv.kill(); rmSync(dataDir, { recursive: true, force: true }); rmSync(cfgDir, { recursive: true, force: true });
 }
 console.log(`\n${results.filter(x=>x[0]).length}/${results.length} bestanden`);
 process.exit(results.every(x=>x[0])?0:1);

@@ -129,7 +129,7 @@ const leadDenied=await cnc.evaluate(async id=>{const s=await(await fetch('/api/s
  await admin.fill('#qFA','FA-ADMIN-PROJECT');await admin.fill('#qQty','12');await admin.fill('#qDue','2026-11-30');await admin.selectOption('[data-av-department="0"]','cnc');
  check(await admin.locator('[data-av-hours="0"]').count()===0,'admin handoff does not offer hours for CNC');await admin.selectOption('[data-av-department="0"]','konf1');
  check(await admin.locator('[data-av-hours="0"]').isVisible(),'admin handoff exposes editable hours only for confection');await admin.fill('[data-av-hours="0"]','2.5');await admin.click('#createOrder');
- await admin.waitForFunction(async()=>{const s=await(await fetch('/api/state')).json();return s.data.workSteps.some(x=>x.fa==='FA-ADMIN-PROJECT')});
+ for(let i=0;i<50&&!(await getState(admin)).workSteps.some(x=>x.fa==='FA-ADMIN-PROJECT');i++)await admin.waitForTimeout(200);
  const adminHandoff=await getState(admin);const adminRows=adminHandoff.workSteps.filter(x=>x.fa==='FA-ADMIN-PROJECT');
  check(adminRows.length===1&&adminRows[0].projectId==='p1'&&adminRows[0].departmentId==='konf1'&&adminRows[0].handoffUnassigned===true&&!adminRows[0].machineId&&adminRows[0].hours===2.5,'admin project FA is saved in the correct department backlog without resource assignment '+JSON.stringify(adminRows));
  await browser.close();console.log(`AV handoff E2E: ${checks.filter(Boolean).length}/${checks.length} checks passed`);

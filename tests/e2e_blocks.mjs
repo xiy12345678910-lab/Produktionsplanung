@@ -109,7 +109,7 @@ try {
  }
  check(focusedFieldRetained&&await ev(av,id=>{const steps=data.workSteps.filter(o=>o.projectId===id);return steps.length===2&&['AV-4711-A','AV-4711-B'].every(fa=>steps.some(o=>o.fa===fa))},project.id),'AV legt mehrere FA mit unveränderten Nummern an und erhält den gewählten Eingabefokus');
  const second=await ev(av,()=>data.workSteps.find(o=>o.fa==='AV-4711-B').id);
- check(await ev(av,id=>{const step=data.workSteps.find(o=>o.id===id);return step.handoffUnassigned&&!(calcSchedule()[id]?.segments?.length)&&isConfectionDepartment(step.departmentId)&&Number(step.hours)===0&&document.getElementById('board').textContent.includes('Konfektionsstunden fehlen')},second),'Konfektions-FA ohne Stunden bleibt im Bereichsvorrat und belegt keine Kapazität');
+ check(await ev(av,id=>{switchView('overview');renderAll();const step=data.workSteps.find(o=>o.id===id);return step.handoffUnassigned&&!(calcSchedule()[id]?.segments?.length)&&isConfectionDepartment(step.departmentId)&&Number(step.hours)===0&&document.getElementById('board').textContent.includes('Konfektionsstunden fehlen')},second),'Konfektions-FA ohne Stunden bleibt im Bereichsvorrat und belegt keine Kapazität');
  await ev(av,id=>openProject(id),project.id);await av.locator(`[data-fexp="${second}"]`).click();await av.fill(`[data-fa-id="${second}"][data-fa-field="hours"]`,'8');await av.locator(`[data-fa-id="${second}"][data-fa-field="hours"]`).blur();await ev(av,async()=>{if(!await flushNow())throw new Error('AV speichern: '+document.getElementById('errorModal').textContent)});
  check(await ev(av,id=>data.workSteps.find(o=>o.id===id).hours,second)===8,'AV ergänzt Konfektionsstunden direkt am bestehenden FA');await ev(av,()=>closeProject());
  await ev(page,async()=>await syncFromServer());
