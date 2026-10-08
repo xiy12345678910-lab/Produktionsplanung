@@ -217,6 +217,20 @@ class DemandFlow(unittest.TestCase):
             cfg = self.req('GET', '/api/config', None, self.admin)[1]
             self.assertEqual(self.req('PATCH', '/api/config', {'revision': cfg['revision'], 'modules': {'frameOrders': True}}, self.admin)[0], 200)
 
+    def test_gf_and_history_switches(self):
+        """V12.23.0: GF-Steuerung und Historie sind abschaltbar; Historien-Archiv dann serverseitig gesperrt."""
+        cfg = self.req('GET', '/api/config', None, self.admin)[1]
+        self.assertTrue(cfg['modules']['gf'] and cfg['modules']['history'], 'standardmäßig an')
+        self.assertEqual(self.req('GET', '/api/history-archive', None, self.admin)[0], 200)
+        st, r, _ = self.req('PATCH', '/api/config', {'revision': cfg['revision'], 'modules': {'gf': False, 'history': False}}, self.admin)
+        self.assertEqual(st, 200, r)
+        try:
+            st, r, _ = self.req('GET', '/api/history-archive', None, self.admin)
+            self.assertEqual((st, r.get('errorCode')), (403, 'MP-MOD-001'))
+        finally:
+            cfg = self.req('GET', '/api/config', None, self.admin)[1]
+            self.assertEqual(self.req('PATCH', '/api/config', {'revision': cfg['revision'], 'modules': {'gf': True, 'history': True}}, self.admin)[0], 200)
+
     def test_roles_and_scope(self):
         st, r, _ = self.act('frame-order-save', {'number': 'RA-SCOPE', 'customer': 'K', 'articleId': 'ART-X', 'departmentId': DEP, 'totalQty': 10})
         for ck in (self.lead, self.prod, self.view):
