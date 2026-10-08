@@ -1,5 +1,37 @@
-MASCHINENPLANUNG V12.25.0 - RELEASE NOTES
+MASCHINENPLANUNG V12.27.0 - RELEASE NOTES
 =========================================
+Datum: 08.10.2026 · Basis: V12.26.0 · Update gemäß README_Windows.txt 2b, Daten bleiben erhalten
+
+REINIGUNG NACH FA JE MASCHINE (Block F)
+- Neues optionales Maschinenfeld "Reinigung" (hh:mm, 0-24 h) in den Maschineneinstellungen, neben Umrüsten min.
+- Nach jedem FA (geplant, gesperrt, freigegeben) ist die Maschine für diese Zeit belegt (Arbeitszeit der Maschine/des Platzes).
+- Der FA selbst und seine Nachfolger bleiben unverändert (anders als Trocknung): nur die Maschine wird gereinigt.
+- Fertig gemeldete FA blockieren die Maschine bis Fertigmeldung + Reinigung.
+- Server prüft die Eingabe (MP-MACH-018). Ohne Reinigungszeit unveränderte Planung (Referenztest unverändert).
+
+FEINERE AKTIONSRECHTE IN ROLLEN (#55)
+- Eigene Rollen: neue Aktionsrechte "FA anlegen", "FA einplanen", "Produktion starten/pausieren", "Produktion fertigmelden".
+- Rechte schraenken nur ein (Standard = erlaubt, soweit die Systemrolle es kann). Ohne eigene Rolle aendert sich nichts.
+- Altes Recht "Produktion melden" = aus: wirkt wie beide neuen Produktionsrechte aus.
+- Server prueft verbindlich (MP-ROLE-001 bei Produktion, MP-ROLE-010 beim Speichern); Schaltflaechen werden ausgeblendet bzw. gesperrt.
+
+MASCHINENPLANUNG V12.26.0 - RELEASE NOTES
+=========================================
+Datum: 08.10.2026 · Basis: V12.25.0 · Update gemäß README_Windows.txt 2b, Daten bleiben erhalten
+
+PLANUNG SCHNELLER (Roadmap #73, P1)
+- Belegungsprüfung je Maschine über einen sortierten Index statt Vergleich mit allen Belegungen;
+  Arbeitszeiten je Tag und Ressource werden während eines Planungslaufs zwischengespeichert.
+- Gleiches Ergebnis: Referenztest (120 FA) unverändert, Gegenprobe gegen die alte Logik (300 bzw. 600 FA) ohne Abweichung.
+- Laufzeit lokal: 300 FA 2,5 s -> 0,3 s · 600 FA 16 s -> 1,5 s · 1500 FA 186 s -> 9 s.
+- Auch Parallelplaetze und gemeinsame Bediener: 300 FA 20,8 s -> 1,7 s (Gegenprobe ohne Abweichung).
+
+WEITERES
+- Rollen-Audit (#55): Aenderungen an Rollen zeigen im Audit je Recht alt -> neu.
+- Server-Benchmark (Phase 0): 2000 FA speichern 0,8 s, laden 0,05 s (tests/test_bench_state.py).
+
+MASCHINENPLANUNG V12.25.0
+=========================
 Datum: 08.10.2026 · Basis: V12.24.0 · Update gemäß README_Windows.txt 2b, Daten bleiben erhalten
 
 TROCKNUNG: ABTEILUNGSLEITUNG ENTSCHEIDET, EINGABE IN hh:mm

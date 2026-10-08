@@ -2,7 +2,7 @@
 // Phase 0 (#73): Referenzstand der Planungslogik (Scheduler) + Laufzeit-Benchmark.
 // Fester Zeitpunkt und deterministisch erzeugte FA → Ergebnis (Start/Ende/Ressource/Konflikt) muss der Referenz
 // tests/golden/schedule.json entsprechen. So fällt bei Umbauten (Phase 1–4) jede ungewollte Planänderung auf.
-// Benchmark: 300 FA (heute ~2,5 s lokal). Wachstum ~n^2,6 – Optimierung siehe Roadmap #73. Last: MP_BENCH_ORDERS=1500.
+// Benchmark: 300 FA (V12.26.0 ~0,3 s lokal; vorher 2,5 s). Last: MP_BENCH_ORDERS=1500 (vorher 186 s, jetzt ~9 s).
 // node tests/e2e_golden_schedule.mjs            vergleichen
 // node tests/e2e_golden_schedule.mjs --update   Referenz bewusst neu schreiben
 import { spawn } from 'node:child_process';
@@ -17,7 +17,7 @@ const UPDATE = process.argv.includes('--update');
 const PORT = 18990, BASE = `http://127.0.0.1:${PORT}/`, PASS = 'E2E-Golden-1234';
 // Montag 05.10.2026 05:00 Berlin – vor Schichtbeginn, damit die Woche vollständig planbar ist.
 const NOW = new Date('2026-10-05T03:00:00Z');
-const BENCH_ORDERS = Number(process.env.MP_BENCH_ORDERS || 300), BENCH_LIMIT_MS = Number(process.env.MP_BENCH_LIMIT_MS || 15000);
+const BENCH_ORDERS = Number(process.env.MP_BENCH_ORDERS || 300), BENCH_LIMIT_MS = Number(process.env.MP_BENCH_LIMIT_MS || 5000);
 const tmp = mkdtempSync(path.join(tmpdir(), 'mp-golden-'));
 const py = `
 import ipaddress,sys
@@ -85,6 +85,23 @@ try {
   const again = await build(120);
   check(JSON.stringify(again.out) === JSON.stringify(golden.out), 'Scheduler ist deterministisch (zweiter Lauf identisch)');
 
+  // Gegenprobe: dieselbe Planung mit der alten linearen Belegungsprüfung und ohne Kalender-Zwischenspeicher (V12.26.0).
+  {
+    const n = Number(process.env.MP_EQUIV || 300);
+    // Alte (lineare) Fassungen aus V12.25.0, unverändert übernommen.
+    const OLD = { laneHit: 'function laneHit(segments,blocks,lanes,latest=false){let hit=null;for(const s of segments){const rel=blocks.filter(b=>segOverlap(s,b));if(rel.length<lanes)continue;const t0=s.start.getTime(),t1=s.end.getTime(),pts=[...new Set([t0,t1,...rel.flatMap(b=>[b.start.getTime(),b.end.getTime()])])].filter(t=>t>=t0&&t<=t1).sort((a,b)=>a-b);for(let i=0;i<pts.length-1;i++){const m=(pts[i]+pts[i+1])/2,act=rel.filter(b=>b.start.getTime()<m&&b.end.getTime()>m);if(act.length<lanes)continue;const h={start:new Date(Math.max(...act.map(b=>b.start.getTime()))),end:new Date(Math.min(...act.map(b=>b.end.getTime()))),lanes,count:act.length};if(!hit||(latest?h.end>hit.end:h.start<hit.start))hit=h}}return hit}', operatorConflict: "function operatorConflict(candidate,globalSegs,mid=''){if(!candidate.length)return null;if(mid&&!deptShared(deptOfMachine(mid)))return null;globalSegs=globalSegs.filter(x=>!x.machineId||deptShared(deptOfMachine(x.machineId)));const all=[...globalSegs.map(s=>({...s,candidate:false})),...candidate.map(s=>({...s,candidate:true}))];const min=Math.min(...candidate.map(s=>s.start.getTime())),max=Math.max(...candidate.map(s=>s.end.getTime()));const events=[...new Set(all.filter(s=>s.end>min&&s.start<max).flatMap(s=>[Math.max(min,s.start.getTime()),Math.min(max,s.end.getTime())]))].sort((a,b)=>a-b);for(let i=0;i<events.length-1;i++){const a=events[i],b=events[i+1];if(b<=a)continue;const mid=(a+b)/2,active=all.filter(s=>s.start.getTime()<mid&&s.end.getTime()>mid);if(!active.some(s=>s.candidate))continue;const cap=Math.min(...active.map(s=>operatorCapForShift(s.shift)));if(active.length>cap)return {start:new Date(a),end:new Date(b),count:active.length,cap}}return null}" };
+    const linear = () => ev(src => { window.__fn = { firstHit, laneHit, operatorConflict, workIntervalsForDate }; const o = eval('(' + src + ')'); firstHit = function (segments, blocks, lanes = 1) { if (lanes > 1) return laneHit(segments, blocks, lanes); let hit = null; for (const s of segments) for (const b of blocks) if (segOverlap(s, b) && (!hit || b.start < hit.start)) hit = b; return hit }; laneHit = o.laneHit; operatorConflict = o.operatorConflict; workIntervalsForDate = workIntervalsForDateRaw; }, '{laneHit:' + OLD.laneHit + ',operatorConflict:' + OLD.operatorConflict + '}');
+    const restore = () => ev(() => { ({ firstHit, laneHit, operatorConflict, workIntervalsForDate } = window.__fn); });
+    const compare = async (label, setup) => {
+      await ev(setup); const f = await build(n); await linear(); const sl = await build(n); await restore();
+      const diff = Object.keys(f.out).filter(k => JSON.stringify(f.out[k]) !== JSON.stringify(sl.out[k]));
+      check(diff.length === 0, `Gegenprobe ${label} ${n} FA: optimierte und lineare Logik identisch (${diff.length} Abweichungen; ${Math.round(f.ms)} ms vs ${Math.round(sl.ms)} ms)`);
+    };
+    await compare('1 Platz', () => {});
+    // Parallelplätze (laneHit) und gemeinsame Bediener (operatorConflict) aktiv.
+    await compare('2 Plätze + gemeinsame Bediener', () => { window.__lanes = data.machines.map(m => [m, m.lanes]); data.machines.forEach((m, k) => { if (k % 2 === 0) m.lanes = 2 }); window.__shared = data.departments.map(d => [d, d.sharedOperators]); data.departments.forEach(d => { d.sharedOperators = true }) });
+    await ev(() => { for (const [m, l] of window.__lanes) { if (l === undefined) delete m.lanes; else m.lanes = l } for (const [d, v] of window.__shared) { if (v === undefined) delete d.sharedOperators; else d.sharedOperators = v } });
+  }
   const bench = await build(BENCH_ORDERS);
   console.log(`BENCH Scheduler: ${BENCH_ORDERS} FA auf ${bench.machines} Ressourcen in ${Math.round(bench.ms)} ms`);
   check(bench.ms < BENCH_LIMIT_MS, `Benchmark: ${BENCH_ORDERS} FA in ${Math.round(bench.ms)} ms (Grenze ${BENCH_LIMIT_MS} ms)`);

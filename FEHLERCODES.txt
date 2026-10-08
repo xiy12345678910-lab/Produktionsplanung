@@ -1,4 +1,4 @@
-MASCHINENPLANUNG V12.25.0 - FEHLERCODES
+MASCHINENPLANUNG V12.27.0 - FEHLERCODES
 ======================================
 
 Jeder Fehler wird dem Mitarbeiter als Klartext + Code angezeigt.
@@ -417,7 +417,7 @@ MP-ROLE-003  Eigene Rolle fehlt, ist inaktiv, passt nicht zur Systemrolle oder d
 MP-ROLE-004  Rolle nicht gefunden.                                   MP-ROLE-005  Rolle ist Benutzern zugewiesen (nicht löschbar).
 MP-ROLE-006  Rollendaten ungültig (Name, Systemrolle, Rechte).       MP-ROLE-007  Systemrolle einer zugewiesenen Rolle bleibt fest.
 MP-ROLE-008  Rollenname existiert bereits.
-MP-ROLE-010  Speichern abgewiesen: Funktion nur lesbar bzw. Konfektionsstunden für diese Rolle gesperrt.
+MP-ROLE-010  Speichern abgewiesen: Funktion nur lesbar bzw. Konfektionsstunden, FA anlegen bzw. FA einplanen für diese Rolle gesperrt.
 MP-TLS-001   HTTPS-Zertifikat in config\tls ungueltig oder nicht lesbar. Server startet nicht (kein stiller Rueckfall
              auf HTTP). HTTPS_Einrichten.ps1 erneut ausfuehren oder config\tls umbenennen (= wieder HTTP).
 MP-CFG-003   schemaVersion neuer als dieses Programm (nur Warnung): Datei wird gelesen, nicht geaendert.
@@ -446,6 +446,7 @@ Keine neuen Codes. Der Assistent nutzt MP-CFG-00x (Firmenprofil), MP-TPL-040 (Vo
 
 V12.18.0 (Dauer nach Besetzung, Personal je Parallelplatz)
 MP-MACH-017  Dauer nach Besetzung (effortScaling) muss ein/aus sein; im Client: erst aendern, wenn auf der Ressource nichts freigegeben ist oder laeuft.
+MP-MACH-018  Reinigungszeit nach FA (cleanupMinutes) ist ungueltig: ganze Minuten 0-1440 (hh:mm bis 24:00); im Client als hh:mm eingeben.
 MP-MACH-018  Maximale Besetzung (crewMax) muss eine ganze Zahl von 0 bis 99 sein (0 = keine Obergrenze).
 MP-MACH-019  Personal je Parallelplatz (laneStaff) muss Platz 1-20 mit ganzen Zahlen 0-9 enthalten.
 MP-PLAN-047  (erweitert) Freigabeplan mit Besetzung je Segment: Summe aus Dauer x Besetzung muss den Personenstunden entsprechen.

@@ -222,5 +222,89 @@ class ParallelProjects(RoleProfiles):
     test_actions_and_endpoints = None
 
 
+class RoleAudit(RoleProfiles):
+    '''V12.26.0 (#55): Audit nennt bei Rollenänderungen alte und neue Rechte.'''
+    def test_audit_old_and_new_rights(self):
+        st, _, _ = self.put_role('audit-av', {'name': 'Audit AV', 'baseRole': 'production_planning', 'rights': {'projects': 'edit'}})
+        self.assertEqual(st, 200)
+        st, _, _ = self.put_role('audit-av', {'name': 'Audit AV', 'baseRole': 'production_planning', 'rights': {'projects': 'read'}, 'actions': {'confectionHours': False}})
+        self.assertEqual(st, 200)
+        with server.db_session() as con:
+            rows = [json.loads(r['detail']) for r in con.execute("SELECT detail FROM server_audit WHERE action IN ('Rolle angelegt','Rolle geändert') ORDER BY id")]
+        last = [r for r in rows if r.get('rolle') == 'audit-av'][-1]
+        self.assertFalse(last['neu'])
+        self.assertEqual(last['aenderungen']['rights.projects'], {'alt': 'edit', 'neu': 'read'}, last)
+        self.assertIn('actions.confectionHours', last['aenderungen'])
+        self.assertNotIn('name', last['aenderungen'], 'Unveränderte Felder stehen nicht im Audit')
+
+    test_profile_validation_and_management = None
+    test_av_profile_is_enforced_on_server = None
+    test_actions_and_endpoints = None
+
+
+class ActionRightsV1227(RoleProfiles):
+    '''V12.27.0 (#55): FA anlegen/einplanen, Produktion starten/pausieren bzw. fertigmelden.'''
+    def _save(self, ck, mutate):
+        _, state, _ = self.req('GET', '/api/state', None, ck)
+        mutate(state['data'])
+        return self.req('PUT', '/api/state', state, ck)
+
+    def test_fa_create_and_plan(self):
+        self.assertEqual(self.put_role('av-ohne-anlegen', {'name': 'AV ohne Anlegen', 'baseRole': 'production_planning', 'actions': {'faCreate': False, 'faPlan': False}})[0], 200)
+        self.user('av-fa-r', 'production_planning', '', 'av-ohne-anlegen')
+        ck = self.login('av-fa-r')[1]
+        new_ws = lambda d: d['workSteps'].append({**d['workSteps'][0], 'id': 'ws_neu1', 'fa': 'FA-N1', 'faNumber': 'FA-N1', 'order': 'FA-N1', 'sequence': 20, 'pos': 20})
+        st, body, _ = self._save(ck, new_ws)
+        self.assertEqual((st, body.get('errorCode')), (403, 'MP-ROLE-010'), 'FA anlegen gesperrt')
+        st, body, _ = self._save(ck, lambda d: d['workSteps'][0].update(requiredStart='2026-11-02T08:00'))
+        self.assertEqual((st, body.get('errorCode')), (403, 'MP-ROLE-010'), 'FA einplanen gesperrt')
+        st, body, _ = self._save(ck, lambda d: d['workSteps'][0].update(description='Text'))
+        self.assertEqual(st, 200, body)
+        self.assertEqual(self.put_role('av-mit-anlegen', {'name': 'AV mit Anlegen', 'baseRole': 'production_planning', 'actions': {'faCreate': True, 'faPlan': False}})[0], 200)
+        self.user('av-fa-ok', 'production_planning', '', 'av-mit-anlegen')
+        ck2 = self.login('av-fa-ok')[1]
+        st, body, _ = self._save(ck2, new_ws)
+        self.assertEqual(st, 200, body)
+
+    def test_production_split(self):
+        self.assertEqual(self.put_role('lead-ohne-fertig', {'name': 'Leitung ohne Fertigmelden', 'baseRole': 'department_lead', 'actions': {'prodFinish': False}})[0], 200)
+        self.user('lead-pf', 'department_lead', DEP, 'lead-ohne-fertig')
+        ck = self.login('lead-pf')[1]
+        st, body, _ = self.req('POST', '/api/production/ws_k/finish', {'requestId': 'role-split-fin-1', 'goodQty': 1, 'scrapQty': 0}, ck)
+        self.assertEqual((st, body.get('errorCode')), (403, 'MP-ROLE-001'))
+        st, body, _ = self.req('POST', '/api/production/ws_k/abort', {'requestId': 'role-split-abo-1', 'reason': 'x'}, ck)
+        self.assertEqual((st, body.get('errorCode')), (403, 'MP-ROLE-001'))
+        st, body, _ = self.req('POST', '/api/production/ws_k/pause', {'requestId': 'role-split-pau-1'}, ck)
+        self.assertNotEqual(body.get('errorCode'), 'MP-ROLE-001', 'Pausieren nicht durch die Rolle gesperrt')
+        self.assertEqual(self.put_role('lead-ohne-start', {'name': 'Leitung ohne Start', 'baseRole': 'department_lead', 'actions': {'prodStartPause': False}})[0], 200)
+        self.user('lead-ps', 'department_lead', DEP, 'lead-ohne-start')
+        ck2 = self.login('lead-ps')[1]
+        st, body, _ = self.req('POST', '/api/production/ws_k/start', {'requestId': 'role-split-sta-1'}, ck2)
+        self.assertEqual((st, body.get('errorCode')), (403, 'MP-ROLE-001'))
+        st, body, _ = self.req('POST', '/api/production/ws_k/finish', {'requestId': 'role-split-fin-2', 'goodQty': 1, 'scrapQty': 0}, ck2)
+        self.assertNotEqual(body.get('errorCode'), 'MP-ROLE-001', 'Fertigmelden nicht durch die Rolle gesperrt')
+
+    def test_legacy_production_false_maps_to_both(self):
+        self.assertEqual(self.put_role('alt-prod-aus', {'name': 'Alt Produktion aus', 'baseRole': 'department_lead', 'actions': {'production': False}})[0], 200)
+        with server.db_session() as con:
+            self.assertFalse(server.role_profiles(con)['alt-prod-aus']['actions']['prodStartPause'])
+            # direkt gespeichertes Altprofil ohne neue Schlüssel
+            raw = json.loads(con.execute("SELECT json FROM role_profiles WHERE id='alt-prod-aus'").fetchone()[0])
+        raw['actions'] = {'production': False}
+        eff = server.effective_actions(raw['actions'])
+        self.assertEqual((eff['prodStartPause'], eff['prodFinish'], eff['faCreate']), (False, False, True))
+        self.user('lead-alt', 'department_lead', DEP, 'alt-prod-aus')
+        ck = self.login('lead-alt')[1]
+        for act in ('start', 'finish'):
+            st, body, _ = self.req('POST', f'/api/production/ws_k/{act}', {'requestId': f'role-legacy-{act}'}, ck)
+            self.assertEqual((st, body.get('errorCode')), (403, 'MP-ROLE-001'), act)
+        # explizit neue Schlüssel haben Vorrang
+        self.assertEqual(server.effective_actions({'production': False, 'prodFinish': True}), {**server.effective_actions({}), 'prodStartPause': False})
+
+    test_profile_validation_and_management = None
+    test_av_profile_is_enforced_on_server = None
+    test_actions_and_endpoints = None
+
+
 if __name__ == '__main__':
     unittest.main(verbosity=2)

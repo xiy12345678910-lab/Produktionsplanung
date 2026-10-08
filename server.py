@@ -28,7 +28,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 MP_DEBUG_ABORTS = os.environ.get('MP_DEBUG_ABORTS') == '1'
-APP_VERSION = "12.25.0"
+APP_VERSION = "12.27.0"
 HOST = os.environ.get("MP_HOST", "0.0.0.0")
 PORT = int(os.environ.get("MP_PORT", "8765"))
 BASE = Path(__file__).resolve().parent
@@ -840,8 +840,25 @@ def db_session():
 ROLE_FUNCTIONS = (("planning", "Planung & Produktion"), ("projects", "Projekte"), ("frameOrders", "Rahmenaufträge"),
                   ("personnel", "Personal"), ("formats", "Formate"), ("gf", "GF-Steuerung"), ("report", "Report"),
                   ("history", "Historie"), ("chat", "Chat"), ("notifications", "Benachrichtigungen"), ("system", "System"))
-ROLE_ACTIONS = (("production", "Produktion melden (Start, Pause, Fertig)"), ("confectionHours", "Konfektionsstunden vorgeben"),
+# V12.27.0 (#55): „Produktion melden" ist in Starten/Pausieren und Fertigmelden geteilt; FA-Rechte sind neu.
+# Der alte Schlüssel „production" wird nur noch gelesen (false => beide neuen Rechte false).
+ROLE_ACTIONS = (("faCreate", "FA anlegen"), ("faPlan", "FA einplanen"), ("prodStartPause", "Produktion starten/pausieren"),
+                ("prodFinish", "Produktion fertigmelden"), ("confectionHours", "Konfektionsstunden vorgeben"),
                 ("userAdmin", "Benutzer verwalten"), ("updates", "Updates installieren"))
+LEGACY_PRODUCTION_ACTION = "production"
+FA_PLAN_FIELDS = ("machineId", "altMachineId", "allowAlternative", "laneIndex", "pos", "direction", "anchorMode",
+                  "requiredStart", "requiredFinish", "dryingHours")
+
+
+def effective_actions(actions) -> dict:
+    """Aktionsrechte je Schlüssel (Standard ja); alter Schlüssel „production"=false sperrt beide neuen Produktionsrechte."""
+    actions = actions if isinstance(actions, dict) else {}
+    out = {k: bool(actions.get(k, True)) for k, _ in ROLE_ACTIONS}
+    if actions.get(LEGACY_PRODUCTION_ACTION) is False:
+        for k in ("prodStartPause", "prodFinish"):
+            if k not in actions:
+                out[k] = False
+    return out
 ROLE_LEVELS = ("none", "read", "edit")
 # Bei „Lesen" unveränderlich, bei „Kein Zugriff" zusätzlich ausgeblendet (FUNCTION_HIDDEN).
 FUNCTION_DATA = {
@@ -880,7 +897,10 @@ def resolve_profile_id(con, actor: dict, role: str, requested, current: str = ""
 
 
 def role_profiles(con) -> dict:
-    return {r["id"]: json.loads(r["json"]) for r in con.execute("SELECT id,json FROM role_profiles ORDER BY id")}
+    out = {r["id"]: json.loads(r["json"]) for r in con.execute("SELECT id,json FROM role_profiles ORDER BY id")}
+    for p in out.values():
+        p["actions"] = effective_actions(p.get("actions"))
+    return out
 
 
 def attach_rights(user: dict, profile: dict | None) -> dict:
@@ -888,7 +908,7 @@ def attach_rights(user: dict, profile: dict | None) -> dict:
     user["profileId"] = profile["id"] if profile else ""
     user["profileName"] = profile["name"] if profile else ""
     user["rights"] = {k: (profile or {}).get("rights", {}).get(k, "edit") for k, _ in ROLE_FUNCTIONS}
-    user["actions"] = {k: bool((profile or {}).get("actions", {}).get(k, True)) for k, _ in ROLE_ACTIONS}
+    user["actions"] = effective_actions((profile or {}).get("actions"))
     return user
 
 
@@ -919,11 +939,11 @@ def validate_role_profile(body: dict, rid: str) -> dict:
     actions = body.get("actions") or {}
     if not isinstance(rights, dict) or any(k not in dict(ROLE_FUNCTIONS) or v not in ROLE_LEVELS for k, v in rights.items()):
         raise ValueError("Rechte je Funktion: nur none, read oder edit.")
-    if not isinstance(actions, dict) or any(k not in dict(ROLE_ACTIONS) or not isinstance(v, bool) for k, v in actions.items()):
+    if not isinstance(actions, dict) or any((k not in dict(ROLE_ACTIONS) and k != LEGACY_PRODUCTION_ACTION) or not isinstance(v, bool) for k, v in actions.items()):
         raise ValueError("Aktionsrechte: nur ja/nein.")
     return {"id": rid, "name": name, "baseRole": base, "description": str(body.get("description") or "").strip()[:300],
             "active": body.get("active", True) is not False,
-            "rights": {k: rights.get(k, "edit") for k, _ in ROLE_FUNCTIONS}, "actions": {k: actions.get(k, True) for k, _ in ROLE_ACTIONS}}
+            "rights": {k: rights.get(k, "edit") for k, _ in ROLE_FUNCTIONS}, "actions": effective_actions(actions)}
 
 
 def restrict_state_for_rights(out: dict, user: dict) -> None:
@@ -941,6 +961,18 @@ def rights_change_error(old: dict, incoming: dict, user: dict) -> str:
             for key in keys:
                 if canonical(old.get(key)) != canonical(incoming.get(key)):
                     return f"Für „{label}“ besteht nur Leserecht."
+    before_ws = _record_map(old.get("workSteps"))
+    after_ws = _record_map(incoming.get("workSteps"))
+    if not user_action(user, "faCreate") and any(rid not in before_ws for rid in after_ws):
+        return "FA anlegen ist für diese Rolle gesperrt."
+    if not user_action(user, "faPlan"):
+        for rid, after in after_ws.items():
+            prev = before_ws.get(rid)
+            if prev is None:
+                continue
+            if any(canonical(prev.get(f)) != canonical(after.get(f)) for f in FA_PLAN_FIELDS) or \
+                    (canonical(prev.get("handoffUnassigned")) != canonical(after.get("handoffUnassigned")) and prev.get("handoffUnassigned") and not after.get("handoffUnassigned")):
+                return "FA einplanen ist für diese Rolle gesperrt."
     if not user_action(user, "confectionHours"):
         dep_names = {str(d.get("id")): str(d.get("name") or "") for d in old.get("departments") or [] if isinstance(d, dict)}
         before = _record_map(old.get("workSteps"))
@@ -2992,6 +3024,9 @@ def validate_state(old: dict, new: dict) -> tuple[bool, str, str]:
         setup = _finite_float(m.get("setupMinutes", 0))
         if setup is None or setup < 0 or setup > 1440:
             return False, "MP-MACH-009", f"Umrüstzeit von Maschine '{m.get('name') or mid}' ist ungültig."
+        cleanup = _finite_float(m.get("cleanupMinutes", 0))
+        if cleanup is None or cleanup < 0 or cleanup > 1440 or not cleanup.is_integer():
+            return False, "MP-MACH-018", f"Reinigungszeit von Maschine '{m.get('name') or mid}' ist ungültig (0–24 h)."
         ok, reason = _validate_machine_format_fields(m)
         if not ok:
             return False, "MP-MACH-014", f"Maschine '{m.get('name') or mid}': {reason}"
@@ -5346,7 +5381,18 @@ class Handler(BaseHTTPRequestHandler):
             if before and canonical(before) != canonical({**profile, "createdAt": before.get("createdAt"), "updatedAt": before.get("updatedAt"), "updatedBy": before.get("updatedBy")}):
                 # Geänderte Rechte gelten sofort: betroffene Sitzungen neu anmelden lassen.
                 con.execute("DELETE FROM sessions WHERE user_id IN (SELECT id FROM users WHERE profile_id=?)", (rid,))
-            con.execute("INSERT INTO server_audit(ts,username,action,detail,revision) VALUES(?,?,?,?,NULL)", (stamp, user["username"], "Rolle gespeichert", json.dumps(profile, ensure_ascii=False)))
+            # V12.26.0 (#55): Audit mit alten und neuen Rechten (nur geänderte Einträge), damit Rechteänderungen nachvollziehbar sind.
+            changes = {}
+            for key in ("name", "baseRole", "active", "description"):
+                if (before or {}).get(key) != profile.get(key):
+                    changes[key] = {"alt": (before or {}).get(key), "neu": profile.get(key)}
+            for group in ("rights", "actions"):
+                old_g, new_g = (before or {}).get(group) or {}, profile.get(group) or {}
+                for key in sorted(set(old_g) | set(new_g)):
+                    if old_g.get(key) != new_g.get(key):
+                        changes[f"{group}.{key}"] = {"alt": old_g.get(key), "neu": new_g.get(key)}
+            detail = {"rolle": rid, "neu": before is None, "aenderungen": changes, "profil": profile}
+            con.execute("INSERT INTO server_audit(ts,username,action,detail,revision) VALUES(?,?,?,?,NULL)", (stamp, user["username"], "Rolle angelegt" if before is None else "Rolle geändert", json.dumps(detail, ensure_ascii=False)))
         return self.json_response(200, {"ok": True, "profile": profile, "users": assigned})
 
     def require_rights(self, user, function=None, level="read", action=None) -> bool:
@@ -5775,7 +5821,16 @@ class Handler(BaseHTTPRequestHandler):
         production_path = re.fullmatch(r"/api/production/([A-Za-z0-9_-]{1,80})/(release|start|pause|resume|partial|finish|abort|label)", path)
         if production_path:
             user = self.require_user(["admin", *DEPARTMENT_ROLES, "production"])
-            if not user or not self.require_rights(user, action="production") or not self.require_current_client():
+            if not user:
+                return
+            pact = production_path.group(2)
+            if pact == "label":
+                allowed = (user_action(user, "prodStartPause") or user_action(user, "prodFinish")) or self.require_rights(user, action="prodStartPause")
+                if not allowed:
+                    return
+            elif not self.require_rights(user, action="prodStartPause" if pact in ("release", "start", "pause", "resume") else "prodFinish"):
+                return
+            if not self.require_current_client():
                 return
             if production_path.group(2) == "label" and not module_on("palletLabels"):
                 return self.json_response(403, module_error("palletLabels"))

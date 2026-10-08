@@ -44,6 +44,8 @@ try {
   check(await admin.locator('[data-role-right="system"] option').count() === 1, 'Rechte sind auf die Systemrolle begrenzt (AV: System nur „Kein Zugriff“)');
   await admin.selectOption('[data-role-right="projects"]', 'read');
   await admin.selectOption('[data-role-right="frameOrders"]', 'none');
+  check(await admin.locator('[data-role-action="faCreate"], [data-role-action="faPlan"], [data-role-action="prodStartPause"], [data-role-action="prodFinish"]').count() === 4, 'Rolleneditor zeigt die 4 neuen Aktionsrechte (FA anlegen/einplanen, Produktion starten/fertigmelden)');
+  check(await admin.locator('[data-role-action="faCreate"]').isEnabled() && await admin.locator('[data-role-action="prodFinish"]').isDisabled(), 'Aktionsrechte sind durch die Systemrolle begrenzt (AV: Fertigmelden nicht verfügbar)');
   await admin.uncheck('[data-role-action="confectionHours"]');
   await admin.click('#roleSave'); await admin.waitForTimeout(600);
   check(await admin.locator('[data-role-open="av-projekte-lesend"]').isVisible(), 'Eigene Rolle gespeichert und in der Liste');
