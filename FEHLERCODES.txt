@@ -1,4 +1,4 @@
-MASCHINENPLANUNG V12.26.0 - FEHLERCODES
+MASCHINENPLANUNG V12.27.0 - FEHLERCODES
 ======================================
 
 Jeder Fehler wird dem Mitarbeiter als Klartext + Code angezeigt.
@@ -446,6 +446,7 @@ Keine neuen Codes. Der Assistent nutzt MP-CFG-00x (Firmenprofil), MP-TPL-040 (Vo
 
 V12.18.0 (Dauer nach Besetzung, Personal je Parallelplatz)
 MP-MACH-017  Dauer nach Besetzung (effortScaling) muss ein/aus sein; im Client: erst aendern, wenn auf der Ressource nichts freigegeben ist oder laeuft.
+MP-MACH-018  Reinigungszeit nach FA (cleanupMinutes) ist ungueltig: ganze Minuten 0-1440 (hh:mm bis 24:00); im Client als hh:mm eingeben.
 MP-MACH-018  Maximale Besetzung (crewMax) muss eine ganze Zahl von 0 bis 99 sein (0 = keine Obergrenze).
 MP-MACH-019  Personal je Parallelplatz (laneStaff) muss Platz 1-20 mit ganzen Zahlen 0-9 enthalten.
 MP-PLAN-047  (erweitert) Freigabeplan mit Besetzung je Segment: Summe aus Dauer x Besetzung muss den Personenstunden entsprechen.

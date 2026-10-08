@@ -28,7 +28,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 MP_DEBUG_ABORTS = os.environ.get('MP_DEBUG_ABORTS') == '1'
-APP_VERSION = "12.26.0"
+APP_VERSION = "12.27.0"
 HOST = os.environ.get("MP_HOST", "0.0.0.0")
 PORT = int(os.environ.get("MP_PORT", "8765"))
 BASE = Path(__file__).resolve().parent
@@ -2992,6 +2992,9 @@ def validate_state(old: dict, new: dict) -> tuple[bool, str, str]:
         setup = _finite_float(m.get("setupMinutes", 0))
         if setup is None or setup < 0 or setup > 1440:
             return False, "MP-MACH-009", f"Umrüstzeit von Maschine '{m.get('name') or mid}' ist ungültig."
+        cleanup = _finite_float(m.get("cleanupMinutes", 0))
+        if cleanup is None or cleanup < 0 or cleanup > 1440 or not cleanup.is_integer():
+            return False, "MP-MACH-018", f"Reinigungszeit von Maschine '{m.get('name') or mid}' ist ungültig (0–24 h)."
         ok, reason = _validate_machine_format_fields(m)
         if not ok:
             return False, "MP-MACH-014", f"Maschine '{m.get('name') or mid}': {reason}"
