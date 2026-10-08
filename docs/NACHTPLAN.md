@@ -20,7 +20,7 @@ Auftrag (Jonas, 08.10. abends): über Nacht selbständig an #73, #55, #51, #52 a
 ## Warteschlange (Status: offen / läuft / erledigt + Commit)
 | # | Issue | Aufgabe | Modell | Status |
 |---|---|---|---|---|
-| 1 | #73 Phase 0 | Rechte-Matrix für Schreibzugriffe (Rolle × Datenbereich) als Referenztest | Sonnet | offen |
+| 1 | #73 Phase 0 | Rechte-Matrix für Schreibzugriffe (Rolle × Datenbereich) als Referenztest | Sonnet | erledigt (Commit „Phase 0: Schreib-Matrix (Rolle × Datenbereich) als Referenztest (#73)“) |
 | 2 | #73 Phase 0 | Release-Regeln dokumentieren (nur über den Workflow; GitHub-Regeln für Tags) | Haiku | offen |
 | 3 | #55 | Warnung bei riskanten Rollen-Kombinationen im Rolleneditor | Sonnet | offen |
 | 4 | #51 | Inventur der fest verdrahteten IDs (cnc, thermoforming, konf …) – nur Analyse | Haiku | offen |
