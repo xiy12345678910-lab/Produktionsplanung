@@ -22,6 +22,9 @@ SYSTEMSTATUS UND DIAGNOSEPAKET FUER DEN ADMIN (#52 K6)
 UPDATER: PROGRAMMDATEIEN IN UNTERORDNERN (#73, Vorbereitung)
 - Updater, Setup, Vorabtest und Rollback koennen Programmdateien in einer Unterordnerebene (z. B. core/) installieren und sichern; unzulaessige Pfade werden abgewiesen (MP-UPD-006). Noch nichts verschoben, Paketinhalt unveraendert.
 
+INTERN: BACKEND-MODUL mp_config.py (#73 Phase 1)
+- Firmenkonfiguration (firma.json laden/pruefen/migrieren/speichern, Logo/SVG-Pruefung, Branding, Module) liegt im neuen Modul mp_config.py neben server.py (flach, Teil des Pakets). Keine Verhaltensaenderung; server.py bietet alle Namen weiter an.
+
 BEREICHS-FLAGS STATT FESTER IDS (#51)
 - Die serverseitige Bedienerkapazitätsprüfung bei der Freigabe richtet sich nach dem Bereichs-Flag "Bediener geteilt" (wie im Client) statt nach der ID "cnc"; Maschinen ohne Bereich fallen auf den ersten aktiven Produktionsbereich zurück. Bestand unverändert (cnc trägt das Flag bereits).
 
