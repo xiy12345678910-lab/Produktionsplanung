@@ -84,7 +84,8 @@ try:
 
     # ---------- 2. Böswillige oder unzulässige Namen im Manifest ----------
     bad_names = ["../x.py", "core/../../x", "C:/x", "C:x.py", "core\\x.py", "a/b/c.py", "/x.py", "core/", "/core/x.py", "core//x.py", "",
-                 ".git/x.py", "core/.hidden", ".env", "core/x.", "x.", "CON", "core/nul.py", "aux.txt", "LPT1/x.py", "co re/x.py", "core/x.py\n"]
+                 ".git/x.py", "core/.hidden", ".env", "core/x.", "x.", "CON", "core/nul.py", "aux.txt", "LPT1/x.py", "co re/x.py", "core/x.py\n",
+                 "config/x.py", "Config/x.py", "DATA/x.py", "backups/x.py", "update_backups/x.py", "updates/x.py", "__pycache__/x.py"]
     leaked = []
     for name in bad_names:
         m = json.loads(json.dumps(manifest))
@@ -196,7 +197,7 @@ try:
     # ---------- 6. PowerShell: gleiche Regel, keine flachen Kopien mehr ----------
     common = (SRC / "MP_Common.ps1").read_text(encoding="utf-8-sig")
     ps_rx = re.search(r"\$Name -cnotmatch '([^']+)'", common)
-    check(ps_rx is not None and ps_rx.group(1) == "^" + U.MEMBER.pattern + "$", "Test-MPAppName nutzt dasselbe Muster wie app_updates.MEMBER",
+    check(ps_rx is not None and ps_rx.group(1) == r"\A" + U.MEMBER.pattern + r"\z", "Test-MPAppName nutzt dasselbe Muster wie app_updates.MEMBER",
           ps_rx.group(1) if ps_rx else "fehlt")
     ps_dev = re.search(r"\$part -match '\^\(([^)]+)\)", common)
     check(ps_dev is not None and ps_dev.group(1) in U.WINDOWS_RESERVED.pattern and "StartsWith('.')" in common and "EndsWith('.')" in common,
@@ -205,7 +206,7 @@ try:
     flat = [n for n, t in scripts.items() for line in t.splitlines() if re.search(r"\$MP_AppFiles\)", line) and "Copy-Item" in line]
     check(not flat, "keine flache Copy-Item-Schleife über $MP_AppFiles mehr (MP_Common, Setup, UPDATE_LIVE, CI-Deploy)", ", ".join(flat))
     uses = {n: t.count("Copy-MPAppFile") for n, t in scripts.items()}
-    check(uses["Setup_Windows.ps1"] >= 1 and uses["UPDATE_LIVE.ps1"] >= 3 and uses["tests/ci_windows_deploy.ps1"] == 2 and "foreach ($name in $MP_AppFiles) { Copy-MPAppFile $NewSource $dir $name }" in common,
+    check(uses["Setup_Windows.ps1"] >= 1 and uses["UPDATE_LIVE.ps1"] >= 3 and uses["tests/ci_windows_deploy.ps1"] >= 2 and "foreach ($name in $MP_AppFiles) { Copy-MPAppFile $NewSource $dir $name }" in common,
           "Setup, Update, Vorabtest, Rollback und CI-Deploy kopieren über Copy-MPAppFile", str(uses))
     upd = scripts["UPDATE_LIVE.ps1"]
     step5 = upd[upd.index("5/9 Bisherigen Programmstand sichern"):upd.index("6/9 Dateien")]

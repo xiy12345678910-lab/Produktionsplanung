@@ -22,6 +22,7 @@ ACTIVE = {'checking', 'download', 'preflight', 'backup', 'installation', 'migrat
 MAX_PACKAGE = 64 * 1024 * 1024
 # Program files: a flat name or exactly one subfolder level, always with '/' (e.g. core/config.py).
 MEMBER = re.compile(r'[A-Za-z0-9_.-]+(/[A-Za-z0-9_.-]+)?')
+RESERVED_DIRS = {'config', 'data', 'backups', 'update_backups', 'updates', '__pycache__'}
 WINDOWS_RESERVED = re.compile(r'(?i)(con|prn|aux|nul|com[0-9]|lpt[0-9])(\..*)?')
 
 
@@ -33,6 +34,8 @@ def member_name(name):
     for part in name.split('/'):
         if part.startswith('.') or part.endswith('.') or WINDOWS_RESERVED.fullmatch(part):
             raise ValueError('Ungültige Datei im Updatepaket.')
+    if '/' in name and name.split('/')[0].lower() in RESERVED_DIRS:
+        raise ValueError('Ungültige Datei im Updatepaket.')
     return name
 
 

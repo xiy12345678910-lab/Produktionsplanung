@@ -47,7 +47,9 @@ $MP_ObsoleteFiles = @(
 # (z. B. 'core/config.py', immer mit '/'). Gleiche Regel wie app_updates.member_name.
 function Test-MPAppName([string]$Name) {
     # Kein '..', kein Laufwerk, kein '\', keine leeren Teile, keine Punkt-Teile, keine Geraetenamen, max. eine Ebene.
-    if ($Name -cnotmatch '^[A-Za-z0-9_.-]+(/[A-Za-z0-9_.-]+)?$') { return $false }
+    if ($Name -cnotmatch '\A[A-Za-z0-9_.-]+(/[A-Za-z0-9_.-]+)?\z') { return $false }
+    # Reservierte Ordner (Konfiguration, Daten, Sicherungen) sind keine Programmordner.
+    if ($Name.Contains('/') -and (@('config', 'data', 'backups', 'update_backups', 'updates', '__pycache__') -contains $Name.Split('/')[0])) { return $false }
     foreach ($part in $Name.Split('/')) {
         if ($part.StartsWith('.') -or $part.EndsWith('.') -or $part -match '^(con|prn|aux|nul|com[0-9]|lpt[0-9])(\..*)?$') { return $false }
     }

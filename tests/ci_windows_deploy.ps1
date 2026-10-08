@@ -99,6 +99,56 @@ Check ($bakBefore.Count -gt 0) "backups\ enthaelt $($bakBefore.Count) Dateien"
 
 # ---------------- 3. Neues Paket = $MP_AppFiles des aktuellen Stands ----------------
 . (Join-Path $Repo 'MP_Common.ps1')
+
+# ---- 3a. Unterordner-Helfer (#73): Pfad, Kopieren, Dateiliste alter Staende, Backup/Rollback wie UPDATE_LIVE.ps1 ----
+$sub = Join-Path $Work 'subtest'
+$subSrc = Join-Path $sub 'pkg'; $subLive = Join-Path $sub 'live'; $subRb = Join-Path $sub 'rb'
+foreach ($d in @($subSrc, $subLive, $subRb)) { New-Item -ItemType Directory -Path $d -Force | Out-Null }
+Check ((Get-MPAppPath $sub 'core/x.py') -eq (Join-Path (Join-Path $sub 'core') 'x.py') -and -not (Test-MPAppName 'config/x.py') -and -not (Test-MPAppName 'a/b/c.py') -and -not (Test-MPAppName '..\x.py')) 'Get-MPAppPath/Test-MPAppName: core/x.py ok, config/, zwei Ebenen und .. abgewiesen'
+New-Item -ItemType Directory -Path (Join-Path $subSrc 'core') | Out-Null
+[IO.File]::WriteAllBytes((Join-Path $subSrc 'core\x.py'), [byte[]](0, 1, 2, 255, 13, 10))
+Copy-MPAppFile $subSrc $subLive 'core/x.py'
+Check (Test-Path -LiteralPath (Join-Path $subLive 'core\x.py') -PathType Leaf) 'Copy-MPAppFile legt core\ im Ziel an'
+$oldCommon = (& git -C $Repo show 'v12.22.0:MP_Common.ps1') -join "`n"
+if ($LASTEXITCODE -ne 0 -or -not $oldCommon) { $oldCommon = [IO.File]::ReadAllText((Join-Path $Repo 'MP_Common.ps1')); $oldIsCurrent = $true } else { $oldIsCurrent = $false }
+$oldDir = Join-Path $sub 'oldcommon'
+New-Item -ItemType Directory -Path $oldDir | Out-Null
+[IO.File]::WriteAllText((Join-Path $oldDir 'MP_Common.ps1'), $oldCommon)
+$oldList = @(Get-MPAppFileList $oldDir)
+Check ($oldList.Count -gt 0 -and $oldList -contains 'server.py' -and (-not $oldIsCurrent -or $oldList.Count -eq @($MP_AppFiles).Count)) "Get-MPAppFileList liest die Dateiliste eines alten MP_Common.ps1 ($($oldList.Count) Dateien, aktuell $(@($MP_AppFiles).Count))"
+# Backup/Rollback wie UPDATE_LIVE.ps1: live hat core\x.py (alt) und server.py; das Update ueberschreibt core\x.py,
+# fuegt core\neu.py hinzu und legt __pycache__ an; der Rollback muss den alten Stand byte-genau herstellen.
+[IO.File]::WriteAllText((Join-Path $subLive 'server.py'), 'alt')
+foreach ($name in @($oldList + @('core/x.py', 'core/neu.py') | Where-Object { $_.Contains('/') -and (Test-MPAppName $_) } | Sort-Object -Unique)) {
+    if (Test-Path -LiteralPath (Get-MPAppPath $subLive $name) -PathType Leaf) { Copy-MPAppFile $subLive $subRb $name }
+}
+$hashBefore = (Get-FileHash -LiteralPath (Join-Path $subLive 'core\x.py')).Hash
+[IO.File]::WriteAllBytes((Join-Path $subSrc 'core\x.py'), [byte[]](9, 9, 9)); [IO.File]::WriteAllText((Join-Path $subSrc 'core\neu.py'), 'neu')
+foreach ($name in @('core/x.py', 'core/neu.py')) { Copy-MPAppFile $subSrc $subLive $name }
+Check ((Get-FileHash -LiteralPath (Join-Path $subLive 'core\x.py')).Hash -ne $hashBefore) 'Simulation: Update hat core\x.py geaendert'
+# Rollback-Schleife (Auszug aus UPDATE_LIVE.ps1)
+Get-ChildItem -LiteralPath $subRb -Directory | Where-Object { $_.Name -ne $MP_ConfigDir } | ForEach-Object {
+    $s = $_.Name
+    foreach ($file in @(Get-ChildItem -LiteralPath $_.FullName -File)) { Copy-MPAppFile $subRb $subLive "$s/$($file.Name)" }
+}
+New-Item -ItemType Directory -Path (Join-Path $subLive 'core\__pycache__') | Out-Null
+foreach ($name in @('core/x.py', 'core/neu.py')) {
+    if (-not (Test-Path -LiteralPath (Get-MPAppPath $subRb $name))) {
+        $neu = Get-MPAppPath $subLive $name
+        Remove-Item -LiteralPath $neu -Force -ErrorAction SilentlyContinue
+        $parent = Split-Path -Parent $neu
+        if ($name.Contains('/')) { Remove-Item -LiteralPath (Join-Path $parent '__pycache__') -Recurse -Force -ErrorAction SilentlyContinue }
+        if ($name.Contains('/') -and (Test-Path -LiteralPath $parent) -and -not (Get-ChildItem -LiteralPath $parent -Force)) { Remove-Item -LiteralPath $parent -Force -ErrorAction SilentlyContinue }
+    }
+}
+Check ((Get-FileHash -LiteralPath (Join-Path $subLive 'core\x.py')).Hash -eq $hashBefore -and -not (Test-Path -LiteralPath (Join-Path $subLive 'core\neu.py'))) 'Rollback stellt core\x.py byte-genau her und entfernt core\neu.py'
+Remove-Item -LiteralPath (Join-Path $subLive 'core') -Recurse -Force
+foreach ($name in @('core/neu.py')) { Copy-MPAppFile $subSrc $subLive $name }
+$neu = Get-MPAppPath $subLive 'core/neu.py'; Remove-Item -LiteralPath $neu -Force
+New-Item -ItemType Directory -Path (Join-Path $subLive 'core\__pycache__') | Out-Null
+Remove-Item -LiteralPath (Join-Path (Split-Path -Parent $neu) '__pycache__') -Recurse -Force
+if (-not (Get-ChildItem -LiteralPath (Split-Path -Parent $neu) -Force)) { Remove-Item -LiteralPath (Split-Path -Parent $neu) -Force }
+Check (-not (Test-Path -LiteralPath (Join-Path $subLive 'core'))) 'Rollback entfernt den neuen Ordner core\ (mit __pycache__), wenn er leer wird'
 $new = Join-Path $Work 'new'
 New-Item -ItemType Directory -Path $new | Out-Null
 foreach ($name in $MP_AppFiles) { Copy-MPAppFile $Repo $new $name }

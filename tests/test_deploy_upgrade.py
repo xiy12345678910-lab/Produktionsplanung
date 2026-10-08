@@ -200,6 +200,8 @@ def rollback_code(rb: Path, live: Path, app: list[str]):
         if not app_path(rb, n).exists():
             target = app_path(live, n)
             target.unlink(missing_ok=True)
+            if "/" in n:
+                shutil.rmtree(target.parent / "__pycache__", ignore_errors=True)
             if "/" in n and target.parent.is_dir() and not any(target.parent.iterdir()):
                 target.parent.rmdir()
     shutil.rmtree(live / "__pycache__", ignore_errors=True)

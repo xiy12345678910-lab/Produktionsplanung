@@ -125,7 +125,9 @@ try {
     New-Item -ItemType Directory -Path $RollbackCode -Force | Out-Null
     Get-ChildItem -LiteralPath $OldBase -File | Copy-Item -Destination $RollbackCode -Force
     # Programmdateien in Unterordnern (z. B. core/x.py): alte UND neue Dateiliste, nur was im Live-Ordner existiert.
-    foreach ($name in @(@(Get-MPAppFileList $OldBase) + @($MP_AppFiles) | Where-Object { $_.Contains('/') -and (Test-MPAppName $_) } | Sort-Object -Unique)) {
+    $oldList = @(Get-MPAppFileList $OldBase)
+    if ($oldList.Count -eq 0 -and (Test-Path -LiteralPath (Join-Path $OldBase 'MP_Common.ps1'))) { Write-Warning 'Dateiliste des installierten MP_Common.ps1 nicht lesbar - Unterordner-Dateien werden nur ueber die neue Liste gesichert.' }
+    foreach ($name in @($oldList + @($MP_AppFiles) + @($MP_ObsoleteFiles) | Where-Object { $_.Contains('/') -and (Test-MPAppName $_) } | Sort-Object -Unique)) {
         if (Test-Path -LiteralPath (Get-MPAppPath $OldBase $name) -PathType Leaf) { Copy-MPAppFile $OldBase $RollbackCode $name }
     }
     if (Test-Path -LiteralPath (Join-Path $OldBase $MP_ConfigDir)) {
@@ -206,7 +208,7 @@ catch {
     Set-MPUpdateStage 'rollback' $err.Exception.Message
     Write-Host 'Rollback wird ausgefuehrt ...' -ForegroundColor Yellow
     try { Stop-MPServer $TargetBase } catch { Stop-ScheduledTask -TaskName $MP_TaskName -ErrorAction SilentlyContinue }
-    if (-not $migrating -and $RollbackCode -and (Test-Path $RollbackCode)) {
+    if (-not $migrating -and $RollbackCode -and (Test-Path -LiteralPath $RollbackCode)) {
         Get-ChildItem -LiteralPath $RollbackCode -File | Where-Object { $_.Name -ne 'maschinenplanung_vor_update.sqlite3' } |
             Copy-Item -Destination $TargetBase -Force
         # Gesicherte Programm-Unterordner (eine Ebene, nie config\) zurueckspielen; andere Dateien bleiben unberuehrt.
@@ -228,6 +230,7 @@ catch {
                 Remove-Item -LiteralPath $neu -Force -ErrorAction SilentlyContinue
                 # Einen dadurch leer gewordenen Programm-Unterordner entfernen (nur wenn wirklich leer).
                 $parent = Split-Path -Parent $neu
+                if ($name.Contains('/')) { Remove-Item -LiteralPath (Join-Path $parent '__pycache__') -Recurse -Force -ErrorAction SilentlyContinue }
                 if ($name.Contains('/') -and (Test-Path -LiteralPath $parent) -and -not (Get-ChildItem -LiteralPath $parent -Force)) { Remove-Item -LiteralPath $parent -Force -ErrorAction SilentlyContinue }
             }
         }
