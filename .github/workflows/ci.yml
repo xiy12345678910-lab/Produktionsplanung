@@ -49,6 +49,7 @@ jobs:
           python tests/test_tls.py
           python tests/test_demand.py
           python tests/test_roles_rights.py
+          python tests/test_role_warnings.py
           python tests/test_golden.py
           python tests/test_bench_state.py
           python tests/test_drying_server.py

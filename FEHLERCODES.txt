@@ -419,6 +419,9 @@ MP-ROLE-004  Rolle nicht gefunden.                                   MP-ROLE-005
 MP-ROLE-006  Rollendaten ungültig (Name, Systemrolle, Rechte).       MP-ROLE-007  Systemrolle einer zugewiesenen Rolle bleibt fest.
 MP-ROLE-008  Rollenname existiert bereits.
 MP-ROLE-010  Speichern abgewiesen: Funktion nur lesbar bzw. Konfektionsstunden, FA anlegen bzw. FA einplanen für diese Rolle gesperrt.
+MP-ROLE-011  Hinweis (kein Fehler): Benutzer verwalten zusammen mit operativen Rechten (Vier-Augen-Prinzip).
+MP-ROLE-012  Hinweis (kein Fehler): FA anlegen und Produktion fertigmelden in einer Rolle.
+MP-ROLE-013  Hinweis (kein Fehler): Benutzer verwalten zusammen mit Bearbeitungsrecht für System.
 MP-TLS-001   HTTPS-Zertifikat in config\tls ungueltig oder nicht lesbar. Server startet nicht (kein stiller Rueckfall
              auf HTTP). HTTPS_Einrichten.ps1 erneut ausfuehren oder config\tls umbenennen (= wieder HTTP).
 MP-CFG-003   schemaVersion neuer als dieses Programm (nur Warnung): Datei wird gelesen, nicht geaendert.

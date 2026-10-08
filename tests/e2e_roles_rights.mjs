@@ -72,6 +72,13 @@ try {
 
   // Deaktivieren sperrt die Anmeldung mit verständlicher Meldung
   await admin.locator('[data-systab="roles"]').click(); await admin.click('[data-role-open="av-projekte-lesend"]');
+  // #55: Warnung bei riskanten Kombinationen (beratend, live im Editor)
+  await admin.click('[data-role-template="department_lead"]');
+  check(await admin.locator('#roleWarnings').waitFor({ state: 'visible', timeout: 10000 }).then(() => true, () => false), 'Rolleneditor zeigt Warnung bei riskanter Kombination (Benutzer verwalten + operative Rechte)');
+  await admin.uncheck('[data-role-action="userAdmin"]'); await admin.uncheck('[data-role-action="faCreate"]');
+  check(await admin.locator('#roleWarnings').waitFor({ state: 'hidden', timeout: 10000 }).then(() => true, () => false), 'Warnung verschwindet live, sobald die Kombination aufgelöst ist');
+  check(await admin.locator('#roleSave').isEnabled(), 'Speichern bleibt trotz Warnungen möglich');
+  await admin.click('[data-role-open="av-projekte-lesend"]');
   await admin.selectOption('#roleActive', '0'); await admin.click('#roleSave'); await admin.waitForTimeout(500);
   const p2 = await browser.newPage(); await p2.goto(BASE); await p2.fill('#loginUser', 'av-lesend'); await p2.fill('#loginPassword', PASS); await p2.click('#loginBtn'); await p2.waitForTimeout(700);
   check((await p2.locator('body').innerText()).includes('deaktiviert'), 'Deaktivierte Rolle: Anmeldung mit Hinweis abgewiesen');

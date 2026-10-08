@@ -899,6 +899,26 @@ def resolve_profile_id(con, actor: dict, role: str, requested, current: str = ""
     return pid
 
 
+def role_risk_warnings(profile) -> list:
+    """V12.27.0 (#55): Hinweise zu riskanten Rechte-Kombinationen eines Rollenprofils. Rein beratend – blockiert nie das Speichern
+    und ändert keine Rechteprüfung. Regeln nur dort, wo das Datenmodell sie hergibt (Aktionen sind standardmäßig erlaubt)."""
+    profile = profile if isinstance(profile, dict) else {}
+    actions = effective_actions(profile.get("actions"))
+    rights = profile.get("rights") if isinstance(profile.get("rights"), dict) else {}
+    base = profile.get("baseRole")
+    planning_edit = rights.get("planning", "edit") == "edit"
+    manager = base in USER_MANAGER_ROLES  # nur hier wirkt „Benutzer verwalten“ überhaupt
+    out = []
+    if manager and actions["userAdmin"] and planning_edit and (actions["faCreate"] or actions["faPlan"] or actions["prodFinish"]):
+        out.append({"code": "MP-ROLE-011", "text": "Benutzer verwalten zusammen mit operativen Rechten (FA anlegen/einplanen, Produktion fertigmelden): "
+                    "Vier-Augen-Prinzip fehlt, die Rolle könnte sich selbst Rechte geben und damit arbeiten."})
+    if manager and planning_edit and actions["faCreate"] and actions["prodFinish"]:  # beide Rechte hat nur Bereichsleiter/Vertretung
+        out.append({"code": "MP-ROLE-012", "text": "FA anlegen und Produktion fertigmelden in einer Rolle: Aufträge können ohne zweite Kontrolle angelegt und selbst fertiggemeldet werden."})
+    if manager and actions["userAdmin"] and rights.get("system", "edit") == "edit":
+        out.append({"code": "MP-ROLE-013", "text": "Benutzer verwalten zusammen mit Bearbeitungsrecht für System: Konten und Systemeinstellungen (Maschinen, Bereiche, Schichten) lassen sich ohne Gegenkontrolle ändern."})
+    return out
+
+
 def role_profiles(con) -> dict:
     out = {r["id"]: json.loads(r["json"]) for r in con.execute("SELECT id,json FROM role_profiles ORDER BY id")}
     for p in out.values():
@@ -5451,7 +5471,7 @@ class Handler(BaseHTTPRequestHandler):
                         changes[f"{group}.{key}"] = {"alt": old_g.get(key), "neu": new_g.get(key)}
             detail = {"rolle": rid, "neu": before is None, "aenderungen": changes, "profil": profile}
             con.execute("INSERT INTO server_audit(ts,username,action,detail,revision) VALUES(?,?,?,?,NULL)", (stamp, user["username"], "Rolle angelegt" if before is None else "Rolle geändert", json.dumps(detail, ensure_ascii=False)))
-        return self.json_response(200, {"ok": True, "profile": profile, "users": assigned})
+        return self.json_response(200, {"ok": True, "profile": profile, "users": assigned, "warnings": role_risk_warnings(profile)})
 
     def require_rights(self, user, function=None, level="read", action=None) -> bool:
         """Rechte des Rollenprofils (#63) zusätzlich zur Systemrolle prüfen."""
@@ -5709,7 +5729,7 @@ class Handler(BaseHTTPRequestHandler):
                 profiles = role_profiles(con)
                 usage = {r["profile_id"]: r["n"] for r in con.execute("SELECT profile_id,count(*) n FROM users WHERE profile_id<>'' GROUP BY profile_id")}
             return self.json_response(200, {"functions": [list(x) for x in ROLE_FUNCTIONS], "actions": [list(x) for x in ROLE_ACTIONS],
-                                            "profiles": [{**p, "users": usage.get(pid, 0)} for pid, p in profiles.items()]})
+                                            "profiles": [{**p, "users": usage.get(pid, 0), "warnings": role_risk_warnings(p)} for pid, p in profiles.items()]})
         if path == "/api/users":
             user = self.require_user(USER_MANAGER_ROLES)
             if not user:
