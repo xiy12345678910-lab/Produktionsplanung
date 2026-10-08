@@ -54,7 +54,7 @@ CONFIG_SCHEMA = 1
 CONFIG_KEEP_BAK = 20
 CONFIG_LOGO_MAX = 420 * 1024
 CONFIG_LOCK = threading.RLock()
-CONFIG_MODULES = ("projects", "formats", "personnel", "chat", "notifications", "postcalc", "kpi", "palletLabels")
+CONFIG_MODULES = ("projects", "formats", "personnel", "chat", "notifications", "postcalc", "kpi", "palletLabels", "frameOrders")
 CONFIG_MODULE_DEFAULTS = {k: True for k in CONFIG_MODULES} | {"palletLabels": False}
 CONFIG_TEMPLATES = {"werbetechnik", "neutral", "metall_cnc", "leer", "demo"}
 CONFIG_HEX = re.compile(r"^#[0-9a-fA-F]{6}$")
@@ -631,7 +631,8 @@ def public_config(cfg: dict | None = None) -> dict:
 # die Daten bleiben vollständig erhalten. kpi hängt an postcalc (aus -> auch kpi aus).
 # ---------------------------------------------------------------------------------------------
 MODULE_LABELS = {"projects": "Projekte", "formats": "Formate", "personnel": "Personal", "chat": "Nachrichten",
-                 "notifications": "Benachrichtigungen", "postcalc": "Auswertung", "kpi": "Kennzahlen", "palletLabels": "Palettenetiketten"}
+                 "notifications": "Benachrichtigungen", "postcalc": "Auswertung", "kpi": "Kennzahlen", "palletLabels": "Palettenetiketten",
+                 "frameOrders": "Rahmenaufträge"}
 MODULE_DEPS = {"kpi": ("postcalc",)}
 # Datensammlungen im Datenstand, die ein Modul besitzt (Schreiben nur bei eingeschaltetem Modul).
 MODULE_STATE_KEYS = {
@@ -640,6 +641,7 @@ MODULE_STATE_KEYS = {
     "personnel": ("employees", "personnelAssignments", "personnelAbsences", "weeklyEmployeeDeployments",
                   "departmentStaffNeeds", "personnelGate"),
     "palletLabels": ("palletTemplates", "palletLabels"),
+    "frameOrders": ("frameOrders", "callOffs"),
 }
 
 
@@ -5778,6 +5780,8 @@ class Handler(BaseHTTPRequestHandler):
             user = self.require_user(sorted(DEMAND_WRITE_ROLES))
             if not user or not self.require_rights(user, "frameOrders", "edit") or not self.require_current_client():
                 return
+            if not module_on("frameOrders"):
+                return self.json_response(403, module_error("frameOrders"))
             action = demand_path.group(1)
             if action not in DEMAND_ACTIONS:
                 return self.json_response(404, mp_error("MP-DEM-000", "Unbekannte Bedarfsaktion."))

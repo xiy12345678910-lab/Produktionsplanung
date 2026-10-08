@@ -7,6 +7,11 @@ FA EINPLANEN IM FENSTER
   Terminwarnung). Übernahme mit derselben Auswirkungsprüfung wie in der Auftragsliste; „In Auftragsliste
   öffnen“ bleibt möglich. Konfektionsstunden bleiben AV-Vorgabe.
 
+FUNKTIONEN & DRAG & DROP
+- „Rahmenaufträge“ ist jetzt eine eigene, abschaltbare Funktion (System > Funktionen & Bereiche); aus = Menü
+  und Aktionen gesperrt, Daten bleiben erhalten.
+- Wochenplan: Drag & Drop eines geplanten FA auf andere Ressource/Tag ist durch einen Browsertest abgesichert.
+
 NUR PRODUKTION
 - „Neues Projekt“ hat die Auswahl „Nur Produktion“: mit AB-Nummer und Liefertermin wird das Projekt direkt
   an die Produktion übergeben. Entwicklung & Vertrieb, Workflow und Kundenplan entfallen; im Projekt steht

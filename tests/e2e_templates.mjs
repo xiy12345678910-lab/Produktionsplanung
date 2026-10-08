@@ -85,8 +85,8 @@ try {
   await admin.click('#navSystem'); await admin.click('[data-systab="company"]'); await admin.waitForTimeout(400);
   check(await vis(admin, '#ciPanel'), 'Firmenprofil sichtbar (Admin)');
   await admin.click('[data-systab="functions"]');
-  check(await admin.locator('#adminModuleControls [data-admin-mod]').count() === 8, '8 Funktions-Schalter im eigenen Admin-Reiter');
-  check(await admin.locator('#adminModuleControls [data-admin-mod]:checked').count() === 7 && !(await admin.locator('[data-admin-mod="palletLabels"]').isChecked()), 'bisherige Funktionen an, optionale Palettenzettel aus');
+  check(await admin.locator('#adminModuleControls [data-admin-mod]').count() === 9, '9 Funktions-Schalter im eigenen Admin-Reiter');
+  check(await admin.locator('#adminModuleControls [data-admin-mod]:checked').count() === 8 && !(await admin.locator('[data-admin-mod="palletLabels"]').isChecked()), 'bisherige Funktionen an, optionale Palettenzettel aus');
   check(await admin.evaluate(() => [...document.querySelectorAll('#adminModuleControls [data-admin-mod]')].every(b => b.title && b.labels?.length)), 'Funktions-Schalter mit Tooltip und zugänglicher Beschriftung');
   await admin.click('[data-systab="company"]');
   await admin.waitForFunction(() => document.querySelectorAll('#ciTpl option').length === 5, null, { timeout: 5000 }).catch(() => {});

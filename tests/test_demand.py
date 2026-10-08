@@ -202,6 +202,21 @@ class DemandFlow(unittest.TestCase):
         st, r, _ = self.act('frame-order-save', {'number': 'RA-LEGACY', 'customer': 'K', 'articleId': 'ART-L', 'departmentId': DEP, 'totalQty': 5})
         self.assertEqual(st, 200, r)
 
+    def test_module_switch_blocks_actions_and_keeps_data(self):
+        st, r, _ = self.act('frame-order-save', {'number': 'RA-MOD', 'customer': 'K', 'articleId': 'ART-M', 'departmentId': DEP, 'totalQty': 3})
+        self.assertEqual(st, 200, r)
+        cfg = self.req('GET', '/api/config', None, self.admin)[1]
+        self.assertTrue(cfg['modules']['frameOrders'], 'Rahmenaufträge sind standardmäßig an')
+        st, r, _ = self.req('PATCH', '/api/config', {'revision': cfg['revision'], 'modules': {'frameOrders': False}}, self.admin)
+        self.assertEqual(st, 200, r)
+        try:
+            st, r, _ = self.act('frame-order-save', {'number': 'RA-MOD-2', 'customer': 'K', 'articleId': 'ART-M', 'departmentId': DEP, 'totalQty': 3})
+            self.assertEqual((st, r.get('errorCode')), (403, 'MP-MOD-001'), 'abgeschaltet: Aktionen gesperrt')
+            self.assertTrue(any(f['number'] == 'RA-MOD' for f in self.db()['frameOrders']), 'Daten bleiben erhalten')
+        finally:
+            cfg = self.req('GET', '/api/config', None, self.admin)[1]
+            self.assertEqual(self.req('PATCH', '/api/config', {'revision': cfg['revision'], 'modules': {'frameOrders': True}}, self.admin)[0], 200)
+
     def test_roles_and_scope(self):
         st, r, _ = self.act('frame-order-save', {'number': 'RA-SCOPE', 'customer': 'K', 'articleId': 'ART-X', 'departmentId': DEP, 'totalQty': 10})
         for ck in (self.lead, self.prod, self.view):
