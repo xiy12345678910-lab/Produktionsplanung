@@ -23,7 +23,7 @@ Auftrag (Jonas, 08.10. abends): über Nacht selbständig an #73, #55, #51, #52 a
 | 1 | #73 Phase 0 | Rechte-Matrix für Schreibzugriffe (Rolle × Datenbereich) als Referenztest | Sonnet | erledigt (Commit „Phase 0: Schreib-Matrix (Rolle × Datenbereich) als Referenztest (#73)“) |
 | 2 | #73 Phase 0 | Release-Regeln dokumentieren (nur über den Workflow; GitHub-Regeln für Tags) | Haiku | erledigt (Commit „Doku: Release-Regeln (#73)“) |
 | 3 | #55 | Warnung bei riskanten Rollen-Kombinationen im Rolleneditor | Sonnet | erledigt (Commit „#55: Warnung bei riskanten Rollen-Kombinationen“) |
-| 4 | #51 | Inventur der fest verdrahteten IDs (cnc, thermoforming, konf …) – nur Analyse | Haiku | offen |
+| 4 | #51 | Inventur der fest verdrahteten IDs (cnc, thermoforming, konf …) – nur Analyse | Haiku | erledigt (Commit „#51: Inventur fest verdrahteter IDs“) |
 | 5 | #51 | Fest verdrahtete IDs in der Logik durch Bereichs-Flags ersetzen (nach #4) | Sonnet | offen |
 | 6 | #73 Phase 1 | Backend-Trennung Schritt 1: Konfiguration → `core/config.py`, keine Funktionsänderung, Paketliste anpassen | Opus | offen |
 | 7 | #73 Phase 1 | Schritt 2: TLS → `core/tls.py` | Sonnet | offen |
