@@ -6,3 +6,7 @@ __pycache__/
 backups/
 data/
 node_modules/
+# #52 Lizenz: private Schlüssel und Kundenlizenzen gehören nie ins Repository
+*.pem
+*.key
+lizenz_privat*

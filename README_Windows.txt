@@ -67,6 +67,16 @@ MASCHINENPLANUNG V12.27.0 - WINDOWS-SERVER (LAN ONLY)
    - Optional in LAN_CONFIG.json: "UpdateRepo": "konto/repo" (Quelle fuer Update_von_GitHub.ps1).
    - Ungueltige Datei: Server startet nicht, Meldung MP-CFG-001/002 (siehe FEHLERCODES.txt).
 
+2d. LIZENZSCHLUESSEL (config\lizenz.key, ab V12.27.0)
+   - Die Lizenzdatei kommt vom Lizenzgeber und gilt fuer die Mandanten-ID in config\firma.json (tenantId).
+   - Installieren: System > Lizenz > "Lizenzdatei hochladen (.key)" (nur Admin; Datei wird vor dem Speichern
+     geprueft) oder Datei als config\lizenz.key ablegen und Neustart_Server.ps1.
+   - Ohne gueltige Lizenz (fehlt, ungueltig, falsche Firma, abgelaufen): Hinweis fuer den Admin, nach 30 Tagen
+     Kulanz NUR LESEN (alles sichtbar, nichts aenderbar, MP-LIC-001). Daten werden nie geloescht; Backup,
+     Diagnosepaket, Anmeldung, eigenes Passwort, Lizenz-Upload und Updates bleiben moeglich.
+   - Solange die Lizenzpruefung im Programm nicht aktiv ist, zeigt System > Lizenz "nicht aktiv" (keine Einschraenkung).
+   - Die Datei wird mit config\ gesichert (firma_<zeit>.zip) und von Updates nicht angefasst.
+
 3. ERSTINSTALLATION (neuer PC)
    PowerShell als Administrator:
         Set-ExecutionPolicy -Scope Process Bypass

@@ -23,7 +23,7 @@ jobs:
         with:
           python-version: '3.12'
       - name: Syntax
-        run: python -m py_compile server.py release_gates.py app_updates.py Backup_Datenbank.py
+        run: python -m py_compile server.py mp_license.py release_gates.py app_updates.py Backup_Datenbank.py tools/lizenz_werkzeug.py
       - name: Version einheitlich
         run: python tests/test_version.py
       - name: Server-Regeln
@@ -53,6 +53,7 @@ jobs:
           python tests/test_roles_rights.py
           python tests/test_role_warnings.py
           python tests/test_diagnostics.py
+          python tests/test_license.py
           python tests/test_golden.py
           python tests/test_bench_state.py
           python tests/test_drying_server.py

@@ -2,6 +2,12 @@ MASCHINENPLANUNG V12.27.0 - RELEASE NOTES
 =========================================
 Datum: 08.10.2026 · Basis: V12.26.0 · Update gemäß README_Windows.txt 2b, Daten bleiben erhalten
 
+LIZENZSCHLUESSEL (#52)
+- Signierte Lizenzdatei config\lizenz.key (RSA/SHA-256, Pruefung im neuen Modul mp_license.py, nur Standardbibliothek). Unbefristete oder befristete Lizenzen, ohne Benutzer-/Modulgrenzen; gebunden an die tenantId in firma.json.
+- System > Lizenz (Admin): Status (gueltig/fehlt/ungueltig/falsche Firma/abgelaufen/nicht aktiv), Lizenznehmer, Ablauf, Kulanz, Upload (.key, vor dem Speichern geprueft) und Entfernen. Diagnosepaket enthaelt den Lizenzstatus (ohne Signatur).
+- Ohne gueltige Lizenz: Hinweis fuer den Admin, nach 30 Tagen Kulanz nur Lesen fuer alle (Banner). Der Server sperrt jede Aenderung (MP-LIC-001); Lesen, Anmeldung, eigenes Passwort, Diagnose/Backup, Lizenz-Upload und Updates bleiben. Daten werden nie geloescht. Kulanzbeginn steht in der Datenbank (Tabelle app_meta, additiv); eine zurueckgestellte Uhr verlaengert nichts.
+- In dieser Version ist noch kein oeffentlicher Schluessel eingetragen: Lizenzpruefung NICHT aktiv, keine Einschraenkung, keine Kulanzzaehlung. Bestehende Installationen laufen unveraendert weiter.
+
 HTTPS STANDARD BEI NEUINSTALLATION (#52)
 - Setup_Windows.ps1 richtet bei einer Neuinstallation HTTPS ein (Firmen-CA + Serverzertifikat wie HTTPS_Einrichten.ps1, gemeinsame Funktion Install-MPTls). Abschalten mit -OhneHttps. Schlaegt die Einrichtung fehl, laeuft die Installation mit HTTP weiter und warnt (MP-TLS-002/003).
 - Bestehende Installationen bleiben unveraendert (Updates und erneutes Setup stellen nicht um). Der Systemstatus zeigt dort "HTTPS nicht eingerichtet" mit Verweis auf README_Windows.txt 2c (HTTPS_Einrichten.ps1). Arbeitsplaetze muessen Firmen-CA.crt weiterhin einmal importieren.

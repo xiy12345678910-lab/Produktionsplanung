@@ -38,6 +38,7 @@ if str(BASE) not in sys.path:
     sys.path.append(str(BASE))
 from release_gates import machine_lanes, validate_release_feasibility, local_dt, work_intervals, personnel_assignment, can_staff, is_absent, LOCAL_TZ, make_segments, hits_machine_block, overlaps, clock_minutes
 from app_updates import UpdateManager
+import mp_license   # V12.27.0 (#52) Lizenzschlüssel
 
 DATA_DIR = BASE / "data"
 DB_PATH = DATA_DIR / "maschinenplanung.sqlite3"
@@ -736,10 +737,67 @@ def build_diagnostics(tls_on: bool = False) -> dict:
     if not tls_on:
         # #52: HTTPS ist Standard bei Neuinstallation; Bestandsinstallationen werden nicht automatisch umgestellt.
         warnings.append(DIAG_WARN_NO_TLS)
+    lic = license_status()
+    out["license"] = {k: lic.get(k) for k in ("active", "status", "statusText", "readOnly", "id", "licensee", "expires", "graceDaysLeft", "graceEnds") if k in lic}
+    if lic["active"] and lic["status"] != "valid":
+        warnings.append(f"Lizenz {lic['statusText']} – " + ("nur Lesen" if lic["readOnly"] else f"noch {lic['graceDaysLeft']} Tage Kulanz, danach nur Lesen"))
+    elif lic["active"] and lic.get("expiresInDays") is not None and lic["expiresInDays"] <= mp_license.WARN_DAYS:
+        warnings.append(f"Lizenz läuft am {lic['expires']} ab")
     out["modules"] = modules_effective(cfg)
     out["config"] = {"companyName": (cfg.get("company") or {}).get("name", ""), "template": cfg.get("template", ""),
                      "tenantId": cfg.get("tenantId", ""), "timezone": (cfg.get("locale") or {}).get("timezone", ""), "tls": bool(tls_on)}
     out["warnings"] = warnings
+    return out
+
+
+# ---------------------------------------------------------------------------------------------
+# V12.27.0 (#52): Lizenzschlüssel (mp_license.py). Ohne öffentlichen Schlüssel inaktiv. Ohne gültige Lizenz
+# 30 Tage Kulanz, danach nur Lesen: der Server lehnt jeden Schreibzugriff ab (MP-LIC-001), außer den
+# Pfaden in LICENSE_RO_ALLOWED. Daten werden nie gelöscht; Lesen, Backup und Diagnose bleiben möglich.
+# ---------------------------------------------------------------------------------------------
+LICENSE_RO_ALLOWED = {("POST", "/api/login"), ("POST", "/api/logout"), ("POST", "/api/password"),
+                      ("POST", "/api/license"), ("DELETE", "/api/license"), ("POST", "/api/updates/install")}
+LICENSE_RO_TEXT = "Lizenz abgelaufen/fehlt – nur Lesen. Daten bleiben erhalten; bitte den Admin bzw. den Lizenzgeber ansprechen."
+
+
+def license_path() -> Path:
+    name = str((current_config().get("license") or {}).get("file") or "")
+    if not re.fullmatch(r"[A-Za-z0-9_-][A-Za-z0-9_.-]{0,63}", name):
+        name = "lizenz.key"
+    return CONFIG_DIR / name
+
+
+def license_read() -> bytes | None:
+    p = license_path()
+    if not p.is_file():
+        return None
+    try:
+        with open(p, "rb") as f:
+            return f.read(mp_license.MAX_FILE + 1)
+    except OSError:
+        return b""   # unlesbar = ungültig
+
+
+def license_status() -> dict:
+    if not mp_license.active():
+        return mp_license.evaluate(None, None, "")
+    raw = license_read()
+    with DB_LOCK, db_session() as con:
+        return mp_license.evaluate(con, raw, str(current_config().get("tenantId") or ""))
+
+
+def license_public(st: dict, admin: bool) -> dict:
+    """Für Banner/Sperre: alle Rollen nur Status und Nur-Lesen; der Admin zusätzlich Kulanz und Ablauf."""
+    out = {k: st.get(k) for k in ("active", "status", "statusText", "readOnly")}
+    if admin:
+        out.update({k: st[k] for k in ("graceDaysLeft", "graceEnds", "expires", "expiresInDays") if k in st})
+    return out
+
+
+def license_admin(st: dict) -> dict:
+    out = dict(st)   # enthält nie die Signatur, nur geprüfte Felder
+    out.update(installTenantId=str(current_config().get("tenantId") or ""), file=license_path().name,
+               fileExists=license_path().is_file(), graceDays=mp_license.GRACE_DAYS, warnDays=mp_license.WARN_DAYS)
     return out
 
 
@@ -1271,6 +1329,7 @@ def init_db(seed: str = "neutral") -> None:
         )
         con.execute("CREATE TABLE IF NOT EXISTS production_requests(username TEXT NOT NULL, request_id TEXT NOT NULL, fingerprint TEXT NOT NULL, result TEXT NOT NULL, PRIMARY KEY(username,request_id))")
         con.execute("CREATE TABLE IF NOT EXISTS retired_usernames(username TEXT PRIMARY KEY COLLATE NOCASE,retired_at TEXT NOT NULL)")
+        mp_license.init_schema(con)   # V12.27.0 (#52): app_meta (Lizenz-Kulanz), additiv
         migrate_users_schema(con)
         migrate_role_profiles(con)
         con.execute("UPDATE users SET department_id='' WHERE role IN ('admin','gf','project_management','production_planning','sales') AND department_id<>''")
@@ -5595,10 +5654,23 @@ class Handler(BaseHTTPRequestHandler):
                     return False
         return True
 
+    def license_write_ok(self) -> bool:
+        """#52: zentrale Schreibsperre nach Ablauf der Kulanz. Gilt für jeden POST/PUT/PATCH/DELETE außer LICENSE_RO_ALLOWED."""
+        if (self.command, urlparse(self.path).path) in LICENSE_RO_ALLOWED:
+            return True
+        st = license_status()
+        if not st["readOnly"]:
+            return True
+        self.close_connection = True   # Body bleibt ungelesen
+        self.json_response(403, mp_error("MP-LIC-001", LICENSE_RO_TEXT, license=license_public(st, False)))
+        return False
+
     def _guarded(self, fn, write: bool):
         if not self.request_origin_ok(write):
             return
         try:
+            if write and not self.license_write_ok():
+                return
             return fn()
         except (ConnectionError, socket.timeout):
             # V12.17.2: Client-Abbruch (Tab zu/neu geladen, Long-Poll laeuft noch) ist kein Serverfehler:
@@ -5701,7 +5773,13 @@ class Handler(BaseHTTPRequestHandler):
             user = self.require_user()
             if not user:
                 return
-            return self.json_response(200, {"user": user_public(user)})
+            return self.json_response(200, {"user": user_public(user), "license": license_public(license_status(), user["role"] == "admin")})
+        if path == "/api/license":
+            user = self.require_user()
+            if not user:
+                return
+            st = license_status()
+            return self.json_response(200, license_admin(st) if user["role"] == "admin" else license_public(st, False))
         if path == "/api/state":
             user = self.require_user()
             if not user:
@@ -5827,7 +5905,8 @@ class Handler(BaseHTTPRequestHandler):
                     if remaining <= 0:
                         break
                     REVISION_CONDITION.wait(remaining)
-            return self.json_response(200, {"revision": row["revision"], "updatedAt": row["updated_at"], "updatedBy": row["updated_by"], "version": APP_VERSION, "notif": notif, "cfg": config_revision()})
+            return self.json_response(200, {"revision": row["revision"], "updatedAt": row["updated_at"], "updatedBy": row["updated_by"], "version": APP_VERSION, "notif": notif, "cfg": config_revision(),
+                                            "license": license_public(license_status(), user["role"] == "admin")})
         if path == "/api/roles":
             user = self.require_user(["admin"])
             if not user:
@@ -5944,6 +6023,11 @@ class Handler(BaseHTTPRequestHandler):
                 return self.json_response(202 if started else 200, {"ok": True, "job": {k: job.get(k) for k in ("jobId", "version", "stage", "error")}, "alreadyRunning": not started})
             except ValueError as e:
                 return self.json_response(409, mp_error("MP-UPD-001", str(e)))
+        if path == "/api/license":
+            user = self.require_user(["admin"])
+            if not user or not self.require_current_client():
+                return
+            return self.license_upload(user, body)
         if path == "/api/config/logo":
             user = self.require_user(["admin"])
             if not user:
@@ -6076,7 +6160,7 @@ class Handler(BaseHTTPRequestHandler):
             with DB_LOCK, db_session() as con:
                 con.execute("INSERT INTO sessions(token_hash,user_id,expires_at,created_at) VALUES(?,?,?,?)", (token_hash, row["id"], expires, now_iso()))
             cookie = f"mp_session={token}; Path=/; HttpOnly; SameSite=Strict; Max-Age={SESSION_TTL}" + self.cookie_secure()
-            return self.json_response(200, {"user": user_public(attach_rights(dict(row), profile))}, cookie)
+            return self.json_response(200, {"user": user_public(attach_rights(dict(row), profile)), "license": license_public(license_status(), row["role"] == "admin")}, cookie)
         if path == "/api/logout":
             c = SimpleCookie(self.headers.get("Cookie", ""))
             token = c.get("mp_session")
@@ -6166,6 +6250,51 @@ class Handler(BaseHTTPRequestHandler):
             con.execute("INSERT INTO server_audit(ts,username,action,detail,revision) VALUES(?,?,?,?,NULL)", (now_iso(), user["username"], "Eigenes Passwort geändert", user["username"]))
         return self.json_response(200, {"ok": True})
 
+    def license_upload(self, user, body: dict):
+        """#52: Lizenzdatei prüfen und erst dann atomar nach config/ schreiben; die bisherige Datei bleibt als .alt."""
+        content = body.get("content")
+        if not isinstance(content, str):
+            return self.json_response(400, mp_error("MP-LIC-003", "Lizenzdatei fehlt."))
+        raw = content.encode("utf-8")
+        tenant = str(current_config().get("tenantId") or "")
+        try:
+            payload, _sig = mp_license.parse(raw)
+        except mp_license.LicenseError as e:
+            return self.json_response(400, mp_error(e.code, e.message))
+        if mp_license.active():
+            with DB_LOCK, db_session() as con:
+                today = datetime.fromtimestamp(mp_license.effective_now(con)).date()
+            res = mp_license.check(raw, tenant, today, mp_license.public_key())
+            if res["status"] == "invalid":
+                return self.json_response(400, mp_error("MP-LIC-002", "Lizenzdatei abgelehnt: Signatur ungültig oder Datei verändert."))
+            if res["status"] == "expired":
+                return self.json_response(400, mp_error("MP-LIC-005", f"Lizenzdatei abgelehnt: {res['error']}"))
+        if payload["tenantId"] != tenant:
+            return self.json_response(400, mp_error("MP-LIC-004", f"Lizenzdatei abgelehnt: gilt für Mandant „{payload['tenantId']}“, diese Installation ist „{tenant}“ (firma.json)."))
+        path = license_path()
+        with CONFIG_LOCK:
+            if path.is_file():
+                shutil.copy2(path, path.with_name(path.name + ".alt"))
+            _atomic_write(path, raw)
+        detail = {k: payload[k] for k in ("id", "licensee", "tenantId", "issued", "expires")}
+        with DB_LOCK, db_session() as con:
+            con.execute("INSERT INTO server_audit(ts,username,action,detail,revision) VALUES(?,?,?,?,NULL)", (now_iso(), user["username"], "Lizenz installiert", json.dumps(detail, ensure_ascii=False)))
+        with REVISION_CONDITION:
+            REVISION_CONDITION.notify_all()
+        return self.json_response(200, {"ok": True, "license": license_admin(license_status())})
+
+    def license_remove(self, user):
+        path = license_path()
+        with CONFIG_LOCK:
+            if not path.is_file():
+                return self.json_response(404, mp_error("MP-LIC-006", "Keine Lizenzdatei vorhanden."))
+            os.replace(path, path.with_name(path.name + ".entfernt"))   # nicht löschen, nur beiseitelegen
+        with DB_LOCK, db_session() as con:
+            con.execute("INSERT INTO server_audit(ts,username,action,detail,revision) VALUES(?,?,?,?,NULL)", (now_iso(), user["username"], "Lizenz entfernt", path.name))
+        with REVISION_CONDITION:
+            REVISION_CONDITION.notify_all()
+        return self.json_response(200, {"ok": True, "license": license_admin(license_status())})
+
     def _method_not_allowed(self):
         self.json_response(405, mp_error("MP-REQ-405", "Methode nicht erlaubt."))
 
@@ -6177,6 +6306,8 @@ class Handler(BaseHTTPRequestHandler):
         if not user or not self.require_current_client():
             return
         path = urlparse(self.path).path
+        if path == "/api/license":
+            return self.license_remove(user)
         role_path = re.fullmatch(r"/api/roles/([a-z0-9_-]{2,40})", path)
         if role_path:
             with DB_LOCK, db_session() as con:
@@ -6737,6 +6868,14 @@ def main() -> None:
             raise SystemExit(3)
         for w in cfg_warn:
             print(f"WARNUNG: {w}", flush=True)
+        # #52: Lizenzstatus beim Start (startet ggf. die Kulanz, auch wenn sich niemand anmeldet).
+        lic = license_status()
+        if not lic["active"]:
+            print("Lizenz: Lizenzprüfung nicht aktiv", flush=True)
+        elif lic["status"] == "valid":
+            print(f"Lizenz: gültig für {lic['licensee']} ({'unbefristet' if lic['expires'] is None else 'bis ' + lic['expires']})", flush=True)
+        else:
+            print(f"WARNUNG: MP-LIC-001 Lizenz {lic['statusText']} – " + ("nur Lesen" if lic["readOnly"] else f"noch {lic['graceDaysLeft']} Tage Kulanz, danach nur Lesen"), flush=True)
     if args.init_admin:
         password = os.environ.get("MP_ADMIN_PASSWORD")
         if not password:
