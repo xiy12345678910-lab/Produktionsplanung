@@ -1403,7 +1403,7 @@ def migrate_state_v1243(con: sqlite3.Connection) -> None:
                 "id": str(x.get("id") or f"legacy_o_{i+1}"),
                 "planningType": "MACHINE", "sequence": seq,
                 "predecessorIds": list(x.get("predecessorIds") or []),
-                "departmentId": str(x.get("departmentId") or (machines.get(mid) or {}).get("departmentId") or "cnc"),
+                "departmentId": str(x.get("departmentId") or (machines.get(mid) or {}).get("departmentId") or default_dept_id(state)),
                 "projectId": str(x.get("projectId") or ""),
                 "fa": fa, "ab": str(x.get("ab") or ""), "wt": str(x.get("wt") or ""),
                 "machineId": mid, "altMachineId": alt, "allowAlternative": bool(alt),
@@ -1606,12 +1606,13 @@ def migrate_state_v1270(con: sqlite3.Connection) -> None:
     used_mids = {str(m.get("id")) for m in machines}
     start_default = next((str(m.get("start")) for m in machines if m.get("start")), "2026-09-07T06:30")
     dept_machine: dict[str, str] = {}
+    dd = default_dept_id(state)
     created = 0
     for d in departments:
         did = str(d.get("id"))
         if did not in legacy:
             continue
-        own = [m for m in machines if str(m.get("departmentId") or "cnc") == did]
+        own = [m for m in machines if str(m.get("departmentId") or dd) == did]
         if own:
             dept_machine[did] = str(own[0].get("id"))
         else:
@@ -2100,7 +2101,7 @@ def default_dept_id(state: dict) -> str:
     return "cnc"
 
 
-def _step_dept(step: dict, machine_dept: dict, dd: str = "cnc") -> str:
+def _step_dept(step: dict, machine_dept: dict, dd: str) -> str:
     return str(step.get("departmentId") or machine_dept.get(str(step.get("machineId")), dd))
 
 

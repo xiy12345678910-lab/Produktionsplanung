@@ -2,6 +2,9 @@ MASCHINENPLANUNG V12.27.0 - RELEASE NOTES
 =========================================
 Datum: 08.10.2026 · Basis: V12.26.0 · Update gemäß README_Windows.txt 2b, Daten bleiben erhalten
 
+BEREICHS-FLAGS STATT FESTER IDS (#51)
+- Die serverseitige Bedienerkapazitätsprüfung bei der Freigabe richtet sich nach dem Bereichs-Flag "Bediener geteilt" (wie im Client) statt nach der ID "cnc"; Maschinen ohne Bereich fallen auf den ersten aktiven Produktionsbereich zurück. Bestand unverändert (cnc trägt das Flag bereits).
+
 ROLLEN: WARNUNG BEI RISKANTEN KOMBINATIONEN (#55)
 - Der Rolleneditor zeigt einen gelben Hinweis, z. B. bei Benutzer verwalten + operativen Rechten oder FA anlegen + selbst fertigmelden. Nur Hinweis: Speichern und Rechteprüfung bleiben unverändert.
 

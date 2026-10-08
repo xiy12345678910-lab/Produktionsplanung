@@ -41,16 +41,16 @@ Seed/Demo: server.py:59 (`CONFIG_TEMPLATES`), 1079–1091 (`LEGACY_MACHINES`, `L
 
 ## Reihenfolge für Aufgabe 5
 
-**Schritt 1 – sicher, verhaltensgleich, zuerst**
+**Schritt 1 – ERLEDIGT (Aufgabe 5): Fallbacks in server.py 1406, 1614, 2103 und release_gates.py 80, 306 nutzen den ersten aktiven Produktionsbereich; index.html:609 hatte die Logik schon. Die Migration `defaultArea` entfiel (nicht nötig, Verhalten gleich). – sicher, verhaltensgleich, zuerst**
 - Literal `"cnc"` als Fallback ersetzen durch `default_dept_id(state)` bzw. `defaultDepartmentId()`: server.py 1406, 1614, 2100, 2103; index.html 609.
 - Verhalten identisch, solange `cnc` der erste aktive Produktionsbereich ist (Standard-Seed).
 - Migration (idempotent): Eigenschaft `defaultArea=true` auf dem Bereich mit ID `cnc` setzen, sofern vorhanden und kein Bereich das Flag trägt.
 
-**Schritt 2 – mit Test, Verhalten ändert sich bei Abweichung**
+**Schritt 2 – ERLEDIGT (Aufgabe 5): release_gates 80/306/452–454 umgestellt, `sharedOperators` serverseitig wie im Client; Test `tests/test_shared_operators_flag.py`. Keine neue Migration, v1216 deckt den Bestand ab. – mit Test, Verhalten ändert sich bei Abweichung**
 - release_gates.py 80 und 306 nach Schritt 1 umstellen.
 - release_gates.py 452–454 auf `sharedOperators` umstellen. Migration: v1216 hat `cnc.sharedOperators=true` bereits gesetzt, daher für Bestand identisch. Zusätzlich Test mit zwei Bereichen (Golden-Tests unter `tests/golden` prüfen). Risiko hoch.
 
-**Schritt 3 – neue Eigenschaft nötig**
+**Schritt 3 – OFFEN (`sampleArea` nicht umgesetzt) – neue Eigenschaft nötig**
 - server.py 1539–1540: Eigenschaft `sampleArea`. Migration setzt sie auf `cnc` bzw. `konf1` aus dem Bestand.
 
 **Nicht anfassen**
