@@ -46,7 +46,7 @@ check(re.search(r"\$MP_ConfigDir\s*=\s*'config'", common) is not None, "$MP_Conf
 # #73 Phase 1: server.py importiert flache Module; sie werden immer mitgeliefert, sind aber keine Pflichtdateien im
 # Manifest (ältere Pakete bleiben installier- und rücksetzbar).
 import app_updates  # noqa: E402
-for mod in ("mp_config.py", "mp_tls.py"):
+for mod in ("mp_config.py", "mp_tls.py", "mp_rights.py"):
     check(mod in APP and (SRC / mod).is_file() and mod not in app_updates.validate_manifest.__code__.co_consts,
           f"{mod} flach in $MP_AppFiles, nicht Pflichtdatei im Manifest")
 

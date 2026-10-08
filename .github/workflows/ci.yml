@@ -23,7 +23,7 @@ jobs:
         with:
           python-version: '3.12'
       - name: Syntax
-        run: python -m py_compile server.py mp_config.py mp_tls.py mp_license.py release_gates.py app_updates.py Backup_Datenbank.py tools/lizenz_werkzeug.py
+        run: python -m py_compile server.py mp_config.py mp_tls.py mp_rights.py mp_license.py release_gates.py app_updates.py Backup_Datenbank.py tools/lizenz_werkzeug.py
       - name: Version einheitlich
         run: python tests/test_version.py
       - name: Server-Regeln
