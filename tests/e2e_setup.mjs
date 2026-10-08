@@ -128,7 +128,7 @@ try {
   check(st1.departments.length === 6 && st1.machines.length === 4, `Vorlage füllt Bereiche und Maschinen (${st1.departments.length}/${st1.machines.length})`);
 
   // Schritt 3: Module
-  check(await a.locator('#suMods [data-mod-sw]').count() === 9, 'neun Funktions-Schalter inklusive optionaler Palettenzettel und Rahmenaufträge');
+  check(await a.locator('#suMods [data-mod-sw]').count() === 11, 'elf Funktions-Schalter inklusive Palettenzettel, Rahmenaufträge, GF-Steuerung und Historie');
   check(await a.locator('#suMods [data-mod-sw="palletLabels"]').getAttribute('aria-pressed') === 'false', 'Palettenzettel sind bei neuer Einrichtung ausgeschaltet');
   await a.click('#suMods [data-mod-sw="chat"]');
   await a.waitForFunction(() => document.querySelector('#suMods [data-mod-sw="chat"]').getAttribute('aria-pressed') === 'false');

@@ -54,7 +54,7 @@ CONFIG_SCHEMA = 1
 CONFIG_KEEP_BAK = 20
 CONFIG_LOGO_MAX = 420 * 1024
 CONFIG_LOCK = threading.RLock()
-CONFIG_MODULES = ("projects", "formats", "personnel", "chat", "notifications", "postcalc", "kpi", "palletLabels", "frameOrders")
+CONFIG_MODULES = ("projects", "formats", "personnel", "chat", "notifications", "postcalc", "kpi", "palletLabels", "frameOrders", "gf", "history")
 CONFIG_MODULE_DEFAULTS = {k: True for k in CONFIG_MODULES} | {"palletLabels": False}
 CONFIG_TEMPLATES = {"werbetechnik", "neutral", "metall_cnc", "leer", "demo"}
 CONFIG_HEX = re.compile(r"^#[0-9a-fA-F]{6}$")
@@ -632,7 +632,7 @@ def public_config(cfg: dict | None = None) -> dict:
 # ---------------------------------------------------------------------------------------------
 MODULE_LABELS = {"projects": "Projekte", "formats": "Formate", "personnel": "Personal", "chat": "Nachrichten",
                  "notifications": "Benachrichtigungen", "postcalc": "Auswertung", "kpi": "Kennzahlen", "palletLabels": "Palettenetiketten",
-                 "frameOrders": "Rahmenaufträge"}
+                 "frameOrders": "Rahmenaufträge", "gf": "GF-Steuerung", "history": "Historie"}
 MODULE_DEPS = {"kpi": ("postcalc",)}
 # Datensammlungen im Datenstand, die ein Modul besitzt (Schreiben nur bei eingeschaltetem Modul).
 MODULE_STATE_KEYS = {
@@ -5519,6 +5519,8 @@ class Handler(BaseHTTPRequestHandler):
             user = self.require_user()
             if not user:
                 return
+            if not module_on("history"):
+                return self.json_response(403, module_error("history"))
             if not self.require_rights(user, "history"):
                 return
             qs = parse_qs(parsed.query)

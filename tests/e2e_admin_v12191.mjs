@@ -51,6 +51,25 @@ try{
   await page.evaluate(()=>window.print=()=>{window.__palletPrint={html:document.getElementById('weeklyPrintBody').innerHTML,style:document.getElementById('weeklyPrintBody').getAttribute('style')}});await page.click('#navList');await page.waitForTimeout(250);await page.locator('#ordersBody [data-act="label"]').first().click();await page.fill('#askInput','1');await page.click('#askOk');await page.waitForFunction(()=>!!window.__palletPrint,{timeout:10000});const printed=await page.evaluate(()=>window.__palletPrint);check(!printed.html.includes('<svg'),'template barcode option controls actual print output');check(printed.style.includes('#aabbcc'),'template accent color reaches actual print output');
   await page.click('#navSystem');await page.waitForTimeout(150);await page.click('[data-systab="functions"]');await page.waitForTimeout(150);await page.locator('[data-admin-mod="palletLabels"]').uncheck();await page.click('#askOk');await page.waitForTimeout(350);check(!(await page.locator('#palletTemplatePanel').isVisible()),'disabling hides template management');
   await page.locator('[data-admin-mod="palletLabels"]').check();await page.waitForTimeout(350);check(await page.locator('#palletTemplatePanel .tableCard').isVisible(),'template survives disable and reactivation');
+  // V12.23.0: System → Bereich anlegen mit Planungslogik (gleiche Implementierung wie GF-Steuerung).
+  await page.fill('#adminNewDepartment','Siebdruck 2');await page.selectOption('#adminNewDepartmentLogic','cycle');await page.click('#adminAddDepartment');await page.waitForTimeout(600);
+  await page.fill('#adminNewDepartment','Montage');await page.selectOption('#adminNewDepartmentLogic','line');await page.click('#adminAddDepartment');await page.waitForTimeout(600);
+  {const st=await page.evaluate(async()=>(await(await fetch('/api/state')).json()).data),sd=st.departments.find(d=>d.name==='Siebdruck 2'),mo=st.departments.find(d=>d.name==='Montage'),res=id=>st.machines.filter(m=>m.departmentId===id);
+   check(sd?.formats===true&&res(sd.id).length===1&&res(sd.id)[0].kind==='machine','System: Bereich mit Planungslogik Takt bekommt Formate und eine Maschine');
+   check(mo&&!mo.formats&&res(mo.id)[0]?.kind==='line'&&res(mo.id)[0]?.effortScaling===true,'System: Bereich mit Planungslogik Personenstunden bekommt eine Linie');
+   check((await page.locator('#adminDepartmentControls').innerText()).includes('Takt · Formate'),'System: Planungslogik je Bereich sichtbar')}
+  // V12.23.0: GF-Steuerung und Historie abschaltbar – Menüpunkte verschwinden, Wiedereinschalten stellt sie her.
+  check(await page.locator('#navGF').isVisible(),'GF-Steuerung visible while enabled');
+  await page.locator('[data-admin-mod="gf"]').uncheck();await page.locator('[data-admin-mod="history"]').uncheck();await page.waitForTimeout(400);
+  check(await page.locator('#navGF').isHidden()&&await page.evaluate(()=>{const off=document.documentElement.getAttribute('data-mod-off')||'';return /\bgf\b/.test(off)&&/\bhistory\b/.test(off)}),'disabled GF-Steuerung/Historie hide menu and views');
+  await page.locator('[data-admin-mod="gf"]').check();await page.locator('[data-admin-mod="history"]').check();await page.waitForTimeout(400);
+  check(await page.locator('#navGF').isVisible()&&await page.evaluate(()=>!/\b(gf|history)\b/.test(document.documentElement.getAttribute('data-mod-off')||'')),'re-enabling restores GF-Steuerung/Historie');
+  // V12.23.0: GF-Steuerung und Historie abschaltbar – Menüpunkte verschwinden, Wiedereinschalten stellt sie her.
+  check(await page.locator('#navGF').isVisible(),'GF-Steuerung visible while enabled');
+  await page.locator('[data-admin-mod="gf"]').uncheck();await page.locator('[data-admin-mod="history"]').uncheck();await page.waitForTimeout(400);
+  check(await page.locator('#navGF').isHidden()&&await page.evaluate(()=>{const off=document.documentElement.getAttribute('data-mod-off')||'';return /\bgf\b/.test(off)&&/\bhistory\b/.test(off)}),'disabled GF-Steuerung/Historie hide menu and views');
+  await page.locator('[data-admin-mod="gf"]').check();await page.locator('[data-admin-mod="history"]').check();await page.waitForTimeout(400);
+  check(await page.locator('#navGF').isVisible()&&await page.evaluate(()=>!/\b(gf|history)\b/.test(document.documentElement.getAttribute('data-mod-off')||'')),'re-enabling restores GF-Steuerung/Historie');
   const errors=await page.locator('#errorModal.show').count();check(errors===0,'no admin error dialog');await page.close();
  }finally{await browser.close()}
 }finally{srv.kill('SIGTERM');rmSync(dir,{recursive:true,force:true})}

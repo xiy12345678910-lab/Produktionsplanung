@@ -309,7 +309,7 @@ def run_case(label: str, commit: str, scenario: str, keep: bool, ip: str):
         mods = (pc or {}).get("modules") if sc == 200 and isinstance(pc, dict) else {}
         expected_modules = {k: True for k in ("projects", "formats", "personnel", "chat", "notifications", "postcalc", "kpi")}
         expected_modules["palletLabels"] = False
-        expected_modules["frameOrders"] = True  # V12.23.0: Rahmenaufträge abschaltbar, bei Bestand an (wie V12.22.0)
+        expected_modules.update(frameOrders=True, gf=True, history=True)  # V12.23.0: neu abschaltbar, bei Bestand an
         ok_all &= check(mods == expected_modules, f"[{tag}] Bestandsmodule bleiben an, neue Palettenzettel sind optional aus", str(mods))
         sc, st = adm.call("GET", "/api/state")
         deps = {d["id"]: d for d in (st.get("data", {}).get("departments") or [])} if sc == 200 else {}
