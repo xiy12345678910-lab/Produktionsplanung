@@ -32,6 +32,7 @@ CODEGRUPPEN
 - MP-CHAT-xxx: Nachrichten (Gruppen, Direktnachrichten, Verweise)
 - MP-NOTIF-xxx: Benachrichtigungen (Glocke)
 - MP-MOD-xxx: Module ein/aus
+- MP-LIC-xxx: Lizenzschluessel (config\lizenz.key)
 
 EINZELCODES (der genaue Klartext kann je nach Kontext zusaetzliche Details enthalten)
 
@@ -422,8 +423,15 @@ MP-ROLE-010  Speichern abgewiesen: Funktion nur lesbar bzw. Konfektionsstunden, 
 MP-ROLE-011  Hinweis (kein Fehler): Benutzer verwalten zusammen mit operativen Rechten (Vier-Augen-Prinzip).
 MP-ROLE-012  Hinweis (kein Fehler): FA anlegen und Produktion fertigmelden in einer Rolle.
 MP-ROLE-013  Hinweis (kein Fehler): Benutzer verwalten zusammen mit Bearbeitungsrecht für System.
+MP-ROLE-014  Hinweis (kein Fehler): Unveränderte Kopie einer Leitungsrolle – ersetzt die Einzelhinweise 011–013.
 MP-TLS-001   HTTPS-Zertifikat in config\tls ungueltig oder nicht lesbar. Server startet nicht (kein stiller Rueckfall
              auf HTTP). HTTPS_Einrichten.ps1 erneut ausfuehren oder config\tls umbenennen (= wieder HTTP).
+MP-TLS-002   HTTPS-Einrichtung fehlgeschlagen (Install-MPTls: server.py --tls-einrichten, Ordnerrechte oder Vertrauen
+             der Firmen-CA). HTTPS_Einrichten.ps1 bricht ab. Setup_Windows.ps1 entfernt das halb angelegte config\tls,
+             warnt und installiert mit HTTP weiter; HTTPS spaeter mit HTTPS_Einrichten.ps1 nachholen (README_Windows.txt 2c).
+MP-TLS-003   Setup_Windows.ps1: Server antwortet nach der HTTPS-Einrichtung nicht per HTTPS. Setup faellt auf HTTP zurueck
+             (config\tls, Firmen-CA.crt und die eben vertraute CA werden entfernt) und prueft den Start erneut.
+             Ursache im Log logs\server_<Datum>.log; danach HTTPS_Einrichten.ps1.
 MP-CFG-003   schemaVersion neuer als dieses Programm (nur Warnung): Datei wird gelesen, nicht geaendert.
              Beim Speichern im Firmenprofil: schreibgeschuetzt (409), Datei bleibt unveraendert.
 
@@ -483,3 +491,13 @@ MP-UPD-003   Update-Wartungssperre: Aenderungen bis Healthcheck blockiert.
 MP-UPD-004   Vorabtest/Backup unvollstaendig oder ungueltig; Live-Eingriff wird abgebrochen.
 MP-UPD-005   Rollback-Healthcheck fehlgeschlagen; Wartungssperre bleibt bestehen, Wiederherstellung durch IT erforderlich.
 MP-UPD-006   Ungueltiger Programmdateiname im Paket (nur Name oder eine Ordnerebene mit /, kein .., kein Laufwerk); nichts wird kopiert.
+
+V12.27.0 NEU (Lizenzschluessel, #52)
+MP-LIC-001   Lizenz abgelaufen/fehlt - nur Lesen (403). Nach 30 Tagen Kulanz ohne gueltige Lizenz lehnt der Server jede
+             Aenderung ab. Lesen, Anmeldung, eigenes Passwort, Diagnose/Backup, Lizenz-Upload und Updates bleiben
+             moeglich; Daten werden nie geloescht. Abhilfe: gueltige Lizenzdatei unter System > Lizenz hochladen.
+MP-LIC-002   Lizenzdatei abgelehnt: Signatur ungueltig oder Datei veraendert (nicht vom Lizenzgeber bzw. bearbeitet).
+MP-LIC-003   Lizenzdatei unlesbar: kein JSON, Felder fehlen/ungueltig (id, licensee, tenantId, issued, expires) oder > 16 KB.
+MP-LIC-004   Lizenzdatei gilt fuer eine andere Firma: tenantId der Lizenz passt nicht zu config\firma.json.
+MP-LIC-005   Lizenzdatei abgelehnt: Ablaufdatum ueberschritten. Neue Lizenz beim Lizenzgeber anfordern.
+MP-LIC-006   Lizenz entfernen: keine Lizenzdatei vorhanden.

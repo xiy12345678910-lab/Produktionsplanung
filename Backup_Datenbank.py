@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Online-Backup und Wiederherstellung der Maschinenplanung-Datenbank.
+r"""Online-Backup und Wiederherstellung der Maschinenplanung-Datenbank.
 
 - Nutzt die SQLite Backup API: konsistent auch bei laufendem Server und WAL-Betrieb
   (nie die .sqlite3-Datei allein kopieren – der jüngste Stand kann im -wal liegen).

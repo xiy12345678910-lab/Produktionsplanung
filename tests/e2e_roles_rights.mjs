@@ -75,7 +75,12 @@ try {
   // #55: Warnung bei riskanten Kombinationen (beratend, live im Editor)
   await admin.click('[data-role-template="department_lead"]');
   check(await admin.locator('#roleWarnings').waitFor({ state: 'visible', timeout: 10000 }).then(() => true, () => false), 'Rolleneditor zeigt Warnung bei riskanter Kombination (Benutzer verwalten + operative Rechte)');
-  await admin.uncheck('[data-role-action="userAdmin"]'); await admin.uncheck('[data-role-action="faCreate"]');
+  const unchanged = await admin.locator('#roleWarnings li').allTextContents();
+  check(unchanged.length === 1 && unchanged[0].includes('Unveränderte Kopie'), `Unveränderte Kopie zeigt genau einen Hinweis (${unchanged.length})`);
+  await admin.uncheck('[data-role-action="userAdmin"]');
+  const changed = await admin.locator('#roleWarnings li').allTextContents();
+  check(changed.length === 1 && changed[0].includes('fertigmelden') && !changed[0].includes('Unveränderte'), `Nach Änderung erscheinen die Einzelhinweise (${changed.join(' | ')})`);
+  await admin.uncheck('[data-role-action="faCreate"]');
   check(await admin.locator('#roleWarnings').waitFor({ state: 'hidden', timeout: 10000 }).then(() => true, () => false), 'Warnung verschwindet live, sobald die Kombination aufgelöst ist');
   check(await admin.locator('#roleSave').isEnabled(), 'Speichern bleibt trotz Warnungen möglich');
   await admin.click('[data-role-open="av-projekte-lesend"]');

@@ -25,25 +25,34 @@ MASCHINENPLANUNG V12.27.0 - WINDOWS-SERVER (LAN ONLY)
         $B = '<Branch>'
         irm "https://raw.githubusercontent.com/<GitHub-Konto>/<Repo>/$B/Update_von_GitHub.ps1" -OutFile "$env:USERPROFILE\Downloads\Update_von_GitHub.ps1"
         powershell -ExecutionPolicy Bypass -File "$env:USERPROFILE\Downloads\Update_von_GitHub.ps1" -Branch $B -UnsicherBranch
-   RELEASE ANLEGEN (GitHub, einmal je Version): Stand nach main mergen -> Releases -> "Draft a new
-   release" -> Tag vX.Y.Z auf main -> Veroeffentlichen.
+   RELEASE ANLEGEN (GitHub, einmal je Version): nur ueber Actions -> "Release package" -> "Run workflow"
+   (Branch main). Der Lauf baut und prueft das Paket und legt einen ENTWURF an; Jonas veroeffentlicht ihn
+   ("Publish release"), erst dabei entsteht der Tag vX.Y.Z. Keine Tags und Releases von Hand anlegen.
+   Details: docs/RELEASE_REGELN.md. Normalweg fuer die Installation: Admin klickt in System ->
+   Softwareupdate auf "Update installieren"; der Befehl oben ist der Ersatzweg.
    BRANCH-SCHUTZ (GitHub -> Settings -> Branches -> main): "Require a pull request before merging",
    "Do not allow bypassing", kein Force-Push; Tags v* unter Settings -> Rules schuetzen.
 
-2c. HTTPS IM LAN (ab V12.21.0, empfohlen)
-   Ohne HTTPS gehen Passwoerter und Sitzungen unverschluesselt durchs LAN. Einmalig als Administrator:
+2c. HTTPS IM LAN (ab V12.21.0; Standard bei NEUINSTALLATION ab #52)
+   Ohne HTTPS gehen Passwoerter und Sitzungen unverschluesselt durchs LAN.
+   NEUINSTALLATION: Setup_Windows.ps1 (INSTALLIEREN_ALS_ADMIN.ps1) richtet HTTPS automatisch ein.
+   Abschalten nur bewusst:   .\INSTALLIEREN_ALS_ADMIN.ps1 -OhneHttps   (bzw. Setup_Windows.ps1 -OhneHttps)
+   Schlaegt die Einrichtung fehl, installiert Setup mit HTTP weiter und warnt (MP-TLS-002/003, FEHLERCODES.txt).
+   BESTEHENDE INSTALLATION: Updates (UPDATE_LIVE.ps1, Softwareupdate) und ein erneutes Setup aendern HTTP/HTTPS
+   NICHT - sonst saehen alle Arbeitsplaetze Zertifikatswarnungen, bevor die CA importiert ist. Der Systemstatus
+   (System, nur Admin) zeigt "HTTPS nicht eingerichtet". Umstellen einmalig als Administrator:
         cd C:\ProgramData\Maschinenplanung
         .\HTTPS_Einrichten.ps1                       (optional: -Name mp.firma.local)
    - Legt config\tls an (Firmen-CA + Serverzertifikat, nur SYSTEM/Administratoren lesbar), vertraut der CA
      auf dem Server und startet ihn neu. Adresse danach: https://<LAN-IP>:8765 bzw. https://<PC-Name>:8765
-   - Arbeitsplaetze: Datei Firmen-CA.crt (im Live-Ordner) EINMAL als vertrauenswuerdige Stammzertifizierungs-
-     stelle importieren - per Gruppenrichtlinie oder je PC als Administrator:
+   - Arbeitsplaetze (auch nach Neuinstallation noetig): Datei Firmen-CA.crt (im Live-Ordner) EINMAL als
+     vertrauenswuerdige Stammzertifizierungsstelle importieren - per Gruppenrichtlinie oder je PC als Administrator:
         certutil -addstore -f Root \\<Server>\<Freigabe>\Firmen-CA.crt
      Ohne Import zeigt der Browser eine Zertifikatswarnung. Firefox nutzt den Windows-Speicher, wenn die
      Richtlinie "Enterprise Roots" aktiv ist.
    - Neue LAN-IP oder Ablauf (< 30 Tage): Server erneuert das Zertifikat beim Start selbst; die Firmen-CA
      bleibt, kein neuer Import. Zurueck auf HTTP: config\tls umbenennen, Neustart_Server.ps1.
-   - Fehler MP-TLS-001: siehe FEHLERCODES.txt.
+   - Fehler MP-TLS-001/002/003: siehe FEHLERCODES.txt.
 
 2a. FIRMENDATEN (config\firma.json)
    - Liegt in C:\ProgramData\Maschinenplanung\config\ (neben data\): firma.json, logo.png|jpg, lizenz.key.
@@ -58,11 +67,23 @@ MASCHINENPLANUNG V12.27.0 - WINDOWS-SERVER (LAN ONLY)
    - Optional in LAN_CONFIG.json: "UpdateRepo": "konto/repo" (Quelle fuer Update_von_GitHub.ps1).
    - Ungueltige Datei: Server startet nicht, Meldung MP-CFG-001/002 (siehe FEHLERCODES.txt).
 
+2d. LIZENZSCHLUESSEL (config\lizenz.key, ab V12.27.0)
+   - Die Lizenzdatei kommt vom Lizenzgeber und gilt fuer die Mandanten-ID in config\firma.json (tenantId).
+   - Installieren: System > Lizenz > "Lizenzdatei hochladen (.key)" (nur Admin; Datei wird vor dem Speichern
+     geprueft) oder Datei als config\lizenz.key ablegen und Neustart_Server.ps1.
+   - Ohne gueltige Lizenz (fehlt, ungueltig, falsche Firma, abgelaufen): Hinweis fuer den Admin, nach 30 Tagen
+     Kulanz NUR LESEN (alles sichtbar, nichts aenderbar, MP-LIC-001). Daten werden nie geloescht; Backup,
+     Diagnosepaket, Anmeldung, eigenes Passwort, Lizenz-Upload und Updates bleiben moeglich.
+   - Solange die Lizenzpruefung im Programm nicht aktiv ist, zeigt System > Lizenz "nicht aktiv" (keine Einschraenkung).
+   - Die Datei wird mit config\ gesichert (firma_<zeit>.zip) und von Updates nicht angefasst.
+
 3. ERSTINSTALLATION (neuer PC)
    PowerShell als Administrator:
         Set-ExecutionPolicy -Scope Process Bypass
         .\INSTALLIEREN_ALS_ADMIN.ps1
    Admin-Benutzername und Passwort festlegen. Installationsordner: C:\ProgramData\Maschinenplanung
+   HTTPS wird dabei eingerichtet (Abschnitt 2c; ohne HTTPS: -OhneHttps). Danach Firmen-CA.crt auf den
+   Arbeitsplaetzen importieren.
 
 4. GEPLANTE AUFGABEN
    - "Maschinenplanung Server": beim Windows-Start, Konto SYSTEM, automatischer Neustart bei Fehlern.

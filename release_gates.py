@@ -479,3 +479,34 @@ def validate_release_feasibility(old,new):
             if len(active)>cap:
                 return False,"MP-PLAN-059",f"Freigabe '{name}' überschreitet die Bedienerkapazität ({len(active)}/{cap})."
     return True,"",""
+
+
+def batch_hours(qty, batch_size, process_hours):
+    """Chargenberechnung (#47 Block F, BATCH_PROCESS): reine Funktion, NICHT verdrahtet.
+
+    Laufzeit in Stunden = ceil(Menge / Chargengröße) × Prozessdauer je Charge
+    (Formel laut Issue #47; Einheit Stunden wie die übrigen Planungsdauern).
+    Menge 0 ergibt 0.0 Stunden. Teilchargen zählen als volle Charge.
+
+    Bewusst NICHT enthalten (fachlich offen, siehe Issue #47):
+    - parallele vs. sequenzielle Chargen (hier: strikt sequenziell)
+    - Reinigung zwischen Chargen/Produkten
+    - Rüst-/Anfahrzeit
+    Kein Scheduler-, UI- oder Datenmodell-Bezug.
+    """
+    import math
+    vals = []
+    for name, v in (("Menge", qty), ("Chargengröße", batch_size), ("Prozessdauer", process_hours)):
+        if isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v):
+            raise ValueError(f"{name} muss eine endliche Zahl sein.")
+        vals.append(v)
+    qty, batch_size, process_hours = vals
+    if qty < 0:
+        raise ValueError("Menge darf nicht negativ sein.")
+    if batch_size <= 0:
+        raise ValueError("Chargengröße muss größer als 0 sein.")
+    if process_hours < 0:
+        raise ValueError("Prozessdauer darf nicht negativ sein.")
+    if qty == 0:
+        return 0.0
+    return float(math.ceil(qty / batch_size) * process_hours)

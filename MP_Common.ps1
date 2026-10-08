@@ -25,7 +25,7 @@ $MP_ConfigDir = 'config'
 
 # Alle Programmdateien des Pakets. Nur diese werden kopiert/gesichert.
 $MP_AppFiles = @(
-    'server.py', 'release_gates.py', 'app_updates.py', 'index.html',
+    'server.py', 'mp_config.py', 'mp_tls.py', 'mp_rights.py', 'mp_license.py', 'release_gates.py', 'app_updates.py', 'index.html',
     'Backup_Datenbank.py', 'Backup_Datenbank.ps1',
     'MP_Common.ps1', 'Setup_Windows.ps1', 'INSTALLIEREN_ALS_ADMIN.ps1', 'UPDATE_LIVE.ps1',
     'Run_Server_LAN.ps1', 'Start_Server.ps1', 'Stop_Server.ps1', 'Neustart_Server.ps1',
@@ -345,6 +345,70 @@ function Assert-MPPrivatePaths([object]$Config, [string]$Url = '') {
         }
         if ($exposed) { throw "Sicherheitsfehler: $path ist per HTTP erreichbar." }
     }
+}
+
+function Get-MPTlsDir([string]$Base) {
+    return (Join-Path (Join-Path $Base $MP_ConfigDir) 'tls')
+}
+
+function Install-MPTls([string]$Base, [string]$PythonExe, [string]$HostIp, [string[]]$Names = @()) {
+    # #52: Gemeinsame HTTPS-Einrichtung fuer HTTPS_Einrichten.ps1 und Setup_Windows.ps1 (eine Implementierung).
+    # Legt in config\tls Firmen-CA (falls fehlend) und Serverzertifikat an, vertraut der CA in LocalMachine\Root
+    # und legt Firmen-CA.crt zum Verteilen in den Live-Ordner. Startet den Server NICHT neu.
+    # Fehler: Ausnahme mit MP-TLS-002. Rueckgabe: Fingerabdruck der CA und Pfad von Firmen-CA.crt.
+    $tls = Get-MPTlsDir $Base
+    # Ordner zuerst sperren, damit die privaten Schluessel nie mit Benutzer-Leserecht entstehen.
+    Set-MPFolderAcl $tls $false
+    $argList = @('-X', 'utf8', '-I', (Join-Path $Base 'server.py'), '--tls-einrichten', '--host', $HostIp)
+    foreach ($n in $Names) { $argList += @('--tls-name', $n) }
+    $env:MP_CONFIG_DIR = Join-Path $Base $MP_ConfigDir
+    $code = 1
+    # server.py schreibt UTF-8 (-X utf8); fuer die weitergereichte Ausgabe kurz UTF-8 lesen (sonst Umlaut-Salat).
+    $prevEnc = $null
+    try { $prevEnc = [Console]::OutputEncoding; [Console]::OutputEncoding = New-Object Text.UTF8Encoding($false) } catch { $prevEnc = $null }
+    try {
+        # Out-Host: Ausgaben von server.py gehoeren auf die Konsole, nicht in den Rueckgabewert der Funktion.
+        & $PythonExe @argList | Out-Host
+        $code = $LASTEXITCODE
+    } finally {
+        Remove-Item Env:\MP_CONFIG_DIR -ErrorAction SilentlyContinue
+        if ($prevEnc) { try { [Console]::OutputEncoding = $prevEnc } catch { } }
+    }
+    if ($code -ne 0) { throw "MP-TLS-002: HTTPS-Einrichtung fehlgeschlagen (server.py --tls-einrichten, Exitcode $code)." }
+    Set-MPFolderAcl $tls $false
+    $caFile = Join-Path $tls 'firmen-ca.crt'
+    try {
+        $ca = New-Object Security.Cryptography.X509Certificates.X509Certificate2($caFile)
+        $store = New-Object Security.Cryptography.X509Certificates.X509Store('Root', 'LocalMachine')
+        $store.Open('ReadWrite')
+        try { $store.Add($ca) } finally { $store.Close() }
+        $public = Join-Path $Base 'Firmen-CA.crt'
+        Copy-Item -LiteralPath $caFile -Destination $public -Force
+    } catch {
+        throw "MP-TLS-002: Firmen-CA konnte nicht vertraut/bereitgestellt werden: $($_.Exception.Message)"
+    }
+    return [PSCustomObject]@{ Thumbprint = [string]$ca.Thumbprint; PublicCa = $public; Folder = $tls }
+}
+
+function Remove-MPTls([string]$Base) {
+    # #52: Rueckfall auf HTTP NUR fuer eine eben von Setup_Windows.ps1 angelegte HTTPS-Einrichtung:
+    # entfernt config\tls, Firmen-CA.crt im Live-Ordner und die eben vertraute CA aus LocalMachine\Root.
+    # Liefert $true, wenn config\tls danach nicht mehr existiert.
+    $tls = Get-MPTlsDir $Base
+    $caFile = Join-Path $tls 'firmen-ca.crt'
+    if (Test-Path -LiteralPath $caFile) {
+        try {
+            $ca = New-Object Security.Cryptography.X509Certificates.X509Certificate2($caFile)
+            $store = New-Object Security.Cryptography.X509Certificates.X509Store('Root', 'LocalMachine')
+            $store.Open('ReadWrite')
+            try {
+                foreach ($c in @($store.Certificates.Find('FindByThumbprint', $ca.Thumbprint, $false))) { $store.Remove($c) }
+            } finally { $store.Close() }
+        } catch { Write-Warning "Firmen-CA konnte nicht aus dem Zertifikatspeicher entfernt werden: $($_.Exception.Message)" }
+    }
+    Remove-Item -LiteralPath $tls -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath (Join-Path $Base 'Firmen-CA.crt') -Force -ErrorAction SilentlyContinue
+    return (-not (Test-Path -LiteralPath $tls))
 }
 
 function Wait-MPTaskIdle([string]$Name, [int]$Seconds = 30) {

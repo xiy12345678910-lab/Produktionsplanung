@@ -150,6 +150,34 @@ except (OSError, ValueError):
     broken = True
 check(broken, "Beschädigtes Zertifikat wird erkannt (Server startet nicht unverschlüsselt)")
 
+# #52: HTTPS als Standard bei Neuinstallation (statische Pruefung der Windows-Skripte; echter Lauf in tests/ci_windows_deploy.ps1).
+def ps(name):
+    return (SRC / name).read_text(encoding="utf-8-sig")
+
+
+common, setup, https_ps = ps("MP_Common.ps1"), ps("Setup_Windows.ps1"), ps("HTTPS_Einrichten.ps1")
+check("function Install-MPTls(" in common and common.count("'--tls-einrichten'") == 1, "MP_Common.ps1: Install-MPTls ist die einzige Stelle mit --tls-einrichten")
+check("Install-MPTls $Base $PythonExe" in https_ps and "--tls-einrichten" not in https_ps and "X509Store" not in https_ps, "HTTPS_Einrichten.ps1 nutzt Install-MPTls (keine zweite Implementierung)")
+check("param([switch]$OhneHttps)" in setup and "elseif ($OhneHttps)" in setup, "Setup_Windows.ps1: Opt-out -OhneHttps")
+i_tls = setup.index("Install-MPTls $Base")
+check(setup.index("$IsNewInstall = ") < setup.index("Copy-MPAppFile") < i_tls and "elseif (-not $IsNewInstall)" in setup[:i_tls],
+      "Setup_Windows.ps1: Neuinstallation wird vor dem Kopieren erkannt; bestehende Installation bekommt kein TLS")
+check(all(m in setup[:setup.index("$IsNewInstall = ")] for m in ("LAN_CONFIG.json", "Get-ScheduledTask", "backups")), "Setup_Windows.ps1: Bestand = LAN_CONFIG.json, Servertask oder Backups")
+check(i_tls < setup.index("Start-ScheduledTask"), "Setup_Windows.ps1: HTTPS wird vor dem ersten Serverstart eingerichtet")
+check("$TlsBefore = (Test-Path -LiteralPath (Get-MPTlsDir $Base))" in setup and setup.index("if ($TlsBefore)") < i_tls,
+      "Setup_Windows.ps1: vorhandenes config\\tls (z. B. importierte Firmen-CA) bleibt unangetastet")
+fallback = setup[i_tls:setup.index("Remove-MPLegacyTasks")]
+check("catch" in fallback and "Remove-MPTls $Base" in fallback and "MP-TLS-002" in fallback, "Setup_Windows.ps1: Fehler bei der Einrichtung -> config\\tls entfernen, Warnung MP-TLS-002, weiter mit HTTP")
+check("MP-TLS-003" in setup and setup.count("Remove-MPTls $Base") == 2 and "$TlsCreated" in setup, "Setup_Windows.ps1: kein HTTPS-Health -> Rueckfall auf HTTP (MP-TLS-003), nur fuer eben angelegtes TLS")
+inst = ps("INSTALLIEREN_ALS_ADMIN.ps1")
+check("param([switch]$OhneHttps)" in inst and "-OhneHttps:$OhneHttps" in inst, "INSTALLIEREN_ALS_ADMIN.ps1 reicht -OhneHttps durch")
+# Updates aendern den TLS-Zustand nie (kein Anlegen, kein Entfernen).
+upd = {n: (SRC / n).read_text(encoding="utf-8-sig") for n in ("UPDATE_LIVE.ps1", "Update_von_GitHub.ps1", "app_updates.py")}
+check(not any(x in text for text in upd.values() for x in ("--tls-einrichten", "Install-MPTls", "Remove-MPTls", "tls_setup", "HTTPS_Einrichten")),
+      "Updatepfad (UPDATE_LIVE.ps1, Update_von_GitHub.ps1, app_updates.py) legt kein TLS an und entfernt keins")
+codes = (SRC / "FEHLERCODES.txt").read_text(encoding="utf-8")
+check("MP-TLS-002" in codes and "MP-TLS-003" in codes, "FEHLERCODES.txt nennt MP-TLS-002 und MP-TLS-003")
+
 shutil.rmtree(TMP, ignore_errors=True)
 print(f"\n{sum(RESULTS)}/{len(RESULTS)} bestanden")
 sys.exit(0 if all(RESULTS) else 1)

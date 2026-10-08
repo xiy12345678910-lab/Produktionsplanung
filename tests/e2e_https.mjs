@@ -50,6 +50,10 @@ try {
   await page.waitForFunction(() => !document.getElementById('loginModal').classList.contains('show'), null, { timeout: 15000 });
   const cookie = (await ctx.cookies()).find(c => c.name === 'mp_session');
   check(cookie?.secure === true && cookie?.httpOnly === true, 'Sitzungscookie ist Secure und HttpOnly');
+  // #52: Mit HTTPS keine HTTPS-Empfehlung im Systemstatus, TLS = an.
+  await page.click('#navSystem');
+  const status = await page.waitForFunction(() => document.getElementById('adminStatusPanel')?.innerText || '', null, { timeout: 15000 }).then(h => h.jsonValue()).catch(() => '');
+  check(/Verschlüsselung \(TLS\)\s*an/.test(status) && !status.includes('HTTPS nicht eingerichtet'), 'Systemstatus: TLS an, keine HTTPS-Warnung');
   await page.waitForFunction(() => /Server gespeichert|Server verbunden|gespeichert/i.test(document.querySelector('#saveState')?.textContent || ''), null, { timeout: 15000 }).catch(() => {});
   const saved = await page.evaluate(async () => {
     const st = await (await fetch('/api/state')).json(); const h = await (await fetch('/api/health')).json();

@@ -98,7 +98,7 @@ try {
   check(await shown(a), 'Neuinstallation: Assistent erscheint beim ersten Admin-Login');
   const st0 = (await api(a, 'GET', '/api/state'))[1];
   check(st0.data.departments.length === 0 && st0.data.machines.length === 0, 'neutraler Start: keine Bereiche, keine Maschinen');
-  check(await a.locator('#setupDots .sDot').count() === 5, 'fünf Fortschrittspunkte');
+  check(await a.locator('#setupDots .sDot').count() === 4, 'vier Fortschrittspunkte (Firma, Funktionen, Bereiche, Benutzer)');
   check(await a.evaluate(() => [...document.querySelectorAll('#setupDots .sDot')].every(d => d.title && d.getAttribute('aria-label'))), 'Fortschrittspunkte mit Tooltip und aria-label');
   check(await a.evaluate(() => document.querySelectorAll('#setupBody p').length === 0 && [...document.querySelectorAll('#setupBody .hint')].every(h => h.textContent.trim().length <= 2)), 'Schritt 1 ohne Erklärtext');
   check((await api(a, 'GET', '/api/config'))[1].adminPwUnchanged === true, 'Server meldet Startpasswort unverändert');
@@ -108,26 +108,19 @@ try {
   await a.fill('#suName', 'Muster Metallbau GmbH');
   await a.fill('#suColor', '#aa3300');
   await a.click('#setupNext');
-  await a.waitForFunction(() => /Branche/.test(document.getElementById('setupTitle').textContent));
+  await a.waitForFunction(() => /Funktionen/.test(document.getElementById('setupTitle').textContent));
   const c1 = (await api(a, 'GET', '/api/config'))[1];
   check(c1.company.name === 'Muster Metallbau GmbH' && c1.company.uiAccent.toLowerCase() === '#aa3300', 'Firmenname und Farbe gespeichert');
   check(c1.setupDone === false, 'Abschluss noch nicht gesetzt');
 
-  // Schritt 2: Branche mit Vorschau
-  await a.waitForFunction(() => document.querySelectorAll('#suCards .setupCard').length >= 3);
-  check(await a.locator('#suCards [data-tpl="demo"]').count() === 0, 'Demo-Vorlage wird nicht angeboten (C2)');
-  const before = (await api(a, 'GET', '/api/state'))[1].revision;
-  await a.click('#suCards [data-tpl="metall_cnc"]');
-  await a.waitForFunction(() => document.querySelectorAll('#suPrev .pChip').length > 3);
-  const chips = await a.locator('#suPrev .pChip').allTextContents();
-  check(chips.some(c => c.includes('Zuschnitt')) && chips.some(c => c.includes('Montage')), 'Vorschau zeigt die Bereiche der Vorlage');
-  check((await api(a, 'GET', '/api/state'))[1].revision === before, 'Vorschau ändert nichts');
-  await a.click('#setupNext');
-  await a.waitForFunction(() => /Funktionen/.test(document.getElementById('setupTitle').textContent));
+  // Schritt "Branche" entfällt (#51/#53): kein Kartenraster, keine Vorlage angewendet, Bereiche bleiben leer
+  check(!(await a.evaluate(() => [...document.querySelectorAll('#setupDots .sDot')].some(d => d.title === 'Branche'))) && await a.locator('#suCards').count() === 0, 'Schritt Branche existiert nicht mehr');
+  check(await a.evaluate(() => [...document.querySelectorAll('#setupDots .sDot')].map(d => d.title).join(',')) === 'Firma,Funktionen,Bereiche,Benutzer', 'Schritte: Firma, Funktionen, Bereiche, Benutzer');
   const st1 = (await api(a, 'GET', '/api/state'))[1].data;
-  check(st1.departments.length === 6 && st1.machines.length === 4, `Vorlage füllt Bereiche und Maschinen (${st1.departments.length}/${st1.machines.length})`);
+  check(st1.departments.length === 0 && st1.machines.length === 0, 'ohne Vorlage bleiben Bereiche und Maschinen leer');
+  check(await a.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), 'Assistent ohne horizontales Scrollen (Desktop)');
 
-  // Schritt 3: Module
+  // Schritt 2: Funktionen
   check(await a.locator('#suMods [data-mod-sw]').count() === 11, 'elf Funktions-Schalter inklusive Palettenzettel, Rahmenaufträge, GF-Steuerung und Historie');
   check(await a.locator('#suMods [data-mod-sw="palletLabels"]').getAttribute('aria-pressed') === 'false', 'Palettenzettel sind bei neuer Einrichtung ausgeschaltet');
   await a.click('#suMods [data-mod-sw="chat"]');
@@ -136,11 +129,15 @@ try {
   await a.click('#setupNext');
   await a.waitForFunction(() => /Bereiche/.test(document.getElementById('setupTitle').textContent));
 
-  // Schritt 4: Bereiche/Maschinen
-  check(await a.locator('#setupBody [data-sd]').count() === 6, 'sechs Bereiche zur Anpassung');
+  // Schritt 3: Bereiche/Maschinen (leerer Start, Bereiche werden hier angelegt)
+  check(await a.locator('#setupBody [data-sd]').count() === 0, 'leerer Start: noch keine Bereiche');
+  for (const n of ['Zuschnitt', 'Montage']) {
+    await a.fill('#suDepNew', n); await a.click('#suDepAdd');
+  }
+  await a.waitForFunction(() => document.querySelectorAll('#setupBody [data-sd]').length === 2);
   await a.fill('#suDepNew', 'Lackiererei');
   await a.click('#suDepAdd');
-  await a.waitForFunction(() => document.querySelectorAll('#setupBody [data-sd]').length === 7);
+  await a.waitForFunction(() => document.querySelectorAll('#setupBody [data-sd]').length === 3);
   const lackId = await a.evaluate(() => [...document.querySelectorAll('#setupBody [data-sd]')].find(i => i.value === 'Lackiererei').dataset.sd);
   await a.click(`[data-sm="${lackId}|1"]`);
   await a.waitForFunction(id => document.querySelector(`[data-sm="${id}|-1"]`) && /2/.test(document.querySelector(`[data-sm="${id}|-1"]`).nextElementSibling.textContent), lackId);
@@ -154,7 +151,7 @@ try {
   await a.click('#setupNext');
   await a.waitForFunction(() => /Benutzer/.test(document.getElementById('setupTitle').textContent));
 
-  // Schritt 5: Passwort + Benutzer
+  // Schritt 4: Passwort + Benutzer
   check(await a.locator('#suPw').count() === 1, 'Passwortfelder sichtbar (Startpasswort)');
   await a.fill('#suPwCur', START_PW); await a.fill('#suPwNew', 'kurz'); await a.fill('#suPwRep', 'kurz');
   await a.click('#suPwSave');
@@ -190,7 +187,7 @@ try {
   check(await a.locator('#ciSetup').getAttribute('aria-label') !== null && await a.locator('#ciSetup').getAttribute('title') !== null, 'Assistent-Knopf im Firmenprofil mit Tooltip und aria-label');
   await a.click('#ciSetup');
   check(await shown(a), 'Assistent erneut aufrufbar');
-  await a.click('#setupSkip'); await a.click('#setupSkip'); await a.click('#setupSkip');
+  await a.click('#setupSkip'); await a.click('#setupSkip');
   check(await a.locator('#setupBody [data-sx]').count() === 0, 'erneuter Aufruf: kein Entfernen von Bereichen');
   await a.click('#setupClose');
   check(!(await shown(a)), 'Schließen ohne Änderung');
@@ -231,7 +228,7 @@ try {
   check(await shown(c), 'frischer Server: Assistent');
   await c.fill('#suName', 'Teilstand AG');
   await c.click('#setupNext');
-  await c.waitForFunction(() => /Branche/.test(document.getElementById('setupTitle').textContent));
+  await c.waitForFunction(() => /Funktionen/.test(document.getElementById('setupTitle').textContent));
   await c.click('#setupClose');
   check(!(await shown(c)), 'Schließen blendet den Assistenten aus');
   const cc = (await api(c, 'GET', '/api/config'))[1];
@@ -240,8 +237,17 @@ try {
   const c2 = await open(18825, 'admin', START_PW);
   check(await shown(c2), 'nächster Login: Assistent erscheint wieder');
   check(await c2.locator('#suName').inputValue() === 'Teilstand AG', 'Name aus dem Teilstand vorbelegt');
+  // Mobil (390px): kein horizontales Scrollen in keinem Schritt
+  await c2.setViewportSize({ width: 390, height: 800 });
+  let wide = 0;
+  for (let i = 0; i < 4; i++) {
+    if (await c2.evaluate(() => document.documentElement.scrollWidth > window.innerWidth || document.getElementById('setupBody').scrollWidth > document.getElementById('setupBody').clientWidth + 1)) wide++;
+    if (i < 3) await c2.click('#setupSkip');
+  }
+  check(wide === 0, 'Assistent bei 390px ohne horizontales Scrollen (' + wide + ' breite Schritte)');
+  for (let i = 0; i < 3; i++) await c2.click('#setupBack');
   // alles überspringen
-  for (let i = 0; i < 4; i++) await c2.click('#setupSkip');
+  for (let i = 0; i < 3; i++) await c2.click('#setupSkip');
   await c2.click('#setupNext');
   await c2.waitForFunction(() => !document.getElementById('setupModal').classList.contains('show'));
   check((await api(c2, 'GET', '/api/config'))[1].setupDone === true, 'alle Schritte übersprungen: abgeschlossen');

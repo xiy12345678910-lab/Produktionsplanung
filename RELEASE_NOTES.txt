@@ -2,11 +2,28 @@ MASCHINENPLANUNG V12.27.0 - RELEASE NOTES
 =========================================
 Datum: 08.10.2026 · Basis: V12.26.0 · Update gemäß README_Windows.txt 2b, Daten bleiben erhalten
 
+LIZENZSCHLUESSEL (#52)
+- Signierte Lizenzdatei config\lizenz.key (RSA/SHA-256, Pruefung im neuen Modul mp_license.py, nur Standardbibliothek). Unbefristete oder befristete Lizenzen, ohne Benutzer-/Modulgrenzen; gebunden an die tenantId in firma.json.
+- System > Lizenz (Admin): Status (gueltig/fehlt/ungueltig/falsche Firma/abgelaufen/nicht aktiv), Lizenznehmer, Ablauf, Kulanz, Upload (.key, vor dem Speichern geprueft) und Entfernen. Diagnosepaket enthaelt den Lizenzstatus (ohne Signatur).
+- Ohne gueltige Lizenz: Hinweis fuer den Admin, nach 30 Tagen Kulanz nur Lesen fuer alle (Banner). Der Server sperrt jede Aenderung (MP-LIC-001); Lesen, Anmeldung, eigenes Passwort, Diagnose/Backup, Lizenz-Upload und Updates bleiben. Daten werden nie geloescht. Kulanzbeginn steht in der Datenbank (Tabelle app_meta, additiv); eine zurueckgestellte Uhr verlaengert nichts.
+- In dieser Version ist noch kein oeffentlicher Schluessel eingetragen: Lizenzpruefung NICHT aktiv, keine Einschraenkung, keine Kulanzzaehlung. Bestehende Installationen laufen unveraendert weiter.
+
+HTTPS STANDARD BEI NEUINSTALLATION (#52)
+- Setup_Windows.ps1 richtet bei einer Neuinstallation HTTPS ein (Firmen-CA + Serverzertifikat wie HTTPS_Einrichten.ps1, gemeinsame Funktion Install-MPTls). Abschalten mit -OhneHttps. Schlaegt die Einrichtung fehl, laeuft die Installation mit HTTP weiter und warnt (MP-TLS-002/003).
+- Bestehende Installationen bleiben unveraendert (Updates und erneutes Setup stellen nicht um). Der Systemstatus zeigt dort "HTTPS nicht eingerichtet" mit Verweis auf README_Windows.txt 2c (HTTPS_Einrichten.ps1). Arbeitsplaetze muessen Firmen-CA.crt weiterhin einmal importieren.
+
+EINRICHTUNG OHNE SCHRITT BRANCHE (#51/#53)
+- Der Einrichtungsassistent hat vier Schritte: Firma, Funktionen, Bereiche, Benutzer. Der Schritt "Branche" (Vorlage waehlen) entfaellt; neue Installationen starten ohne Vorlage mit leerem Bereichs-Stand und legen Bereiche und Maschinen im Schritt Bereiche selbst an.
+- Branchenvorlagen bleiben im Firmenprofil ("Vorlage anwenden - ergaenzt nur") verfuegbar. Server und Daten unveraendert, kein Schritt-Stand wird gespeichert.
+
 SYSTEMSTATUS UND DIAGNOSEPAKET FUER DEN ADMIN (#52 K6)
 - System zeigt dem Admin einen Systemstatus (Version, Datenbank-Pruefung, freier Speicher, letztes Backup, Warnungen) und bietet ein Diagnosepaket als JSON zum Download. Nur Zaehler und technische Werte, keine Auftrags-, Chat-, Personal- oder Zugangsdaten.
 
 UPDATER: PROGRAMMDATEIEN IN UNTERORDNERN (#73, Vorbereitung)
 - Updater, Setup, Vorabtest und Rollback koennen Programmdateien in einer Unterordnerebene (z. B. core/) installieren und sichern; unzulaessige Pfade werden abgewiesen (MP-UPD-006). Noch nichts verschoben, Paketinhalt unveraendert.
+
+INTERN: Backend-Module mp_config.py, mp_tls.py und mp_rights.py (#73 Phase 1)
+- Firmenkonfiguration (firma.json laden/pruefen/migrieren/speichern, Logo/SVG-Pruefung, Branding, Module) liegt im neuen Modul mp_config.py, HTTPS (Firmen-CA, Serverzertifikat, RSA/DER) in mp_tls.py, Rollen & Rechte (Systemrollen, Rollenprofile, Funktions-/Aktionsrechte, Rechtepruefung beim Speichern) in mp_rights.py, alle flach neben server.py und Teil des Pakets. Keine Verhaltensaenderung; server.py bietet alle Namen weiter an. tools/lizenz_werkzeug.py nutzt die RSA-Funktionen aus mp_tls.py.
 
 BEREICHS-FLAGS STATT FESTER IDS (#51)
 - Die serverseitige Bedienerkapazitätsprüfung bei der Freigabe richtet sich nach dem Bereichs-Flag "Bediener geteilt" (wie im Client) statt nach der ID "cnc"; Maschinen ohne Bereich fallen auf den ersten aktiven Produktionsbereich zurück. Bestand unverändert (cnc trägt das Flag bereits).

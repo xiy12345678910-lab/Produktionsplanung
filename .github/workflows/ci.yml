@@ -23,7 +23,7 @@ jobs:
         with:
           python-version: '3.12'
       - name: Syntax
-        run: python -m py_compile server.py release_gates.py app_updates.py Backup_Datenbank.py
+        run: python -m py_compile server.py mp_config.py mp_tls.py mp_rights.py mp_license.py release_gates.py app_updates.py Backup_Datenbank.py tools/lizenz_werkzeug.py
       - name: Version einheitlich
         run: python tests/test_version.py
       - name: Server-Regeln
@@ -43,6 +43,7 @@ jobs:
           python tests/test_blocks.py
           python tests/test_updates.py
           python tests/test_update_subfolders.py
+          python tests/test_release_tools.py
           python tests/test_av_handoff.py
           python tests/test_project_live.py
           python tests/test_personnel_times.py
@@ -52,14 +53,19 @@ jobs:
           python tests/test_roles_rights.py
           python tests/test_role_warnings.py
           python tests/test_diagnostics.py
+          python tests/test_license.py
           python tests/test_golden.py
           python tests/test_bench_state.py
           python tests/test_drying_server.py
           python tests/test_av_hours_flag.py
           python tests/test_no_quantity.py
           python tests/test_shared_operators_flag.py
+          python tests/test_security_negative.py
+          python tests/test_batch_calc.py
       - name: Backup/Restore
-        run: python tests/test_backup.py
+        run: |
+          python tests/test_backup.py
+          python tests/test_backup_target.py
       - name: Datenerhalt bei Updates (alte Staende -> aktuell)
         env:
           MP_UPGRADE_STRICT: '1'

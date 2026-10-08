@@ -84,6 +84,20 @@ class Diagnostics(unittest.TestCase):
         self.assertIn('Letztes Update fehlgeschlagen', d['warnings'])
         self.assertIn('Kein Backup gefunden', d['warnings'])
         self.assertIn('tls', d['config'])
+        # #52: Testserver laeuft ohne TLS -> Empfehlung im selben Stil wie die anderen Warnungen.
+        self.assertFalse(d['config']['tls'])
+        self.assertIn(server.DIAG_WARN_NO_TLS, d['warnings'])
+        self.assertIn('HTTPS nicht eingerichtet', server.DIAG_WARN_NO_TLS)
+        self.assertIn('HTTPS_Einrichten.ps1', server.DIAG_WARN_NO_TLS)
+
+    def test_tls_warning_only_without_tls(self):
+        on, off = server.build_diagnostics(True), server.build_diagnostics(False)
+        self.assertTrue(on['config']['tls'])
+        self.assertNotIn(server.DIAG_WARN_NO_TLS, on['warnings'])
+        self.assertFalse(off['config']['tls'])
+        self.assertEqual(off['warnings'].count(server.DIAG_WARN_NO_TLS), 1)
+        # Die uebrigen Warnungen bleiben gleich.
+        self.assertEqual([w for w in off['warnings'] if w != server.DIAG_WARN_NO_TLS], on['warnings'])
 
     def test_other_roles_forbidden(self):
         self.assertEqual(self.req('GET', '/api/diagnostics')[0], 401)

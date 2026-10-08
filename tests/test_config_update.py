@@ -43,6 +43,12 @@ OBS = ps_list(common, "MP_ObsoleteFiles")
 check(len(APP) > 20 and "server.py" in APP, f"{len(APP)} Programmdateien aus MP_Common.ps1 gelesen")
 check(not any(re.match(r"(?i)^config([\\/]|$)", n) for n in APP + OBS), "config steht weder in $MP_AppFiles noch in $MP_ObsoleteFiles")
 check(re.search(r"\$MP_ConfigDir\s*=\s*'config'", common) is not None, "$MP_ConfigDir = 'config' definiert")
+# #73 Phase 1: server.py importiert flache Module; sie werden immer mitgeliefert, sind aber keine Pflichtdateien im
+# Manifest (ältere Pakete bleiben installier- und rücksetzbar).
+import app_updates  # noqa: E402
+for mod in ("mp_config.py", "mp_tls.py", "mp_rights.py"):
+    check(mod in APP and (SRC / mod).is_file() and mod not in app_updates.validate_manifest.__code__.co_consts,
+          f"{mod} flach in $MP_AppFiles, nicht Pflichtdatei im Manifest")
 
 # Statische Zusagen der Skripte
 check(update.count("$MP_ConfigDir") >= 3, "UPDATE_LIVE.ps1: config bei Sicherung, Umzug und Rollback berücksichtigt")

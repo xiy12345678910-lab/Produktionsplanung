@@ -38,6 +38,7 @@ if str(BASE) not in sys.path:
     sys.path.append(str(BASE))
 from release_gates import machine_lanes, validate_release_feasibility, local_dt, work_intervals, personnel_assignment, can_staff, is_absent, LOCAL_TZ, make_segments, hits_machine_block, overlaps, clock_minutes
 from app_updates import UpdateManager
+import mp_license   # V12.27.0 (#52) Lizenzschlüssel
 
 DATA_DIR = BASE / "data"
 DB_PATH = DATA_DIR / "maschinenplanung.sqlite3"
@@ -45,618 +46,78 @@ INDEX_PATH = BASE / "index.html"
 
 
 # ---------------------------------------------------------------------------------------------
-# V12.14.0: Firmenkonfiguration config/firma.json (+ Logo) AUSSERHALB des Programmpakets.
-# Updates (UPDATE_LIVE.ps1) kopieren nur $MP_AppFiles und fassen config\ nie an.
-# Nur Standardbibliothek. Ungültige Datei = Start verweigert (MP-CFG-001/002), nichts wird überschrieben.
+# V12.14.0: Firmenkonfiguration config/firma.json (+ Logo) AUSSERHALB des Programmpakets: siehe mp_config.py
+# (#73 Phase 1, flaches Modul neben server.py). Alle Namen werden hier weiter angeboten (server.config_defaults ...).
 # ---------------------------------------------------------------------------------------------
-CONFIG_DIR = Path(os.environ.get("MP_CONFIG_DIR") or (BASE / "config"))
-CONFIG_PATH = CONFIG_DIR / "firma.json"
-CONFIG_SCHEMA = 1
-CONFIG_KEEP_BAK = 20
-CONFIG_LOGO_MAX = 420 * 1024
-CONFIG_LOCK = threading.RLock()
-CONFIG_MODULES = ("projects", "formats", "personnel", "chat", "notifications", "postcalc", "kpi", "palletLabels", "frameOrders", "gf", "history")
-CONFIG_MODULE_DEFAULTS = {k: True for k in CONFIG_MODULES} | {"palletLabels": False}
-CONFIG_TEMPLATES = {"werbetechnik", "neutral", "metall_cnc", "leer", "demo"}
-CONFIG_HEX = re.compile(r"^#[0-9a-fA-F]{6}$")
-CONFIG_TENANT = re.compile(r"^[a-z0-9-]{3,32}$")
-CONFIG_PROJECT_AREAS = [
-    {"id": "sales", "name": "Vertrieb"}, {"id": "pm", "name": "Projektmanagement"},
-    {"id": "engineering", "name": "Konstruktion / Entwicklung"}, {"id": "calculation", "name": "Kalkulation"},
-    {"id": "purchasing", "name": "Einkauf"}, {"id": "quality", "name": "Qualitätssicherung"},
-    {"id": "av", "name": "Arbeitsvorbereitung"},
-]
+import mp_config  # noqa: E402
+from mp_config import (  # noqa: E402,F401
+    ConfigError, CONFIG_SCHEMA, CONFIG_KEEP_BAK, CONFIG_LOGO_MAX, CONFIG_LOCK, CONFIG_MODULES, CONFIG_MODULE_DEFAULTS,
+    CONFIG_TEMPLATES, CONFIG_HEX, CONFIG_TENANT, CONFIG_PROJECT_AREAS, CONFIG_WRITE_SECTIONS, NEUTRAL_HINT,
+    config_defaults, legacy_seed, _merge_missing, validate_config, config_last_bak, _config_fail, read_config_file,
+    _atomic_write, save_config, _legacy_logo, _existing_state, install_is_fresh, _legacy_bestand_without_identity,
+    check_firma_config_start, migrate_firma_config, setup_firma_from_template, _fill_company_from_ci, load_config,
+    LOGO_TYPES, LOGO_MIME, SVG_NS, XLINK_NS, SVG_TAGS, SVG_BAD_VALUE, SVG_URL, _svg_value_ok, svg_sanitize, logo_check,
+    current_config, config_revision, public_config,
+    MODULE_LABELS, MODULE_DEPS, MODULE_STATE_KEYS, modules_effective, module_on,
+)
+
+# Die Konfiguration liest Datenbankpfad und Rollen immer aktuell aus diesem Modul (Tests ersetzen server.DB_PATH).
+mp_config.db_path_provider = lambda: DB_PATH
+mp_config.role_ids_provider = lambda: ROLES
+
+# V12.21.0: HTTPS im LAN (Firmen-CA, Serverzertifikat, RSA/DER): siehe mp_tls.py (#73 Phase 1, flaches Modul).
+import mp_tls  # noqa: E402
+from mp_tls import (  # noqa: E402,F401
+    _local_host_names, LOCAL_HOST_NAMES, _is_probable_prime, _rsa_prime, rsa_generate, _der, _der_int, _der_seq,
+    _der_oid, _der_time, _der_name, _der_ext, _rsa_public_info, _key_id, _rsa_sign_sha256, x509_certificate, _pem,
+    _rsa_private_pem, _rsa_private_load, _write_private, tls_setup, tls_renew_reason, tls_context,
+)
+
+# V12.23.0 (#63/#55): Systemrollen, Rollenprofile (Funktions-/Aktionsrechte) und Rechteprüfung beim Speichern: siehe
+# mp_rights.py (#73 Phase 1, flaches Modul). Keine veränderlichen Werte dort, daher keine Umleitung nötig.
+import mp_rights  # noqa: E402,F401
+from mp_rights import (  # noqa: E402,F401
+    canonical, _record_map,
+    ROLES, WRITE_ROLES, DEPARTMENT_ROLES, SCOPED_ROLES, USER_MANAGER_ROLES, MANAGEABLE_ROLES,
+    ROLE_FUNCTIONS, ROLE_ACTIONS, LEGACY_PRODUCTION_ACTION, FA_PLAN_FIELDS, effective_actions, ROLE_LEVELS,
+    FUNCTION_DATA, GF_FUNCTION_KEYS, FUNCTION_HIDDEN, migrate_role_profiles, resolve_profile_id, role_risk_warnings,
+    role_profiles, attach_rights, user_level, av_hours_department, user_action, user_public, validate_role_profile,
+    restrict_state_for_rights, rights_change_error,
+)
+
+# Veränderliche Modulwerte, die in einem anderen Modul leben: server.X liest und schreibt dort
+# (server.CONFIG_DIR = ..., server.CURRENT_CFG = None in Tests wirkt also weiter auf die Konfiguration).
+# Im Code dieses Moduls deshalb immer mp_config.X bzw. mp_tls.X statt X verwenden.
+_FORWARDED = {name: mp_config for name in ("CONFIG_DIR", "CONFIG_PATH", "LEGACY_SEED_PATH", "CURRENT_CFG")}
+_FORWARDED.update({name: mp_tls for name in ("TLS_DIR", "TLS_CERT", "TLS_KEY", "TLS_CA_CERT", "TLS_CA_KEY", "TLS_SERVER_DAYS", "TLS_CA_DAYS")})
 
 
-class ConfigError(Exception):
-    def __init__(self, code: str, message: str):
-        super().__init__(message)
-        self.code = code
-        self.message = message
+class _ServerModule(type(sys)):
+    def __getattr__(self, name):
+        mod = _FORWARDED.get(name)
+        if mod is None:
+            raise AttributeError(f"module {self.__name__!r} has no attribute {name!r}")
+        return getattr(mod, name)
 
-
-def config_defaults() -> dict:
-    """Neutrale Grundwerte (neue Installation, fehlende Felder)."""
-    return {
-        "schemaVersion": CONFIG_SCHEMA,
-        "tenantId": "firma",
-        "company": {"name": "", "productName": "Produktionsplanung", "logoFile": "", "color": "#1f5eff",
-                    "uiAccent": "#1f5eff", "font": "Arial", "address": "", "footer": ""},
-        "locale": {"language": "de", "timezone": "Europe/Berlin", "holidayRegion": ""},
-        "terms": {"projectNumber": "Projekt", "orderNumber": "Auftrag", "roleLabels": {}},
-        "template": "neutral",
-        "modules": dict(CONFIG_MODULE_DEFAULTS),
-        "projectAreas": [dict(a) for a in CONFIG_PROJECT_AREAS],
-        "license": {"file": "lizenz.key"},
-        "update": {"channel": "stable", "source": ""},
-        "setupDone": True,
-    }
-
-
-# V12.15.0: Die bisher fest eingebauten Werte des Bestandskunden stehen NICHT mehr im Programmpaket.
-# Für die Erstmigration (Bestand ohne firma.json) werden sie, falls vorhanden, aus tools/legacy_employer_seed.json
-# gelesen (Entwickler-Repo, nicht in $MP_AppFiles). Ohne Datei bleibt es bei data.ci + neutralen Werten.
-LEGACY_SEED_PATH = Path(os.environ.get("MP_LEGACY_SEED") or (BASE / "tools" / "legacy_employer_seed.json"))
-
-
-def legacy_seed() -> dict:
-    try:
-        d = json.loads(LEGACY_SEED_PATH.read_text(encoding="utf-8-sig"))
-        return d if isinstance(d, dict) else {}
-    except (OSError, ValueError):
-        return {}
-
-
-def _merge_missing(cur, default):
-    """Ergänzt nur fehlende Schlüssel; vorhandene Werte und unbekannte Felder bleiben."""
-    if not isinstance(cur, dict) or not isinstance(default, dict):
-        return cur
-    out = dict(cur)
-    for k, v in default.items():
-        out[k] = _merge_missing(out[k], v) if k in out else json.loads(json.dumps(v))
-    return out
-
-
-def validate_config(cfg) -> list[str]:
-    """Liefert Fehler als 'feld: grund'. Unbekannte Felder werden toleriert."""
-    errs: list[str] = []
-    if not isinstance(cfg, dict):
-        return ["(Datei): Objekt erwartet"]
-
-    def sec(name):
-        v = cfg.get(name)
-        if v is None:
-            return {}
-        if not isinstance(v, dict):
-            errs.append(f"{name}: Objekt erwartet")
-            return {}
-        return v
-
-    def text(sect, d, key, mx):
-        v = d.get(key)
-        if v is not None and (not isinstance(v, str) or len(v) > mx):
-            errs.append(f"{sect}.{key}: Text bis {mx} Zeichen erwartet")
-
-    sv = cfg.get("schemaVersion")
-    if sv is not None and (not isinstance(sv, int) or isinstance(sv, bool) or sv < 1):
-        errs.append("schemaVersion: ganze Zahl >= 1 erwartet")
-    rv = cfg.get("revision")
-    if rv is not None and (not isinstance(rv, int) or isinstance(rv, bool) or rv < 0):
-        errs.append("revision: ganze Zahl >= 0 erwartet")
-    t = cfg.get("tenantId")
-    if t is not None and not (isinstance(t, str) and CONFIG_TENANT.match(t)):
-        errs.append("tenantId: [a-z0-9-], 3-32 Zeichen")
-    tp = cfg.get("template")
-    if tp is not None and tp not in CONFIG_TEMPLATES:
-        errs.append("template: unbekannte Vorlage")
-    c = sec("company")
-    for k in ("name", "productName", "font", "address", "footer"):
-        text("company", c, k, 600 if k in ("address", "footer") else 120)
-    for k in ("color", "uiAccent"):
-        if c.get(k) is not None and not (isinstance(c[k], str) and CONFIG_HEX.match(c[k])):
-            errs.append(f"company.{k}: Hex-Farbe #RRGGBB erwartet")
-    lf = c.get("logoFile")
-    if lf not in (None, ""):
-        if not (isinstance(lf, str) and re.match(r"^[A-Za-z0-9_.-]+\.(png|jpe?g|svg)$", lf)):
-            errs.append("company.logoFile: Dateiname .png/.jpg/.svg im config-Ordner erwartet")
+    def __setattr__(self, name, value):
+        mod = _FORWARDED.get(name)
+        if mod is not None:
+            setattr(mod, name, value)
         else:
-            p = CONFIG_DIR / lf
-            if not p.is_file():
-                errs.append(f"company.logoFile: Datei {lf} fehlt")
-            elif p.stat().st_size > CONFIG_LOGO_MAX:
-                errs.append(f"company.logoFile: Datei größer als {CONFIG_LOGO_MAX // 1024} KB")
-            elif lf.lower().endswith(".svg"):
-                try:
-                    svg_sanitize(p.read_bytes())
-                except ValueError as e:
-                    errs.append(f"company.logoFile: SVG nicht zulässig ({e})")
-    lo = sec("locale")
-    if lo.get("language") is not None and lo["language"] not in ("de", "en"):
-        errs.append("locale.language: de oder en")
-    text("locale", lo, "timezone", 64)
-    text("locale", lo, "holidayRegion", 16)
-    te = sec("terms")
-    text("terms", te, "projectNumber", 30)
-    text("terms", te, "orderNumber", 30)
-    if te.get("roleLabels") is not None and not isinstance(te["roleLabels"], dict):
-        errs.append("terms.roleLabels: Objekt erwartet")
-    elif isinstance(te.get("roleLabels"), dict) and any(
-            k not in ROLES or not isinstance(v, str) or len(v) > 40 for k, v in te["roleLabels"].items()):
-        errs.append("terms.roleLabels: Rollen-ID und Text bis 40 Zeichen erwartet")
-    m = sec("modules")
-    for k, v in m.items():
-        if k in CONFIG_MODULES and not isinstance(v, bool):
-            errs.append(f"modules.{k}: true/false erwartet")
-    pa = cfg.get("projectAreas")
-    if pa is not None:
-        ok = isinstance(pa, list) and pa and all(
-            isinstance(a, dict) and isinstance(a.get("id"), str) and re.match(r"^[a-z0-9_-]{1,30}$", a["id"])
-            and isinstance(a.get("name"), str) and 0 < len(a["name"]) <= 60 for a in pa)
-        if not ok or len({a["id"] for a in pa}) != len(pa):
-            errs.append("projectAreas: Liste aus {id, name} (eindeutige id) erwartet")
-    if cfg.get("setupDone") is not None and not isinstance(cfg["setupDone"], bool):
-        errs.append("setupDone: true/false erwartet")
-    sec("license")
-    u = sec("update")
-    text("update", u, "channel", 20)
-    text("update", u, "source", 300)
-    return errs
+            super().__setattr__(name, value)
+
+    def __delattr__(self, name):
+        mod = _FORWARDED.get(name)
+        if mod is not None:
+            delattr(mod, name)
+        else:
+            super().__delattr__(name)
 
 
-def config_last_bak() -> str:
-    baks = sorted(CONFIG_DIR.glob("firma.json.bak-*"), key=lambda p: p.name, reverse=True)
-    for p in baks:
-        try:
-            if not validate_config(json.loads(p.read_text(encoding="utf-8-sig"))):
-                return str(p)
-        except (OSError, ValueError):
-            continue
-    return ""
+sys.modules[__name__].__class__ = _ServerModule
 
 
-def _config_fail(code: str, detail: str) -> ConfigError:
-    bak = config_last_bak()
-    msg = f"{code} {CONFIG_PATH}: {detail}" + (f" · letzte gültige Sicherung: {bak}" if bak else "")
-    return ConfigError(code, msg)
-
-
-def read_config_file() -> dict:
-    try:
-        cfg = json.loads(CONFIG_PATH.read_text(encoding="utf-8-sig"))
-    except (OSError, ValueError) as e:
-        raise _config_fail("MP-CFG-001", f"nicht lesbar oder kein JSON ({e.__class__.__name__})")
-    errs = validate_config(cfg)
-    if errs:
-        raise _config_fail("MP-CFG-002", "; ".join(errs[:5]))
-    return cfg
-
-
-def _atomic_write(path: Path, data: bytes) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(path.name + ".tmp")
-    tmp.write_bytes(data)
-    os.replace(tmp, path)
-
-
-def save_config(cfg: dict) -> None:
-    """Validiert, sichert die bisherige Datei als .bak (nur bei geänderter Datei, letzte 20) und schreibt atomar."""
-    errs = validate_config(cfg)
-    if errs:
-        raise ConfigError("MP-CFG-002", f"{CONFIG_PATH}: " + "; ".join(errs[:5]))
-    if int(cfg.get("schemaVersion", CONFIG_SCHEMA)) > CONFIG_SCHEMA:
-        raise ConfigError("MP-CFG-003", "schemaVersion neuer als dieses Programm: nicht geschrieben")
-    data = (json.dumps(cfg, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
-    with CONFIG_LOCK:
-        if CONFIG_PATH.exists():
-            if CONFIG_PATH.read_bytes() == data:
-                return
-            stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-            bak = CONFIG_DIR / f"firma.json.bak-{stamp}"
-            n = 1
-            while bak.exists():
-                n += 1
-                bak = CONFIG_DIR / f"firma.json.bak-{stamp}-{n}"
-            shutil.copy2(CONFIG_PATH, bak)
-            for old in sorted(CONFIG_DIR.glob("firma.json.bak-*"), key=lambda p: p.name, reverse=True)[CONFIG_KEEP_BAK:]:
-                old.unlink(missing_ok=True)
-        _atomic_write(CONFIG_PATH, data)
-
-
-def _legacy_logo(ci: dict, seed: dict) -> tuple[str, bytes]:
-    """Logo des Bestands: data.ci.logo, sonst das der Legacy-Seed-Datei. ('', b'') wenn keins/zu groß."""
-    cands = []
-    if isinstance(ci, dict) and isinstance(ci.get("logo"), str):
-        cands.append(ci["logo"])
-    if isinstance(seed.get("logoDataUrl"), str):
-        cands.append(seed["logoDataUrl"])
-    for s in cands:
-        m = re.match(r"^data:image/(png|jpeg);base64,(.+)$", s, re.S)
-        if not m:
-            continue
-        try:
-            raw = base64.b64decode(m.group(2), validate=True)
-        except ValueError:
-            continue
-        if 0 < len(raw) <= CONFIG_LOGO_MAX:
-            return ("logo.png" if m.group(1) == "png" else "logo.jpg"), raw
-    return "", b""
-
-
-def _existing_state() -> dict | None:
-    """Liest (read-only) den Datenstand. None = keine Bestandsdatenbank (Revision <= 1 oder keine)."""
-    if not DB_PATH.exists():
-        return None
-    try:
-        con = sqlite3.connect(f"file:{DB_PATH.as_posix()}?mode=ro", uri=True)
-        try:
-            row = con.execute("SELECT revision,json FROM state WHERE id=1").fetchone()
-        finally:
-            con.close()
-        if not row or int(row[0]) <= 1:
-            return None
-        st = json.loads(row[1])
-        return st if isinstance(st, dict) else {}
-    except (sqlite3.Error, ValueError, TypeError):
-        return None
-
-
-def install_is_fresh() -> bool:
-    """V12.17.0: Neuinstallation = keine Datenbank oder Revision <= 1 ohne jede Planungsdaten. Nur dann startet der
-    Einrichtungsassistent (setupDone=false). Bestand (Revision > 1 oder vorhandene Daten) gilt immer als eingerichtet."""
-    if not DB_PATH.exists():
-        return True
-    try:
-        con = sqlite3.connect(f"file:{DB_PATH.as_posix()}?mode=ro", uri=True)
-        try:
-            row = con.execute("SELECT revision,json FROM state WHERE id=1").fetchone()
-        finally:
-            con.close()
-        if not row:
-            return True
-        if int(row[0]) > 1:
-            return False
-        st = json.loads(row[1])
-        if not isinstance(st, dict):
-            return False
-        return not any(st.get(k) for k in ("departments", "machines", "workSteps", "projects", "employees", "history", "exceptions"))
-    except (sqlite3.Error, ValueError, TypeError):
-        return False
-
-
-NEUTRAL_HINT = ("Vor dem Update 'Firma_Einrichten.ps1 -Vorlage <datei>' ausfuehren (Vorlage vom Entwickler) "
-                "oder bewusst neutral starten mit 'Firma_Einrichten.ps1 -Neutral'.")
-
-
-def _legacy_bestand_without_identity() -> bool:
-    """True: Bestand (Revision > 1) ohne firma.json, ohne Firmenname/Logo in data.ci und ohne Vorlage -> Start wäre still neutral."""
-    if CONFIG_PATH.exists():
-        return False
-    st = _existing_state()
-    if st is None:
-        return False
-    ci = st.get("ci") if isinstance(st.get("ci"), dict) else {}
-    seed = legacy_seed()
-    sco = seed.get("company") if isinstance(seed.get("company"), dict) else {}
-    has_name = (isinstance(ci.get("company"), str) and bool(ci["company"].strip())) or bool(sco.get("name"))
-    has_logo = bool(_legacy_logo(ci, seed)[0])
-    return not (has_name or has_logo)
-
-
-def check_firma_config_start() -> None:
-    """V12.15.1: Ein Bestand darf nie still neutral starten (Name/Logo weg). Harter Stopp mit MP-CFG-006."""
-    if _legacy_bestand_without_identity():
-        raise ConfigError("MP-CFG-006", f"MP-CFG-006 Bestandsdatenbank ohne config\\firma.json und ohne Firmenname/Logo in den Daten. "
-                                        f"Start gestoppt, damit Name und Logo nicht still verloren gehen. {NEUTRAL_HINT}")
-
-
-def migrate_firma_config(seed: dict | None = None, neutral_ok: bool = False) -> dict:
-    """Fehlt die Datei: aus data.ci (+ optionaler Legacy-Seed-Datei) bzw. neutral anlegen. Idempotent.
-    Bestand ohne Firmenname/Logo: MP-CFG-006 (außer neutral_ok). Neuinstallation (Revision <= 1) bleibt neutral."""
-    cfg = config_defaults()
-    st = _existing_state()
-    by_template = seed is not None
-    if by_template and st is None:
-        st = {}          # Einrichtung per Vorlage (Firma_Einrichten): wie ein Bestand behandeln
-    if st is not None:
-        ci = st.get("ci") if isinstance(st.get("ci"), dict) else {}
-        seed = legacy_seed() if seed is None else seed
-        if seed:
-            cfg = _merge_missing({k: v for k, v in seed.items() if k not in ("logoDataUrl", "_hinweis")}, cfg)
-        co = cfg["company"]
-        for k in ("address", "footer", "font"):
-            if isinstance(ci.get(k), str) and ci[k]:
-                co[k] = ci[k][:600 if k != "font" else 60]
-        if isinstance(ci.get("company"), str) and ci["company"].strip():
-            co["name"] = ci["company"].strip()[:120]
-        if isinstance(ci.get("color"), str) and CONFIG_HEX.match(ci["color"]):
-            co["color"] = ci["color"]
-        name, raw = _legacy_logo(ci, seed)
-        if not name and isinstance(co.get("logoFile"), str) and co["logoFile"]:
-            co["logoFile"] = ""    # Verweis der Vorlage ohne Datei nicht übernehmen
-        if not co.get("name") and not name and not neutral_ok:
-            raise ConfigError("MP-CFG-006", f"MP-CFG-006 Bestandsdatenbank ohne Firmenname/Logo. {NEUTRAL_HINT}")
-        if name:
-            _atomic_write(CONFIG_DIR / name, raw)
-            co["logoFile"] = name
-        acc = (st.get("ui") or {}).get("accent") if isinstance(st.get("ui"), dict) else None
-        if isinstance(acc, str) and CONFIG_HEX.match(acc):
-            co["uiAccent"] = acc
-    # Per Vorlage ohne Datenbank: Akzent aus data.ui.accent beim ersten Serverstart nachziehen.
-    cfg["uiAccentSynced"] = not (by_template and not _existing_state())
-    cfg["ciSynced"] = True
-    # V12.17.0: nur eine echte Neuinstallation ohne Vorlage/Daten bekommt den Einrichtungsassistenten.
-    if st is None and not by_template and install_is_fresh():
-        cfg["setupDone"] = False
-    save_config(cfg)
-    return cfg
-
-
-def setup_firma_from_template(arg: str) -> int:
-    """V12.15.1: 'server.py --firma-einrichten <vorlage.json|neutral>' schreibt config\\firma.json (nur wenn sie fehlt)."""
-    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-    if CONFIG_PATH.exists():
-        print(f"{CONFIG_PATH} existiert bereits - nichts geaendert.", file=sys.stderr)
-        return 4
-    if arg.lower() == "neutral":
-        migrate_firma_config(seed={}, neutral_ok=True)
-        print(f"Neutrale Firmenkonfiguration angelegt: {CONFIG_PATH}")
-        return 0
-    try:
-        seed = json.loads(Path(arg).read_text(encoding="utf-8-sig"))
-        if not isinstance(seed, dict):
-            raise ValueError("kein JSON-Objekt")
-    except (OSError, ValueError) as e:
-        print(f"FEHLER: Vorlage nicht lesbar: {e}", file=sys.stderr)
-        return 2
-    try:
-        cfg = migrate_firma_config(seed=seed)
-    except ConfigError as e:
-        print(f"FEHLER: {e.message}", file=sys.stderr)
-        return 3
-    print(f"Firmenkonfiguration angelegt: {CONFIG_PATH} ({cfg['company'].get('name') or 'ohne Name'})")
-    return 0
-
-
-def _fill_company_from_ci(cfg: dict) -> None:
-    """Nur wenn die Config noch keinen Firmennamen und kein Logo hat: Name/Logo/Adresse/Fuß/Schrift/Farbe aus data.ci
-    übernehmen (ergänzt leere Felder, ändert nie vorhandene). Idempotent über das Kennzeichen ciSynced."""
-    co = cfg.setdefault("company", {})
-    if co.get("name") or co.get("logoFile"):
-        return
-    st = _existing_state()
-    ci = st.get("ci") if isinstance(st, dict) and isinstance(st.get("ci"), dict) else None
-    if not ci:
-        return
-    dflt = config_defaults()["company"]
-    name = ci["company"].strip()[:120] if isinstance(ci.get("company"), str) else ""
-    lname, raw = _legacy_logo(ci, {})
-    if not name and not lname:
-        return
-    if name:
-        co["name"] = name
-    for k, mx in (("address", 600), ("footer", 600), ("font", 60)):
-        if isinstance(ci.get(k), str) and ci[k] and co.get(k, dflt[k]) in ("", dflt[k]):
-            co[k] = ci[k][:mx]
-    if isinstance(ci.get("color"), str) and CONFIG_HEX.match(ci["color"]) and co.get("color", dflt["color"]) == dflt["color"]:
-        co["color"] = ci["color"]
-    if lname:
-        _atomic_write(CONFIG_DIR / lname, raw)
-        co["logoFile"] = lname
-
-
-CURRENT_CFG: dict | None = None
-
-
-def load_config() -> tuple[dict, list[str]]:
-    """Start-Prüfung. Liefert (Konfiguration, Warnungen). Wirft ConfigError (MP-CFG-001/002) bei ungültiger Datei."""
-    global CURRENT_CFG
-    warnings: list[str] = []
-    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-    if not CONFIG_PATH.exists():
-        CURRENT_CFG = migrate_firma_config()
-        return CURRENT_CFG, warnings
-    cfg = read_config_file()
-    if int(cfg.get("schemaVersion", 1)) > CONFIG_SCHEMA:
-        warnings.append(f"MP-CFG-003 {CONFIG_PATH}: schemaVersion {cfg['schemaVersion']} ist neuer als bekannt "
-                        f"({CONFIG_SCHEMA}); Datei wird nur gelesen, nicht geändert.")
-        CURRENT_CFG = cfg
-        return cfg, warnings
-    merged = _merge_missing(cfg, config_defaults())
-    merged["schemaVersion"] = max(int(cfg.get("schemaVersion", 1)), CONFIG_SCHEMA)
-    # V12.15.0: UI-Akzent wandert einmalig aus dem Datenstand (data.ui.accent) in die Config, damit die Anzeige gleich bleibt.
-    if not merged.get("uiAccentSynced"):
-        st = _existing_state()
-        acc = ((st or {}).get("ui") or {}).get("accent") if st else None
-        if isinstance(acc, str) and CONFIG_HEX.match(acc):
-            merged["company"]["uiAccent"] = acc
-        merged["uiAccentSynced"] = True
-    # V12.15.1: Bestand aus V12.14.x (Config neutral, Firmen-CI nur in data.ci) behält Name/Logo: einmalig leere Felder füllen.
-    if not merged.get("ciSynced"):
-        _fill_company_from_ci(merged)
-        merged["ciSynced"] = True
-    if merged != cfg:
-        save_config(merged)
-    CURRENT_CFG = merged
-    return merged, warnings
-
-
-# ---------------------------------------------------------------------------------------------
-# V12.15.0: Config-API (GET alle angemeldeten Rollen, Schreiben nur Admin), Logo-Ablage, SVG-Entschärfung.
-# ---------------------------------------------------------------------------------------------
-CONFIG_WRITE_SECTIONS = {
-    "company": ("name", "productName", "color", "uiAccent", "font", "address", "footer", "logoFile"),
-    "locale": ("language", "timezone", "holidayRegion"),
-    "terms": ("projectNumber", "orderNumber", "roleLabels"),
-    "modules": CONFIG_MODULES,
-}
-LOGO_TYPES = {"image/png": "png", "image/jpeg": "jpg", "image/svg+xml": "svg"}
-LOGO_MIME = {"png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg", "svg": "image/svg+xml"}
-SVG_NS = "http://www.w3.org/2000/svg"
-XLINK_NS = "http://www.w3.org/1999/xlink"
-SVG_TAGS = {
-    "svg", "g", "defs", "path", "rect", "circle", "ellipse", "line", "polyline", "polygon", "text", "tspan",
-    "lineargradient", "radialgradient", "stop", "clippath", "mask", "symbol", "use", "title", "desc", "style",
-}
-SVG_BAD_VALUE = re.compile(r"javascript:|data:|vbscript:|@import|expression\s*\(|behaviou?r\s*:|-moz-binding|<|&#", re.I)
-SVG_URL = re.compile(r"url\s*\(\s*['\"]?\s*([^)'\"\s]*)", re.I)
-
-
-def _svg_value_ok(v: str) -> bool:
-    if SVG_BAD_VALUE.search(v):
-        return False
-    return all(m.startswith("#") for m in SVG_URL.findall(v))
-
-
-def svg_sanitize(raw: bytes) -> bytes:
-    """Prüft und entschärft ein SVG streng nach Positivliste. Wirft ValueError(grund) bei allem Unklaren
-    (Script, foreignObject, image, a, Animation, externe Verweise, Event-Handler, DOCTYPE/ENTITY ...)."""
-    if len(raw) > CONFIG_LOGO_MAX:
-        raise ValueError("zu groß")
-    try:
-        text = raw.decode("utf-8-sig")
-    except UnicodeDecodeError:
-        raise ValueError("kein UTF-8")
-    if re.search(r"<!\s*(DOCTYPE|ENTITY)", text, re.I):
-        raise ValueError("DOCTYPE/ENTITY nicht erlaubt")
-    import xml.etree.ElementTree as ET
-    try:
-        root = ET.fromstring(text)
-    except ET.ParseError:
-        raise ValueError("kein gültiges XML")
-    if root.tag != f"{{{SVG_NS}}}svg":
-        raise ValueError("Wurzel ist nicht svg")
-    count = 0
-
-    def clean(el, depth):
-        nonlocal count
-        count += 1
-        if count > 5000 or depth > 40:
-            raise ValueError("zu komplex")
-        for k in list(el.attrib):
-            v = el.attrib[k]
-            local = k.rsplit("}", 1)[-1].lower()
-            ns = k[1:].split("}", 1)[0] if k.startswith("{") else ""
-            if local.startswith("on"):
-                raise ValueError("Event-Handler")
-            if local == "href":
-                if not v.startswith("#") or ns not in ("", XLINK_NS):
-                    raise ValueError("externer Verweis")
-            elif ns and ns != XLINK_NS and ns != "http://www.w3.org/XML/1998/namespace":
-                del el.attrib[k]          # Editor-Metadaten (inkscape:, sodipodi: ...) entfernen
-                continue
-            if not _svg_value_ok(v):
-                raise ValueError("unzulässiger Attributwert")
-        for ch in list(el):
-            if not isinstance(ch.tag, str):
-                el.remove(ch)
-                continue
-            ns, _, name = ch.tag[1:].partition("}") if ch.tag.startswith("{") else ("", "", ch.tag)
-            if ns != SVG_NS:
-                el.remove(ch)             # fremde Namensräume (metadata, namedview ...) entfernen
-                continue
-            if name.lower() == "metadata":
-                el.remove(ch)
-                continue
-            if name.lower() not in SVG_TAGS:
-                raise ValueError(f"Element {name} nicht erlaubt")
-            clean(ch, depth + 1)
-        if el.tag.endswith("}style") and not _svg_value_ok(el.text or ""):
-            raise ValueError("unzulässiges CSS")
-
-    clean(root, 0)
-    ET.register_namespace("", SVG_NS)
-    ET.register_namespace("xlink", XLINK_NS)
-    out = ET.tostring(root, encoding="utf-8", xml_declaration=True)
-    if len(out) > CONFIG_LOGO_MAX:
-        raise ValueError("zu groß")
-    return out
-
-
-def logo_check(data: bytes, ctype: str) -> tuple[str, bytes]:
-    """(Dateiendung, zu speichernde Bytes) oder ValueError(grund)."""
-    ext = LOGO_TYPES.get(ctype)
-    if not ext:
-        raise ValueError("Logo nur als PNG, JPG oder SVG")
-    if not data or len(data) > CONFIG_LOGO_MAX:
-        raise ValueError(f"Logo max. {CONFIG_LOGO_MAX // 1024} KB")
-    if ext == "png" and not data.startswith(b"\x89PNG\r\n\x1a\n"):
-        raise ValueError("Datei ist kein PNG")
-    if ext == "jpg" and not data.startswith(b"\xff\xd8\xff"):
-        raise ValueError("Datei ist kein JPG")
-    if ext == "svg":
-        data = svg_sanitize(data)
-    return ext, data
-
-
-def current_config() -> dict:
-    global CURRENT_CFG
-    if CURRENT_CFG is None:
-        try:
-            CURRENT_CFG = _merge_missing(read_config_file(), config_defaults()) if CONFIG_PATH.exists() else config_defaults()
-        except ConfigError:
-            CURRENT_CFG = config_defaults()
-    return CURRENT_CFG
-
-
-def config_revision() -> int:
-    r = current_config().get("revision", 0)
-    return r if isinstance(r, int) and not isinstance(r, bool) else 0
-
-
-def public_config(cfg: dict | None = None) -> dict:
-    """Branding-Teil für alle angemeldeten Rollen (ohne Lizenz, Update-Quelle, Mandanten-ID)."""
-    cfg = cfg or current_config()
-    d = config_defaults()
-    c = {**d["company"], **(cfg.get("company") or {})}
-    lf = c.get("logoFile") or ""
-    rev = config_revision()
-    return {
-        "revision": rev,
-        "company": {
-            "name": c["name"], "productName": c["productName"], "color": c["color"], "uiAccent": c["uiAccent"],
-            "font": c["font"], "address": c["address"], "footer": c["footer"],
-            "logoUrl": f"/api/config/logo?v={rev}" if lf else "",
-            "logoType": LOGO_MIME.get(lf.rsplit(".", 1)[-1].lower(), "") if lf else "",
-        },
-        "locale": {**d["locale"], **(cfg.get("locale") or {})},
-        "terms": {**d["terms"], **(cfg.get("terms") or {})},
-        "modules": modules_effective(cfg),
-        "projectAreas": cfg.get("projectAreas") or d["projectAreas"],
-        "readOnly": int(cfg.get("schemaVersion", 1)) > CONFIG_SCHEMA,
-        "setupDone": cfg.get("setupDone") is not False,
-    }
-
-
-# ---------------------------------------------------------------------------------------------
-# V12.16.0: Module ein/aus. Aus = Ansicht/Menü/Aktionen weg, Endpunkte und Schreibzugriffe gesperrt (MP-MOD-001),
-# die Daten bleiben vollständig erhalten. kpi hängt an postcalc (aus -> auch kpi aus).
-# ---------------------------------------------------------------------------------------------
-MODULE_LABELS = {"projects": "Projekte", "formats": "Formate", "personnel": "Personal", "chat": "Nachrichten",
-                 "notifications": "Benachrichtigungen", "postcalc": "Auswertung", "kpi": "Kennzahlen", "palletLabels": "Palettenetiketten",
-                 "frameOrders": "Rahmenaufträge", "gf": "GF-Steuerung", "history": "Historie"}
-MODULE_DEPS = {"kpi": ("postcalc",)}
-# Datensammlungen im Datenstand, die ein Modul besitzt (Schreiben nur bei eingeschaltetem Modul).
-MODULE_STATE_KEYS = {
-    "projects": ("projects", "processTemplates"),
-    "formats": ("formats", "baseFormats"),
-    "personnel": ("employees", "personnelAssignments", "personnelAbsences", "weeklyEmployeeDeployments",
-                  "departmentStaffNeeds", "personnelGate"),
-    "palletLabels": ("palletTemplates", "palletLabels"),
-    "frameOrders": ("frameOrders", "callOffs"),
-}
-
-
-def modules_effective(cfg: dict | None = None) -> dict:
-    cfg = cfg or current_config()
-    m = {**CONFIG_MODULE_DEFAULTS, **{k: v for k, v in (cfg.get("modules") or {}).items() if k in CONFIG_MODULES}}
-    for k, deps in MODULE_DEPS.items():
-        if not all(m.get(d, True) for d in deps):
-            m[k] = False
-    return m
-
-
-def module_on(name: str) -> bool:
-    return bool(modules_effective().get(name, CONFIG_MODULE_DEFAULTS.get(name, True)))
+DIAG_WARN_NO_TLS = "HTTPS nicht eingerichtet – empfohlen, siehe README_Windows 2c (HTTPS_Einrichten.ps1)"
 
 
 def build_diagnostics(tls_on: bool = False) -> dict:
@@ -730,10 +191,70 @@ def build_diagnostics(tls_on: bool = False) -> dict:
         warnings.append("Letztes Update fehlgeschlagen")
     if errors:
         out["recentErrors"] = errors
+    if not tls_on:
+        # #52: HTTPS ist Standard bei Neuinstallation; Bestandsinstallationen werden nicht automatisch umgestellt.
+        warnings.append(DIAG_WARN_NO_TLS)
+    lic = license_status()
+    out["license"] = {k: lic.get(k) for k in ("active", "status", "statusText", "readOnly", "id", "licensee", "expires", "graceDaysLeft", "graceEnds") if k in lic}
+    if lic["active"] and lic["status"] != "valid":
+        warnings.append(f"Lizenz {lic['statusText']} – " + ("nur Lesen" if lic["readOnly"] else f"noch {lic['graceDaysLeft']} Tage Kulanz, danach nur Lesen"))
+    elif lic["active"] and lic.get("expiresInDays") is not None and lic["expiresInDays"] <= mp_license.WARN_DAYS:
+        warnings.append(f"Lizenz läuft am {lic['expires']} ab")
     out["modules"] = modules_effective(cfg)
     out["config"] = {"companyName": (cfg.get("company") or {}).get("name", ""), "template": cfg.get("template", ""),
                      "tenantId": cfg.get("tenantId", ""), "timezone": (cfg.get("locale") or {}).get("timezone", ""), "tls": bool(tls_on)}
     out["warnings"] = warnings
+    return out
+
+
+# ---------------------------------------------------------------------------------------------
+# V12.27.0 (#52): Lizenzschlüssel (mp_license.py). Ohne öffentlichen Schlüssel inaktiv. Ohne gültige Lizenz
+# 30 Tage Kulanz, danach nur Lesen: der Server lehnt jeden Schreibzugriff ab (MP-LIC-001), außer den
+# Pfaden in LICENSE_RO_ALLOWED. Daten werden nie gelöscht; Lesen, Backup und Diagnose bleiben möglich.
+# ---------------------------------------------------------------------------------------------
+LICENSE_RO_ALLOWED = {("POST", "/api/login"), ("POST", "/api/logout"), ("POST", "/api/password"),
+                      ("POST", "/api/license"), ("DELETE", "/api/license"), ("POST", "/api/updates/install")}
+LICENSE_RO_TEXT = "Lizenz abgelaufen/fehlt – nur Lesen. Daten bleiben erhalten; bitte den Admin bzw. den Lizenzgeber ansprechen."
+
+
+def license_path() -> Path:
+    name = str((current_config().get("license") or {}).get("file") or "")
+    if not re.fullmatch(r"[A-Za-z0-9_-][A-Za-z0-9_.-]{0,63}", name):
+        name = "lizenz.key"
+    return mp_config.CONFIG_DIR / name
+
+
+def license_read() -> bytes | None:
+    p = license_path()
+    if not p.is_file():
+        return None
+    try:
+        with open(p, "rb") as f:
+            return f.read(mp_license.MAX_FILE + 1)
+    except OSError:
+        return b""   # unlesbar = ungültig
+
+
+def license_status() -> dict:
+    if not mp_license.active():
+        return mp_license.evaluate(None, None, "")
+    raw = license_read()
+    with DB_LOCK, db_session() as con:
+        return mp_license.evaluate(con, raw, str(current_config().get("tenantId") or ""))
+
+
+def license_public(st: dict, admin: bool) -> dict:
+    """Für Banner/Sperre: alle Rollen nur Status und Nur-Lesen; der Admin zusätzlich Kulanz und Ablauf."""
+    out = {k: st.get(k) for k in ("active", "status", "statusText", "readOnly")}
+    if admin:
+        out.update({k: st[k] for k in ("graceDaysLeft", "graceEnds", "expires", "expiresInDays") if k in st})
+    return out
+
+
+def license_admin(st: dict) -> dict:
+    out = dict(st)   # enthält nie die Signatur, nur geprüfte Felder
+    out.update(installTenantId=str(current_config().get("tenantId") or ""), file=license_path().name,
+               fileExists=license_path().is_file(), graceDays=mp_license.GRACE_DAYS, warnDays=mp_license.WARN_DAYS)
     return out
 
 
@@ -759,10 +280,10 @@ def module_state_guard(old: dict, new: dict) -> tuple[str, str]:
 
 def _backup_logo(name: str) -> None:
     """Vorheriges Logo als logo.<ext>.bak-<zeit> aufheben (letzte 5)."""
-    prev = (CONFIG_DIR / name) if name else None
+    prev = (mp_config.CONFIG_DIR / name) if name else None
     if prev and prev.is_file():
-        shutil.copy2(prev, CONFIG_DIR / f"{name}.bak-{datetime.now().strftime('%Y%m%d-%H%M%S')}")
-        for old in sorted(CONFIG_DIR.glob("logo.*.bak-*"), key=lambda p: p.name, reverse=True)[5:]:
+        shutil.copy2(prev, mp_config.CONFIG_DIR / f"{name}.bak-{datetime.now().strftime('%Y%m%d-%H%M%S')}")
+        for old in sorted(mp_config.CONFIG_DIR.glob("logo.*.bak-*"), key=lambda p: p.name, reverse=True)[5:]:
             old.unlink(missing_ok=True)
 
 
@@ -825,7 +346,7 @@ def config_apply(body: dict, logo: tuple[str, bytes] | None = None, remove_logo:
             if probe:
                 return 400, mp_error("MP-CFG-002", "; ".join(probe[:5])), ""
             _backup_logo(old_logo)
-            _atomic_write(CONFIG_DIR / new_file, logo[1])
+            _atomic_write(mp_config.CONFIG_DIR / new_file, logo[1])
         else:
             probe = validate_config(cfg)
             if probe:
@@ -837,10 +358,9 @@ def config_apply(body: dict, logo: tuple[str, bytes] | None = None, remove_logo:
             save_config(cfg)
         except ConfigError as e:
             return 400, mp_error(e.code, e.message), ""
-        global CURRENT_CFG
-        CURRENT_CFG = cfg
-        if old_logo and old_logo != cfg["company"].get("logoFile") and (CONFIG_DIR / old_logo).is_file():
-            (CONFIG_DIR / old_logo).unlink(missing_ok=True)
+        mp_config.CURRENT_CFG = cfg
+        if old_logo and old_logo != cfg["company"].get("logoFile") and (mp_config.CONFIG_DIR / old_logo).is_file():
+            (mp_config.CONFIG_DIR / old_logo).unlink(missing_ok=True)
         return 200, {"ok": True, "config": public_config(cfg)}, ", ".join(changed)[:480]
 SESSION_TTL = 12 * 60 * 60
 MAX_BODY = 8 * 1024 * 1024
@@ -861,18 +381,6 @@ MAX_CONNECTIONS = 256
 # Zusätzlich erlaubte Host-Namen (Komma-getrennt), z. B. DNS-Alias des Servers.
 EXTRA_ALLOWED_HOSTS = {h.strip().lower() for h in os.environ.get("MP_ALLOWED_HOSTS", "").split(",") if h.strip()}
 
-ROLES = {"admin", "gf", "department_lead", "department_deputy", "viewer", "project_management", "production_planning", "sales", "production"}
-WRITE_ROLES = {"admin", "gf", "department_lead", "department_deputy", "project_management", "production_planning", "sales"}
-DEPARTMENT_ROLES = {"department_lead", "department_deputy"}
-SCOPED_ROLES = DEPARTMENT_ROLES | {"viewer", "production"}
-USER_MANAGER_ROLES = {"admin", "department_lead", "department_deputy"}
-# Welche Rollen eine Bereichsrolle im eigenen Bereich anlegen/ändern darf.
-# Leitungen verwalten Stellvertretungen und Lesende; Stellvertretungen nur Lesende.
-# Leitungskonten selbst verwaltet ausschließlich der Admin.
-MANAGEABLE_ROLES = {
-    "department_lead": {"department_deputy", "viewer"},
-    "department_deputy": {"viewer"},
-}
 ALLOWED_NETWORK = None
 AUTH_POST_PATHS = {"/api/login", "/api/logout", "/api/password"}
 UPDATE_MANAGER = None
@@ -882,7 +390,7 @@ def update_manager():
     global UPDATE_MANAGER
     with DB_LOCK:
         if UPDATE_MANAGER is None:
-            UPDATE_MANAGER = UpdateManager(BASE, APP_VERSION, lambda: CURRENT_CFG or {})
+            UPDATE_MANAGER = UpdateManager(BASE, APP_VERSION, lambda: mp_config.CURRENT_CFG or {})
         return UPDATE_MANAGER
 
 
@@ -909,191 +417,6 @@ def db_session():
             yield con
     finally:
         con.close()
-
-
-# ---------------------------------------------------------------------------------------------
-# V12.23.0 (#63/#55): Rollen & Rechte. Eigene Rollen (Rollenprofile) beruhen auf einer Systemrolle und
-# schränken sie je Funktion (Kein Zugriff / Lesen / Bearbeiten) und je Aktion ein – nie darüber hinaus.
-# Durchsetzung am Server: Datenstand (ausblenden), Speichern (Leserecht = unveränderlich) und Endpunkte.
-# ---------------------------------------------------------------------------------------------
-ROLE_FUNCTIONS = (("planning", "Planung & Produktion"), ("projects", "Projekte"), ("frameOrders", "Rahmenaufträge"),
-                  ("personnel", "Personal"), ("formats", "Formate"), ("gf", "GF-Steuerung"), ("report", "Report"),
-                  ("history", "Historie"), ("chat", "Chat"), ("notifications", "Benachrichtigungen"), ("system", "System"))
-# V12.27.0 (#55): „Produktion melden" ist in Starten/Pausieren und Fertigmelden geteilt; FA-Rechte sind neu.
-# Der alte Schlüssel „production" wird nur noch gelesen (false => beide neuen Rechte false).
-ROLE_ACTIONS = (("faCreate", "FA anlegen"), ("faPlan", "FA einplanen"), ("prodStartPause", "Produktion starten/pausieren"),
-                ("prodFinish", "Produktion fertigmelden"), ("confectionHours", "Konfektionsstunden vorgeben"),
-                ("userAdmin", "Benutzer verwalten"), ("updates", "Updates installieren"))
-LEGACY_PRODUCTION_ACTION = "production"
-FA_PLAN_FIELDS = ("machineId", "altMachineId", "allowAlternative", "laneIndex", "pos", "direction", "anchorMode",
-                  "requiredStart", "requiredFinish", "dryingHours", "taktId")
-
-
-def effective_actions(actions) -> dict:
-    """Aktionsrechte je Schlüssel (Standard ja); alter Schlüssel „production"=false sperrt beide neuen Produktionsrechte."""
-    actions = actions if isinstance(actions, dict) else {}
-    out = {k: bool(actions.get(k, True)) for k, _ in ROLE_ACTIONS}
-    if actions.get(LEGACY_PRODUCTION_ACTION) is False:
-        for k in ("prodStartPause", "prodFinish"):
-            if k not in actions:
-                out[k] = False
-    return out
-ROLE_LEVELS = ("none", "read", "edit")
-# Bei „Lesen" unveränderlich, bei „Kein Zugriff" zusätzlich ausgeblendet (FUNCTION_HIDDEN).
-FUNCTION_DATA = {
-    "planning": ("workSteps", "machineBlocks", "planVersions"),
-    "projects": ("projects", "processTemplates"),
-    "personnel": ("employees", "personnelAssignments", "personnelAbsences", "weeklyEmployeeDeployments", "departmentStaffNeeds"),
-    "formats": ("formats", "baseFormats"),
-    "history": ("history",),
-    "system": ("machines", "departments", "shiftTemplates", "yearRules", "weekRules", "exceptions", "operatorCapacity", "personnelGate", "palletTemplates"),
-}
-# Planung und System bleiben sichtbar: Scheduler und Projekt-Liveansicht brauchen Ressourcen und FA.
-# V12.27.0 (Rechte-Audit): Schreibbare Schlüssel der GF-Rolle (siehe gf_change_allowed); gilt nur für Benutzer der Rolle gf.
-GF_FUNCTION_KEYS = ("departmentStaffNeeds", "weeklyEmployeeDeployments", "exceptions", "employees", "departments", "machines")
-FUNCTION_HIDDEN = {"projects": ("projects", "processTemplates"), "personnel": FUNCTION_DATA["personnel"],
-                   "formats": FUNCTION_DATA["formats"], "frameOrders": ("frameOrders", "callOffs"), "history": ("history",)}
-
-
-def migrate_role_profiles(con: sqlite3.Connection) -> None:
-    con.execute("CREATE TABLE IF NOT EXISTS role_profiles(id TEXT PRIMARY KEY, json TEXT NOT NULL, updated_at TEXT NOT NULL)")
-    if "profile_id" not in {row["name"] for row in con.execute("PRAGMA table_info(users)")}:
-        con.execute("ALTER TABLE users ADD COLUMN profile_id TEXT NOT NULL DEFAULT ''")
-
-
-def resolve_profile_id(con, actor: dict, role: str, requested, current: str = "") -> str:
-    """Rollenprofil für einen Benutzer prüfen: nur Admin weist zu; Profil aktiv und zur Systemrolle passend."""
-    if requested is None:
-        found = con.execute("SELECT json FROM role_profiles WHERE id=?", (current,)).fetchone() if current else None
-        return current if found and json.loads(found["json"]).get("baseRole") == role else ""
-    pid = str(requested or "")
-    if pid and actor["role"] != "admin":
-        raise PermissionError("Rollenprofile weist nur der Admin zu.")
-    if not pid:
-        return ""
-    found = con.execute("SELECT json FROM role_profiles WHERE id=?", (pid,)).fetchone()
-    profile = json.loads(found["json"]) if found else None
-    if not profile or not profile.get("active", True) or profile.get("baseRole") != role:
-        raise ValueError("Rollenprofil fehlt, ist deaktiviert oder passt nicht zur Systemrolle.")
-    return pid
-
-
-def role_risk_warnings(profile) -> list:
-    """V12.27.0 (#55): Hinweise zu riskanten Rechte-Kombinationen eines Rollenprofils. Rein beratend – blockiert nie das Speichern
-    und ändert keine Rechteprüfung. Regeln nur dort, wo das Datenmodell sie hergibt (Aktionen sind standardmäßig erlaubt)."""
-    profile = profile if isinstance(profile, dict) else {}
-    actions = effective_actions(profile.get("actions"))
-    rights = profile.get("rights") if isinstance(profile.get("rights"), dict) else {}
-    base = profile.get("baseRole")
-    planning_edit = rights.get("planning", "edit") == "edit"
-    manager = base in USER_MANAGER_ROLES  # nur hier wirkt „Benutzer verwalten“ überhaupt
-    out = []
-    if manager and actions["userAdmin"] and planning_edit and (actions["faCreate"] or actions["faPlan"] or actions["prodFinish"]):
-        out.append({"code": "MP-ROLE-011", "text": "Benutzer verwalten zusammen mit operativen Rechten (FA anlegen/einplanen, Produktion fertigmelden): "
-                    "Vier-Augen-Prinzip fehlt, die Rolle könnte sich selbst Rechte geben und damit arbeiten."})
-    if manager and planning_edit and actions["faCreate"] and actions["prodFinish"]:  # beide Rechte hat nur Bereichsleiter/Vertretung
-        out.append({"code": "MP-ROLE-012", "text": "FA anlegen und Produktion fertigmelden in einer Rolle: Aufträge können ohne zweite Kontrolle angelegt und selbst fertiggemeldet werden."})
-    if manager and actions["userAdmin"] and rights.get("system", "edit") == "edit":
-        out.append({"code": "MP-ROLE-013", "text": "Benutzer verwalten zusammen mit Bearbeitungsrecht für System: Konten und Systemeinstellungen (Maschinen, Bereiche, Schichten) lassen sich ohne Gegenkontrolle ändern."})
-    return out
-
-
-def role_profiles(con) -> dict:
-    out = {r["id"]: json.loads(r["json"]) for r in con.execute("SELECT id,json FROM role_profiles ORDER BY id")}
-    for p in out.values():
-        p["actions"] = effective_actions(p.get("actions"))
-    return out
-
-
-def attach_rights(user: dict, profile: dict | None) -> dict:
-    """Effektive Rechte am Benutzer: Profil schränkt die Systemrolle ein; ohne Profil volle Systemrolle."""
-    user["profileId"] = profile["id"] if profile else ""
-    user["profileName"] = profile["name"] if profile else ""
-    user["rights"] = {k: (profile or {}).get("rights", {}).get(k, "edit") for k, _ in ROLE_FUNCTIONS}
-    user["actions"] = effective_actions((profile or {}).get("actions"))
-    return user
-
-
-def user_level(user: dict, function: str) -> str:
-    return (user.get("rights") or {}).get(function, "edit")
-
-
-def av_hours_department(state_or_deps, did) -> bool:
-    """V12.27.0: Bereich, für den die AV die Sollstunden vorgibt (Bereichs-Eigenschaft avHours, nicht der Name)."""
-    deps = state_or_deps.get("departments") if isinstance(state_or_deps, dict) else state_or_deps
-    return any(isinstance(d, dict) and str(d.get("id")) == str(did) and d.get("avHours") is True for d in (deps or []))
-
-
-def user_action(user: dict, action: str) -> bool:
-    return bool((user.get("actions") or {}).get(action, True))
-
-
-def user_public(user: dict) -> dict:
-    return {"id": user["id"], "username": user["username"], "role": user["role"], "departmentId": user.get("department_id", ""),
-            "profileId": user.get("profileId", ""), "profileName": user.get("profileName", ""),
-            "rights": user.get("rights") or {}, "actions": user.get("actions") or {}}
-
-
-def validate_role_profile(body: dict, rid: str) -> dict:
-    if not re.fullmatch(r"[a-z0-9_-]{2,40}", rid):
-        raise ValueError("Rollen-ID: 2–40 Zeichen a–z, 0–9, _ oder -.")
-    name = str(body.get("name") or "").strip()
-    if not 1 <= len(name) <= 60:
-        raise ValueError("Rollenname fehlt oder ist zu lang (max. 60).")
-    base = body.get("baseRole")
-    if base not in ROLES - {"admin"}:
-        raise ValueError("Basisrolle ungültig (Admin ist immer vollständig berechtigt).")
-    rights = body.get("rights") or {}
-    actions = body.get("actions") or {}
-    if not isinstance(rights, dict) or any(k not in dict(ROLE_FUNCTIONS) or v not in ROLE_LEVELS for k, v in rights.items()):
-        raise ValueError("Rechte je Funktion: nur none, read oder edit.")
-    if not isinstance(actions, dict) or any((k not in dict(ROLE_ACTIONS) and k != LEGACY_PRODUCTION_ACTION) or not isinstance(v, bool) for k, v in actions.items()):
-        raise ValueError("Aktionsrechte: nur ja/nein.")
-    return {"id": rid, "name": name, "baseRole": base, "description": str(body.get("description") or "").strip()[:300],
-            "active": body.get("active", True) is not False,
-            "rights": {k: rights.get(k, "edit") for k, _ in ROLE_FUNCTIONS}, "actions": effective_actions(actions)}
-
-
-def restrict_state_for_rights(out: dict, user: dict) -> None:
-    for function, keys in FUNCTION_HIDDEN.items():
-        if user_level(user, function) == "none":
-            for key in keys:
-                out[key] = []
-
-
-def rights_change_error(old: dict, incoming: dict, user: dict) -> str:
-    """Leserechte und gesperrte Aktionen beim Speichern; leerer Text = erlaubt."""
-    for function, keys in FUNCTION_DATA.items():
-        if user_level(user, function) != "edit":
-            label = dict(ROLE_FUNCTIONS)[function]
-            for key in keys:
-                if canonical(old.get(key)) != canonical(incoming.get(key)):
-                    return f"Für „{label}“ besteht nur Leserecht."
-    if user.get("role") == "gf" and user_level(user, "gf") != "edit":
-        for key in GF_FUNCTION_KEYS:
-            if canonical(old.get(key)) != canonical(incoming.get(key)):
-                return "Für „GF-Steuerung“ besteht nur Leserecht."
-    before_ws = _record_map(old.get("workSteps"))
-    after_ws = _record_map(incoming.get("workSteps"))
-    if not user_action(user, "faCreate") and any(rid not in before_ws for rid in after_ws):
-        return "FA anlegen ist für diese Rolle gesperrt."
-    if not user_action(user, "faPlan"):
-        for rid, after in after_ws.items():
-            prev = before_ws.get(rid)
-            if prev is None:
-                continue
-            if any(canonical(prev.get(f)) != canonical(after.get(f)) for f in FA_PLAN_FIELDS) or \
-                    (canonical(prev.get("handoffUnassigned")) != canonical(after.get("handoffUnassigned")) and prev.get("handoffUnassigned") and not after.get("handoffUnassigned")):
-                return "FA einplanen ist für diese Rolle gesperrt."
-    if not user_action(user, "confectionHours"):
-        before = _record_map(old.get("workSteps"))
-        for rid, after in _record_map(incoming.get("workSteps")).items():
-            prev = before.get(rid) or {}
-            dep = str(after.get("departmentId") or "")
-            confection = av_hours_department(old, dep) or after.get("planningType") == "LABOR_HOURS"
-            if confection and (canonical(prev.get("hours", 0)) != canonical(after.get("hours", 0)) or canonical(prev.get("requiredHours")) != canonical(after.get("requiredHours"))):
-                return "Konfektionsstunden vorgeben ist für diese Rolle gesperrt."
-    return ""
 
 
 def migrate_users_schema(con: sqlite3.Connection) -> None:
@@ -1260,6 +583,7 @@ def init_db(seed: str = "neutral") -> None:
         )
         con.execute("CREATE TABLE IF NOT EXISTS production_requests(username TEXT NOT NULL, request_id TEXT NOT NULL, fingerprint TEXT NOT NULL, result TEXT NOT NULL, PRIMARY KEY(username,request_id))")
         con.execute("CREATE TABLE IF NOT EXISTS retired_usernames(username TEXT PRIMARY KEY COLLATE NOCASE,retired_at TEXT NOT NULL)")
+        mp_license.init_schema(con)   # V12.27.0 (#52): app_meta (Lizenz-Kulanz), additiv
         migrate_users_schema(con)
         migrate_role_profiles(con)
         con.execute("UPDATE users SET department_id='' WHERE role IN ('admin','gf','project_management','production_planning','sales') AND department_id<>''")
@@ -1833,10 +1157,6 @@ def create_or_reset_admin(username: str, password: str) -> None:
         else:
             con.execute("INSERT INTO users(username,salt,password_hash,role,active,created_at,updated_at) VALUES(?,?,?,?,1,?,?)", (username.strip(), salt, digest, "admin", ts, ts))
     print(f"Admin '{username.strip()}' ist eingerichtet.")
-
-
-def canonical(obj) -> str:
-    return json.dumps(obj, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
 
 
 # --------------------------------------------------------------------------- V12.9.0 Messenger
@@ -4090,10 +3410,6 @@ def production_planning_change_allowed(old: dict, new: dict) -> tuple[bool, str]
     return True, ""
 
 
-def _record_map(items):
-    return {str(x.get("id")): x for x in (items or []) if isinstance(x, dict) and x.get("id")}
-
-
 def department_change_allowed(old: dict, new: dict, department_id: str) -> tuple[bool, str]:
     dd = default_dept_id(new)
     if not department_id:
@@ -5144,22 +4460,6 @@ def client_ip_allowed(ip: str) -> bool:
         return False
 
 
-def _local_host_names() -> set[str]:
-    names = set()
-    for fn in (socket.gethostname, socket.getfqdn):
-        try:
-            n = str(fn() or "").strip().lower().rstrip(".")
-        except OSError:
-            n = ""
-        if n:
-            names.add(n)
-            names.add(n.split(".", 1)[0])
-    return names
-
-
-LOCAL_HOST_NAMES = _local_host_names()
-
-
 def host_name_allowed(host: str, bind_ip: str) -> bool:
     """Schutz gegen DNS-Rebinding: nur Server-IP, eigener PC-Name (auch mit DNS-Suffix) oder MP_ALLOWED_HOSTS."""
     h = str(host or "").strip().lower().rstrip(".")
@@ -5584,10 +4884,23 @@ class Handler(BaseHTTPRequestHandler):
                     return False
         return True
 
+    def license_write_ok(self) -> bool:
+        """#52: zentrale Schreibsperre nach Ablauf der Kulanz. Gilt für jeden POST/PUT/PATCH/DELETE außer LICENSE_RO_ALLOWED."""
+        if (self.command, urlparse(self.path).path) in LICENSE_RO_ALLOWED:
+            return True
+        st = license_status()
+        if not st["readOnly"]:
+            return True
+        self.close_connection = True   # Body bleibt ungelesen
+        self.json_response(403, mp_error("MP-LIC-001", LICENSE_RO_TEXT, license=license_public(st, False)))
+        return False
+
     def _guarded(self, fn, write: bool):
         if not self.request_origin_ok(write):
             return
         try:
+            if write and not self.license_write_ok():
+                return
             return fn()
         except (ConnectionError, socket.timeout):
             # V12.17.2: Client-Abbruch (Tab zu/neu geladen, Long-Poll laeuft noch) ist kein Serverfehler:
@@ -5690,7 +5003,13 @@ class Handler(BaseHTTPRequestHandler):
             user = self.require_user()
             if not user:
                 return
-            return self.json_response(200, {"user": user_public(user)})
+            return self.json_response(200, {"user": user_public(user), "license": license_public(license_status(), user["role"] == "admin")})
+        if path == "/api/license":
+            user = self.require_user()
+            if not user:
+                return
+            st = license_status()
+            return self.json_response(200, license_admin(st) if user["role"] == "admin" else license_public(st, False))
         if path == "/api/state":
             user = self.require_user()
             if not user:
@@ -5816,7 +5135,8 @@ class Handler(BaseHTTPRequestHandler):
                     if remaining <= 0:
                         break
                     REVISION_CONDITION.wait(remaining)
-            return self.json_response(200, {"revision": row["revision"], "updatedAt": row["updated_at"], "updatedBy": row["updated_by"], "version": APP_VERSION, "notif": notif, "cfg": config_revision()})
+            return self.json_response(200, {"revision": row["revision"], "updatedAt": row["updated_at"], "updatedBy": row["updated_by"], "version": APP_VERSION, "notif": notif, "cfg": config_revision(),
+                                            "license": license_public(license_status(), user["role"] == "admin")})
         if path == "/api/roles":
             user = self.require_user(["admin"])
             if not user:
@@ -5860,7 +5180,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def serve_logo(self):
         lf = (current_config().get("company") or {}).get("logoFile") or ""
-        p = CONFIG_DIR / lf if lf else None
+        p = mp_config.CONFIG_DIR / lf if lf else None
         if not p or not p.is_file():
             return self.json_response(404, mp_error("MP-CFG-404", "Kein Logo hinterlegt."))
         raw = p.read_bytes()
@@ -5933,6 +5253,11 @@ class Handler(BaseHTTPRequestHandler):
                 return self.json_response(202 if started else 200, {"ok": True, "job": {k: job.get(k) for k in ("jobId", "version", "stage", "error")}, "alreadyRunning": not started})
             except ValueError as e:
                 return self.json_response(409, mp_error("MP-UPD-001", str(e)))
+        if path == "/api/license":
+            user = self.require_user(["admin"])
+            if not user or not self.require_current_client():
+                return
+            return self.license_upload(user, body)
         if path == "/api/config/logo":
             user = self.require_user(["admin"])
             if not user:
@@ -6065,7 +5390,7 @@ class Handler(BaseHTTPRequestHandler):
             with DB_LOCK, db_session() as con:
                 con.execute("INSERT INTO sessions(token_hash,user_id,expires_at,created_at) VALUES(?,?,?,?)", (token_hash, row["id"], expires, now_iso()))
             cookie = f"mp_session={token}; Path=/; HttpOnly; SameSite=Strict; Max-Age={SESSION_TTL}" + self.cookie_secure()
-            return self.json_response(200, {"user": user_public(attach_rights(dict(row), profile))}, cookie)
+            return self.json_response(200, {"user": user_public(attach_rights(dict(row), profile)), "license": license_public(license_status(), row["role"] == "admin")}, cookie)
         if path == "/api/logout":
             c = SimpleCookie(self.headers.get("Cookie", ""))
             token = c.get("mp_session")
@@ -6155,6 +5480,51 @@ class Handler(BaseHTTPRequestHandler):
             con.execute("INSERT INTO server_audit(ts,username,action,detail,revision) VALUES(?,?,?,?,NULL)", (now_iso(), user["username"], "Eigenes Passwort geändert", user["username"]))
         return self.json_response(200, {"ok": True})
 
+    def license_upload(self, user, body: dict):
+        """#52: Lizenzdatei prüfen und erst dann atomar nach config/ schreiben; die bisherige Datei bleibt als .alt."""
+        content = body.get("content")
+        if not isinstance(content, str):
+            return self.json_response(400, mp_error("MP-LIC-003", "Lizenzdatei fehlt."))
+        raw = content.encode("utf-8")
+        tenant = str(current_config().get("tenantId") or "")
+        try:
+            payload, _sig = mp_license.parse(raw)
+        except mp_license.LicenseError as e:
+            return self.json_response(400, mp_error(e.code, e.message))
+        if mp_license.active():
+            with DB_LOCK, db_session() as con:
+                today = datetime.fromtimestamp(mp_license.effective_now(con)).date()
+            res = mp_license.check(raw, tenant, today, mp_license.public_key())
+            if res["status"] == "invalid":
+                return self.json_response(400, mp_error("MP-LIC-002", "Lizenzdatei abgelehnt: Signatur ungültig oder Datei verändert."))
+            if res["status"] == "expired":
+                return self.json_response(400, mp_error("MP-LIC-005", f"Lizenzdatei abgelehnt: {res['error']}"))
+        if payload["tenantId"] != tenant:
+            return self.json_response(400, mp_error("MP-LIC-004", f"Lizenzdatei abgelehnt: gilt für Mandant „{payload['tenantId']}“, diese Installation ist „{tenant}“ (firma.json)."))
+        path = license_path()
+        with CONFIG_LOCK:
+            if path.is_file():
+                shutil.copy2(path, path.with_name(path.name + ".alt"))
+            _atomic_write(path, raw)
+        detail = {k: payload[k] for k in ("id", "licensee", "tenantId", "issued", "expires")}
+        with DB_LOCK, db_session() as con:
+            con.execute("INSERT INTO server_audit(ts,username,action,detail,revision) VALUES(?,?,?,?,NULL)", (now_iso(), user["username"], "Lizenz installiert", json.dumps(detail, ensure_ascii=False)))
+        with REVISION_CONDITION:
+            REVISION_CONDITION.notify_all()
+        return self.json_response(200, {"ok": True, "license": license_admin(license_status())})
+
+    def license_remove(self, user):
+        path = license_path()
+        with CONFIG_LOCK:
+            if not path.is_file():
+                return self.json_response(404, mp_error("MP-LIC-006", "Keine Lizenzdatei vorhanden."))
+            os.replace(path, path.with_name(path.name + ".entfernt"))   # nicht löschen, nur beiseitelegen
+        with DB_LOCK, db_session() as con:
+            con.execute("INSERT INTO server_audit(ts,username,action,detail,revision) VALUES(?,?,?,?,NULL)", (now_iso(), user["username"], "Lizenz entfernt", path.name))
+        with REVISION_CONDITION:
+            REVISION_CONDITION.notify_all()
+        return self.json_response(200, {"ok": True, "license": license_admin(license_status())})
+
     def _method_not_allowed(self):
         self.json_response(405, mp_error("MP-REQ-405", "Methode nicht erlaubt."))
 
@@ -6166,6 +5536,8 @@ class Handler(BaseHTTPRequestHandler):
         if not user or not self.require_current_client():
             return
         path = urlparse(self.path).path
+        if path == "/api/license":
+            return self.license_remove(user)
         role_path = re.fullmatch(r"/api/roles/([a-z0-9_-]{2,40})", path)
         if role_path:
             with DB_LOCK, db_session() as con:
@@ -6442,240 +5814,6 @@ class Handler(BaseHTTPRequestHandler):
         return self.json_response(200, {"ok": True, "revision": new_revision, "data": redact_state(incoming, user), "archivedHistoryIds": archived_ids})
 
 
-# ---------------------------------------------------------------------------------------------
-# V12.21.0: HTTPS im LAN. Ohne Fremdpakete: eigene Firmen-CA und Serverzertifikat (RSA 2048, SHA-256)
-# werden einmalig mit "server.py --tls-einrichten --host <LAN-IP>" in config/tls/ erzeugt.
-# Liegen server.crt und server.key dort, läuft der Server nur noch per HTTPS (Cookie mit Secure).
-# Die CA (firmen-ca.crt) wird auf den Arbeitsplätzen als vertrauenswürdige Stammzertifizierungsstelle
-# importiert; ihr Schlüssel bleibt auf dem Server und erlaubt spätere Erneuerung ohne neuen Import.
-# ---------------------------------------------------------------------------------------------
-TLS_DIR = CONFIG_DIR / "tls"
-TLS_CERT, TLS_KEY = TLS_DIR / "server.crt", TLS_DIR / "server.key"
-TLS_CA_CERT, TLS_CA_KEY = TLS_DIR / "firmen-ca.crt", TLS_DIR / "firmen-ca.key"
-TLS_SERVER_DAYS, TLS_CA_DAYS = 825, 3650
-
-
-def _is_probable_prime(n: int) -> bool:
-    if n < 2:
-        return False
-    for p in (2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37):
-        if n % p == 0:
-            return n == p
-    d, r = n - 1, 0
-    while d % 2 == 0:
-        d //= 2
-        r += 1
-    for _ in range(40):
-        x = pow(secrets.randbelow(n - 3) + 2, d, n)
-        if x in (1, n - 1):
-            continue
-        for _ in range(r - 1):
-            x = pow(x, 2, n)
-            if x == n - 1:
-                break
-        else:
-            return False
-    return True
-
-
-def _rsa_prime(bits: int, e: int) -> int:
-    while True:
-        c = secrets.randbits(bits) | (3 << (bits - 2)) | 1
-        if c % e != 1 and _is_probable_prime(c):
-            return c
-
-
-def rsa_generate(bits: int = 2048) -> dict:
-    e = 65537
-    while True:
-        p, q = _rsa_prime(bits // 2, e), _rsa_prime(bits // 2, e)
-        n = p * q
-        if p != q and n.bit_length() == bits:
-            break
-    d = pow(e, -1, (p - 1) * (q - 1))
-    return {"n": n, "e": e, "d": d, "p": p, "q": q}
-
-
-def _der(tag: int, body: bytes) -> bytes:
-    n = len(body)
-    if n < 0x80:
-        size = bytes([n])
-    else:
-        raw = n.to_bytes((n.bit_length() + 7) // 8, "big")
-        size = bytes([0x80 | len(raw)]) + raw
-    return bytes([tag]) + size + body
-
-
-def _der_int(v: int) -> bytes:
-    raw = v.to_bytes(max(1, (v.bit_length() + 8) // 8), "big")
-    return _der(0x02, raw)
-
-
-def _der_seq(*items: bytes) -> bytes:
-    return _der(0x30, b"".join(items))
-
-
-def _der_oid(dotted: str) -> bytes:
-    parts = [int(x) for x in dotted.split(".")]
-    out = bytes([parts[0] * 40 + parts[1]])
-    for v in parts[2:]:
-        chunk = [v & 0x7F]
-        v >>= 7
-        while v:
-            chunk.append(0x80 | (v & 0x7F))
-            v >>= 7
-        out += bytes(reversed(chunk))
-    return _der(0x06, out)
-
-
-def _der_time(t: datetime) -> bytes:
-    t = t.astimezone(timezone.utc)
-    if t.year < 2050:
-        return _der(0x17, t.strftime("%y%m%d%H%M%SZ").encode())
-    return _der(0x18, t.strftime("%Y%m%d%H%M%SZ").encode())
-
-
-def _der_name(common_name: str, org: str) -> bytes:
-    rdn = lambda oid, v: _der(0x31, _der_seq(_der_oid(oid), _der(0x0C, v.encode("utf-8"))))
-    return _der_seq(rdn("2.5.4.10", org), rdn("2.5.4.3", common_name))
-
-
-def _der_ext(oid: str, value: bytes, critical: bool = False) -> bytes:
-    return _der_seq(_der_oid(oid), *([_der(0x01, b"\xff")] if critical else []), _der(0x04, value))
-
-
-def _rsa_public_info(key: dict) -> bytes:
-    pub = _der_seq(_der_int(key["n"]), _der_int(key["e"]))
-    return _der_seq(_der_seq(_der_oid("1.2.840.113549.1.1.1"), _der(0x05, b"")), _der(0x03, b"\x00" + pub))
-
-
-def _key_id(key: dict) -> bytes:
-    return hashlib.sha1(_der_seq(_der_int(key["n"]), _der_int(key["e"]))).digest()
-
-
-def _rsa_sign_sha256(key: dict, data: bytes) -> bytes:
-    digest_info = bytes.fromhex("3031300d060960864801650304020105000420") + hashlib.sha256(data).digest()
-    k = (key["n"].bit_length() + 7) // 8
-    em = b"\x00\x01" + b"\xff" * (k - len(digest_info) - 3) + b"\x00" + digest_info
-    return pow(int.from_bytes(em, "big"), key["d"], key["n"]).to_bytes(k, "big")
-
-
-def x509_certificate(subject_key: dict, issuer_key: dict, subject_cn: str, issuer_cn: str, org: str,
-                     days: int, ca: bool, dns_names: list[str] = (), ips: list[str] = ()) -> bytes:
-    """Ein X.509-v3-Zertifikat (DER), signiert mit issuer_key (sha256WithRSAEncryption)."""
-    now = datetime.now(timezone.utc).replace(microsecond=0)
-    sig_alg = _der_seq(_der_oid("1.2.840.113549.1.1.11"), _der(0x05, b""))
-    exts = [_der_ext("2.5.29.19", _der_seq(_der(0x01, b"\xff")) if ca else _der_seq(), True),
-            _der_ext("2.5.29.15", _der(0x03, b"\x01\x06") if ca else _der(0x03, b"\x05\xa0"), True),
-            _der_ext("2.5.29.14", _der(0x04, _key_id(subject_key))),
-            _der_ext("2.5.29.35", _der_seq(_der(0x80, _key_id(issuer_key))))]
-    if not ca:
-        exts.append(_der_ext("2.5.29.37", _der_seq(_der_oid("1.3.6.1.5.5.7.3.1"))))
-        names = [_der(0x82, n.encode("ascii")) for n in dns_names] + [_der(0x87, ipaddress.ip_address(i).packed) for i in ips]
-        exts.append(_der_ext("2.5.29.17", _der_seq(*names)))
-    tbs = _der_seq(
-        _der(0xA0, _der_int(2)), _der_int(secrets.randbits(120) | (1 << 120)), sig_alg,
-        _der_name(issuer_cn, org), _der_seq(_der_time(now - timedelta(hours=1)), _der_time(now + timedelta(days=days))),
-        _der_name(subject_cn, org), _rsa_public_info(subject_key), _der(0xA3, _der_seq(*exts)))
-    return _der_seq(tbs, sig_alg, _der(0x03, b"\x00" + _rsa_sign_sha256(issuer_key, tbs)))
-
-
-def _pem(label: str, der: bytes) -> str:
-    b64 = base64.b64encode(der).decode()
-    return f"-----BEGIN {label}-----\n" + "\n".join(b64[i:i + 64] for i in range(0, len(b64), 64)) + f"\n-----END {label}-----\n"
-
-
-def _rsa_private_pem(key: dict) -> str:
-    n, e, d, p, q = key["n"], key["e"], key["d"], key["p"], key["q"]
-    der = _der_seq(*(_der_int(v) for v in (0, n, e, d, p, q, d % (p - 1), d % (q - 1), pow(q, -1, p))))
-    return _pem("RSA PRIVATE KEY", der)
-
-
-def _rsa_private_load(path: Path) -> dict:
-    """Liest den mit _rsa_private_pem geschriebenen PKCS#1-Schlüssel (nur die eigene CA)."""
-    der = base64.b64decode("".join(l for l in path.read_text(encoding="ascii").splitlines() if not l.startswith("-----")))
-    def read(pos):
-        tag, size = der[pos], der[pos + 1]
-        pos += 2
-        if size & 0x80:
-            cnt = size & 0x7F
-            size, pos = int.from_bytes(der[pos:pos + cnt], "big"), pos + cnt
-        return tag, der[pos:pos + size], pos + size
-    tag, body, _ = read(0)
-    if tag != 0x30:
-        raise ValueError("CA-Schlüssel ist ungültig.")
-    der, pos, vals = body, 0, []
-    while pos < len(der):
-        tag, value, pos = read(pos)
-        vals.append(int.from_bytes(value, "big"))
-    _ver, n, e, d, p, q = vals[:6]
-    return {"n": n, "e": e, "d": d, "p": p, "q": q}
-
-
-def _write_private(path: Path, text: str) -> None:
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    with os.fdopen(fd, "w", encoding="ascii", newline="\n") as f:
-        f.write(text)
-    os.replace(tmp, path)
-
-
-def tls_setup(host_ip: str, extra_names: list[str] = ()) -> dict:
-    """Firmen-CA (falls fehlend) und neues Serverzertifikat für LAN-IP und PC-Namen anlegen."""
-    ip = str(ipaddress.ip_address(host_ip))
-    TLS_DIR.mkdir(parents=True, exist_ok=True)
-    org = "Produktionsplanung"
-    try:
-        org = str(load_config()[0]["company"].get("name") or org)[:60] or org
-    except Exception:
-        pass
-    if TLS_CA_CERT.exists() and TLS_CA_KEY.exists():
-        ca_key, created_ca = _rsa_private_load(TLS_CA_KEY), False
-    else:
-        ca_key, created_ca = rsa_generate(), True
-        _write_private(TLS_CA_KEY, _rsa_private_pem(ca_key))
-        TLS_CA_CERT.write_text(_pem("CERTIFICATE", x509_certificate(ca_key, ca_key, "Produktionsplanung Firmen-CA", "Produktionsplanung Firmen-CA", org, TLS_CA_DAYS, True)), encoding="ascii")
-    names = sorted({n for n in [*LOCAL_HOST_NAMES, *(x.strip().lower() for x in extra_names)] if n and re.fullmatch(r"[a-z0-9.-]{1,253}", n) and not re.fullmatch(r"[0-9.]+", n)})
-    key = rsa_generate()
-    cn = next((n for n in names if n != "localhost"), ip)
-    cert = x509_certificate(key, ca_key, cn, "Produktionsplanung Firmen-CA", org, TLS_SERVER_DAYS, False, names, [ip])
-    _write_private(TLS_KEY, _rsa_private_pem(key))
-    TLS_CERT.write_text(_pem("CERTIFICATE", cert), encoding="ascii")
-    return {"ca": str(TLS_CA_CERT), "createdCa": created_ca, "names": names, "ip": ip, "days": TLS_SERVER_DAYS}
-
-
-def tls_renew_reason(host_ip: str) -> str:
-    """Grund für eine automatische Erneuerung des eigenen Serverzertifikats, sonst ''.
-
-    Nur wenn die Firmen-CA (mit Schlüssel) vorliegt; ein selbst hinterlegtes Fremdzertifikat bleibt unangetastet.
-    """
-    if not (TLS_CERT.exists() and TLS_KEY.exists() and TLS_CA_CERT.exists() and TLS_CA_KEY.exists()):
-        return ""
-    import ssl
-    try:
-        info = ssl._ssl._test_decode_cert(str(TLS_CERT))
-        ips = {v for k, v in info.get("subjectAltName", ()) if k == "IP Address"}
-        expires = datetime.fromtimestamp(ssl.cert_time_to_seconds(info["notAfter"]), timezone.utc)
-    except Exception:
-        return "Serverzertifikat nicht lesbar"
-    if str(ipaddress.ip_address(host_ip)) not in ips:
-        return f"LAN-IP {host_ip} fehlt im Zertifikat"
-    if expires < datetime.now(timezone.utc) + timedelta(days=30):
-        return f"Zertifikat läuft am {expires:%d.%m.%Y} ab"
-    return ""
-
-
-def tls_context():
-    """SSL-Kontext, wenn config/tls/server.crt und server.key vorhanden sind; sonst None (HTTP)."""
-    if not (TLS_CERT.exists() and TLS_KEY.exists()):
-        return None
-    import ssl
-    ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-    ctx.minimum_version = ssl.TLSVersion.TLSv1_2
-    ctx.load_cert_chain(str(TLS_CERT), str(TLS_KEY))
-    return ctx
-
-
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--host", default=HOST)
@@ -6693,7 +5831,7 @@ def main() -> None:
         except ValueError as e:
             print(f"FEHLER: HTTPS-Einrichtung: {e}", file=sys.stderr)
             raise SystemExit(2)
-        print(f"HTTPS eingerichtet: {TLS_CERT} (gültig {info['days']} Tage) für {', '.join([info['ip'], *info['names']])}")
+        print(f"HTTPS eingerichtet: {mp_tls.TLS_CERT} (gültig {info['days']} Tage) für {', '.join([info['ip'], *info['names']])}")
         print(f"Firmen-CA {'neu angelegt' if info['createdCa'] else 'weiterverwendet'}: {info['ca']}")
         return
     if args.firma_einrichten:
@@ -6726,6 +5864,14 @@ def main() -> None:
             raise SystemExit(3)
         for w in cfg_warn:
             print(f"WARNUNG: {w}", flush=True)
+        # #52: Lizenzstatus beim Start (startet ggf. die Kulanz, auch wenn sich niemand anmeldet).
+        lic = license_status()
+        if not lic["active"]:
+            print("Lizenz: Lizenzprüfung nicht aktiv", flush=True)
+        elif lic["status"] == "valid":
+            print(f"Lizenz: gültig für {lic['licensee']} ({'unbefristet' if lic['expires'] is None else 'bis ' + lic['expires']})", flush=True)
+        else:
+            print(f"WARNUNG: MP-LIC-001 Lizenz {lic['statusText']} – " + ("nur Lesen" if lic["readOnly"] else f"noch {lic['graceDaysLeft']} Tage Kulanz, danach nur Lesen"), flush=True)
     if args.init_admin:
         password = os.environ.get("MP_ADMIN_PASSWORD")
         if not password:
@@ -6754,7 +5900,7 @@ def main() -> None:
     try:
         ssl_context = tls_context()
     except (OSError, ValueError) as e:
-        print(f"FEHLER: MP-TLS-001 HTTPS-Zertifikat in {TLS_DIR} ist ungültig: {e}", file=sys.stderr)
+        print(f"FEHLER: MP-TLS-001 HTTPS-Zertifikat in {mp_tls.TLS_DIR} ist ungültig: {e}", file=sys.stderr)
         raise SystemExit(3)
     httpd = MPHTTPServer((args.host, args.port), Handler, ssl_context=ssl_context)
     print(f"Maschinenplanung V{APP_VERSION} LAN-only läuft auf {'https' if ssl_context else 'http'}://{args.host}:{args.port}")

@@ -35,10 +35,40 @@ def build(root, output, commit):
     return manifest
 
 
+def top_notes(text):
+    """Only the newest section of RELEASE_NOTES.txt (up to the next 'MASCHINENPLANUNG V…' heading) becomes the release text."""
+    lines = text.splitlines()
+    end = next((i for i in range(1, len(lines)) if re.match(r'MASCHINENPLANUNG V\d', lines[i])), len(lines))
+    return '\n'.join(lines[:end]).strip() + '\n'
+
+
+def verify(output, commit):
+    """Re-read the built assets: exactly one zip plus manifest, hashes and commit match. Raises on any mismatch."""
+    output = Path(output)
+    manifest = json.loads((output/'update-manifest.json').read_text(encoding='utf-8'))
+    archive = output/('produktionsplanung-v'+manifest['version']+'.zip')
+    if sorted(p.name for p in output.iterdir()) != sorted([archive.name, 'update-manifest.json']):
+        raise ValueError('Unexpected release assets: ' + ', '.join(p.name for p in output.iterdir()))
+    if manifest['commit'] != commit or hashlib.sha256(archive.read_bytes()).hexdigest() != manifest['sha256']:
+        raise ValueError('Manifest does not match archive or commit.')
+    with zipfile.ZipFile(archive) as z:
+        if sorted(z.namelist()) != sorted(manifest['files']):
+            raise ValueError('Archive members differ from manifest.')
+        for name, digest in manifest['files'].items():
+            if hashlib.sha256(z.read(name)).hexdigest() != digest:
+                raise ValueError('Hash mismatch: ' + name)
+    return manifest
+
+
 if __name__=='__main__':
     parser=argparse.ArgumentParser()
     parser.add_argument('--output', required=True)
+    parser.add_argument('--notes', help='write the newest RELEASE_NOTES section to this file (outside --output)')
     args=parser.parse_args()
     root=Path(__file__).resolve().parents[1]
     commit=subprocess.check_output(['git','rev-parse','HEAD'],cwd=root,text=True).strip()
     build(root,args.output,commit)
+    manifest=verify(args.output,commit)
+    if args.notes:
+        Path(args.notes).write_text(top_notes((root/'RELEASE_NOTES.txt').read_text(encoding='utf-8')), encoding='utf-8')
+    print('Release v'+manifest['version']+' checked: '+str(len(manifest['files']))+' files')
