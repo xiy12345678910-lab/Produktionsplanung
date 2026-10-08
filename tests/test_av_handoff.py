@@ -62,7 +62,7 @@ class AVHandoffAuthorization(unittest.TestCase):
 
     def test_department_cannot_change_av_fa_project_quantity_or_predecessors(self):
         old = {"departments": copy.deepcopy(DEPARTMENTS), "machines": [{"id": "m1", "departmentId": "cnc"}], "workSteps": [step(machineId="m1", handoffUnassigned=False, fa="4711", projectId="p1", targetQty=8, sequence=10, predecessorIds=[])]}
-        for field, value in (("fa", "changed"), ("projectId", "p2"), ("targetQty", 9), ("sequence", 20), ("predecessorIds", ["other"]), ("avNote", "vom Bereich")):
+        for field, value in (("fa", "changed"), ("projectId", "p2"), ("targetQty", 9), ("sequence", 20), ("predecessorIds", ["other"]), ("avNote", "vom Bereich"), ("dryingHours", 3)):
             new = copy.deepcopy(old)
             new["workSteps"][0][field] = value
             self.assertFalse(server.department_change_allowed(old, new, "cnc")[0], field)

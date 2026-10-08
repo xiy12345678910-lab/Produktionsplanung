@@ -1,5 +1,17 @@
-MASCHINENPLANUNG V12.23.0 - RELEASE NOTES
+MASCHINENPLANUNG V12.24.0 - RELEASE NOTES
 =========================================
+Datum: 08.10.2026 · Basis: V12.23.0 · Update gemäß README_Windows.txt 2b, Daten bleiben erhalten
+
+TROCKNUNGS-/WARTEZEIT NACH ARBEITSGANG (z. B. Siebdruck)
+- AV gibt je Bereichszeile im FA-Dialog „Trocknung h“ an (Standard je Bereich unter System > Funktionen & Bereiche).
+- Waehrend der Trocknung ist die Maschine frei und kann andere FA produzieren. Der Nachfolger desselben FA
+  startet erst nach Fertigmeldung + Trocknung. Die Planung zeigt „Wartet auf Trocknung des Vorgängers bis …“.
+- Fixer Start in der Trocknungszeit wird abgelehnt (MP-PLAN-070). Werte 0–720 h, vom Server geprüft.
+- Bedarfsaktionen melden MP-SYNC-005, wenn vorherige Aenderungen noch nicht gespeichert sind (statt stumm).
+- Tests: e2e_drying.mjs. Abnahme: docs/V12_24_0.md.
+
+MASCHINENPLANUNG V12.23.0
+=========================
 Datum: 08.10.2026 · Basis: V12.22.0 · Update gemäß README_Windows.txt 2b, Daten bleiben erhalten
 
 FA EINPLANEN IM FENSTER
