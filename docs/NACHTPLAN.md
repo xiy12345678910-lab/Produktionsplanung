@@ -50,7 +50,7 @@ Gleiche Regeln wie oben (ein Sub-Agent gleichzeitig, Weckruf alle 60 min, bei Li
 | # | Aufgabe | Modell | Status |
 |---|---|---|---|
 | N1 | #52 Lizenzschlüssel (30 Tage Kulanz, dann nur Lesen; ohne öffentlichen Schlüssel inaktiv) | Opus | erledigt (cad15a3) |
-| N2 | Phase 1 flach: Konfiguration → `mp_config.py`, TLS → `mp_tls.py` | Opus | läuft |
+| N2 | Phase 1 flach: Konfiguration → `mp_config.py`, TLS → `mp_tls.py` | Opus | erledigt (cc5481c, a60891a) |
 | N3 | PR #82 mergen, wenn grün | – | offen |
 | N4 | Offene Issues (#73 Roadmap, #52, #50, #47, #49, #54) lesen: Aufgaben ohne Produktentscheidung auswählen, hier eintragen | Haiku | offen |
 | N5 | Die ersten 1–2 Aufgaben aus N4 umsetzen (je ein Sub-Agent, neuer PR) | Sonnet/Opus | offen |
