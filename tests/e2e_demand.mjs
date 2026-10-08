@@ -79,13 +79,13 @@ try {
   check(await cnc.locator('#demandFrameNew').isHidden() && await cnc.locator('[data-co-act]').count() === 0, 'Abteilungsleitung hat keine Bedarfsaktionen');
   await cnc.click('#navPlan'); await cnc.waitForFunction(() => document.querySelector('#board')?.offsetParent !== null);
   check(await cnc.locator(`#board [data-handoff-plan="${fa.id}"]`).isVisible(), 'Bedarfs-FA erscheint im Wochenplan-Vorrat');
-  await cnc.click(`#board [data-handoff-plan="${fa.id}"]`); await cnc.waitForTimeout(250);
-  const row = cnc.locator(`#ordersBody tr[data-id="${fa.id}"]`);
-  await row.locator('input[data-f="hours"]').fill('3'); await row.locator('input[data-f="hours"]').press('Tab'); await cnc.waitForTimeout(250);
-  if (await cnc.locator('#moveModal.show').count()) await cnc.click('#confirmMove');
-  await cnc.waitForTimeout(300);
-  await row.locator('select[data-f="machineId"]').selectOption('m1'); await cnc.waitForTimeout(300);
-  if (await cnc.locator('#moveModal.show').count()) await cnc.click('#confirmMove');
+  // Einplanen im Fenster direkt aus dem Vorrat (V9): Ressource + Laufzeit, Vorschau, dann Auswirkungsprüfung.
+  await cnc.click(`#board [data-handoff-plan="${fa.id}"]`); await cnc.locator('#planModal.show').waitFor();
+  check((await cnc.locator('#planFacts').innerText()).includes('FA-RA-1') && await cnc.locator('#planOk').isDisabled(), 'Einplanungsfenster zeigt FA-Daten; Übernehmen erst nach Ressource/Laufzeit');
+  await cnc.selectOption('#planResource', 'm1'); await cnc.fill('#planHours', '3');
+  await cnc.waitForFunction(() => /Start/.test(document.getElementById('planPreview').textContent));
+  check(/Ende/.test(await cnc.locator('#planPreview').innerText()) && await cnc.locator('#planOk').isEnabled(), 'Vorschau zeigt Start und Ende');
+  await cnc.click('#planOk'); await cnc.locator('#moveModal.show').waitFor(); await cnc.click('#confirmMove');
   await cnc.waitForTimeout(700);
   st = await getState(cnc);
   const planned = st.workSteps.find(x => x.id === fa.id);

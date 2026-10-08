@@ -110,7 +110,7 @@ check(true,'Bereich kann den Legacy-Auftrag löschen');
 await cnc.click('#navPlan');await cnc.waitForFunction(()=>document.querySelector('#board')?.offsetParent!==null);
  check(await cnc.locator(`#board [data-handoff-plan="${rows[0]?.id}"]`).isVisible(),'matching department gets Plan action in the week backlog');await cnc.screenshot({path:'/tmp/av-handoff-backlog.png'});
 await cnc.fill('#avBacklogSearch','not found');check(await cnc.locator('#board [data-backlog-card]:visible').count()===0,'department backlog search filters empty results');await cnc.fill('#avBacklogSearch','Kunde A');check(await cnc.locator('#board [data-backlog-card]:visible').count()===1,'department backlog search finds customer');
- await cnc.click(`#board [data-handoff-plan="${rows[0]?.id}"]`);await cnc.waitForTimeout(250);
+ await cnc.click(`#board [data-handoff-plan="${rows[0]?.id}"]`);await cnc.locator('#planModal.show').waitFor();check(await cnc.locator('#planResource').isVisible(),'Planen öffnet das Einplanungsfenster');await cnc.click('#planList');await cnc.waitForTimeout(250);
  const row=cnc.locator(`#ordersBody tr[data-id="${rows[0]?.id}"]`);await row.locator('input[data-f="hours"]').fill('4');await row.locator('input[data-f="hours"]').press('Tab');await cnc.waitForTimeout(250);if(await cnc.locator('#moveModal.show').count())await cnc.click('#confirmMove');await cnc.waitForTimeout(300);await row.locator('select[data-f="machineId"]').selectOption('m1');
  check(await cnc.locator('#moveModal.show').count()===1,'resource assignment opens planning impact preview');await cnc.screenshot({path:'/tmp/av-handoff-plan-preview.png'});
  await cnc.click('#confirmMove');await cnc.waitForTimeout(700);st=await getState(cnc);const assigned=st.workSteps.find(x=>x.id===rows[0]?.id);

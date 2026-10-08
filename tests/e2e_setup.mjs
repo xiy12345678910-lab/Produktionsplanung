@@ -123,7 +123,7 @@ try {
   check(chips.some(c => c.includes('Zuschnitt')) && chips.some(c => c.includes('Montage')), 'Vorschau zeigt die Bereiche der Vorlage');
   check((await api(a, 'GET', '/api/state'))[1].revision === before, 'Vorschau ändert nichts');
   await a.click('#setupNext');
-  await a.waitForFunction(() => /Module/.test(document.getElementById('setupTitle').textContent));
+  await a.waitForFunction(() => /Funktionen/.test(document.getElementById('setupTitle').textContent));
   const st1 = (await api(a, 'GET', '/api/state'))[1].data;
   check(st1.departments.length === 6 && st1.machines.length === 4, `Vorlage füllt Bereiche und Maschinen (${st1.departments.length}/${st1.machines.length})`);
 
