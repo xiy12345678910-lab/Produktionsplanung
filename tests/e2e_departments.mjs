@@ -91,6 +91,8 @@ try {
   const lm = lack && st.machines.find(m => m.departmentId === lack.id);
   check(lack && !lack.kind, `Produktionsbereich Lackierung angelegt ${await errText(gf)}`);
   check(lm && lm.name === 'Lackierlinie' && lm.kind === 'line' && lm.defaultShiftMode === '2' && lm.setupMinutes === 15, 'Erste Linie mit Schichtmodell 2-schichtig und 15 min Umrüsten');
+  check(lm?.effortScaling === true && !lack.formats && (await gf.evaluate(n => [...document.querySelectorAll('#gfDeptAdmin .depRow')].find(r => r.querySelector('[data-k="name"]')?.value === n)?.innerText || '', 'Lackierung')).includes('Personenstunden'), 'Planungslogik Personenstunden: Linie mit Aufwand je Besetzung, in der Liste sichtbar');
+  check(await gf.locator('#depNewRes option[value="cycle"]').count() === 0, 'GF: Takt/Formate legt nur der Admin fest (Server MP-GF-030)');
 
   await gf.evaluate(() => { document.getElementById('gfDeptPanel').open = true; });
   check(await gf.evaluate(() => [...document.querySelectorAll('#depNewKind option')].map(o => o.textContent).join('|')) === 'Produktion|Entwicklung & Vertrieb', 'Nur zwei Bereichsarten: Produktion | Entwicklung & Vertrieb');
@@ -146,6 +148,11 @@ try {
   await admin.locator('[data-project-open="p1"]').first().click(); await admin.waitForTimeout(500);
   check(await admin.evaluate(() => document.querySelector('#projectModal .modalBox').offsetWidth) > 1000, 'Projektfenster nutzt die Breite (Status sichtbar)');
   check(await admin.evaluate(() => { const g = [...document.querySelectorAll('#projectModal optgroup')].map(x => x.label); return g.join('|'); }) === 'Entwicklung & Vertrieb|Produktion', 'Bereichsauswahl im Projekt gegliedert: Entwicklung & Vertrieb | Produktion');
+  await admin.keyboard.press('Escape'); await admin.waitForTimeout(200); await admin.click('#navGF'); await admin.waitForTimeout(300);
+  await admin.evaluate(() => { document.getElementById('gfDeptPanel').open = true; });
+  await admin.fill('#depNewName', 'Stanzen'); await admin.selectOption('#depNewRes', 'cycle'); await admin.click('#depNewAdd'); await admin.waitForTimeout(800);
+  const st2 = await serverState(admin), stanz = st2.departments.find(d => d.name === 'Stanzen'), sm = stanz && st2.machines.find(m => m.departmentId === stanz.id);
+  check(stanz?.formats === true && sm?.kind === 'machine' && (await admin.evaluate(n => [...document.querySelectorAll('#gfDeptAdmin .depRow')].find(r => r.querySelector('[data-k="name"]')?.value === n)?.innerText || '', 'Stanzen')).includes('Takt'), `Admin: Planungslogik Takt legt Bereich mit Formaten und Maschine an ${await errText(admin)}`);
   await admin.close();
 
   const devlead = await open('devlead');
