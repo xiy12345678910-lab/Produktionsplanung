@@ -36,7 +36,8 @@ try {
   const admin = await login('admin');
   await admin.click('#navSystem'); await admin.locator('[data-systab="roles"]').click();
   await admin.locator('#rolesPanel').waitFor({ state: 'visible' });
-  check(await admin.locator('[data-role-template="production_planning"]').isVisible(), 'Rollen & Rechte zeigt Systemrollen als Vorlage');
+  // Vorlagen kommen asynchron aus /api/roles – auf sie warten statt sofort zu prüfen.
+  check(await admin.locator('[data-role-template="production_planning"]').waitFor({ timeout: 10000 }).then(() => true, () => false), 'Rollen & Rechte zeigt Systemrollen als Vorlage');
   await admin.click('[data-role-template="production_planning"]');
   await admin.fill('#roleName', 'AV Projekte lesend');
   await admin.fill('#roleDesc', 'Darf Projekte nur lesen, keine Rahmenaufträge');
