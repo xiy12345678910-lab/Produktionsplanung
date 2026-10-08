@@ -101,7 +101,7 @@ Check ($bakBefore.Count -gt 0) "backups\ enthaelt $($bakBefore.Count) Dateien"
 . (Join-Path $Repo 'MP_Common.ps1')
 $new = Join-Path $Work 'new'
 New-Item -ItemType Directory -Path $new | Out-Null
-foreach ($name in $MP_AppFiles) { Copy-Item -LiteralPath (Join-Path $Repo $name) -Destination $new }
+foreach ($name in $MP_AppFiles) { Copy-MPAppFile $Repo $new $name }
 Patch-Lan $new $ip
 $newVer = Get-MPPackageVersion $new
 $template = Join-Path $Work 'vorlage.json'
@@ -161,7 +161,7 @@ Check (Py same --a (Join-Path $Work 'fp_2.json') --b (Join-Path $Work 'fp_3.json
 function Future-Package([int]$Increment, [bool]$BreakMigration = $false) {
     $dir = Join-Path $Work ("future_$Increment" + $(if ($BreakMigration) { '_broken' } else { '' }))
     New-Item -ItemType Directory -Path $dir -Force | Out-Null
-    foreach ($name in $MP_AppFiles) { Copy-Item -LiteralPath (Join-Path $new $name) -Destination $dir }
+    foreach ($name in $MP_AppFiles) { Copy-MPAppFile $new $dir $name }
     $v = [version]$newVer
     $next = "$($v.Major).$($v.Minor).$($v.Build + $Increment)"
     foreach ($name in @('server.py', 'index.html')) {

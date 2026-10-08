@@ -42,6 +42,7 @@ jobs:
           python tests/test_setup.py
           python tests/test_blocks.py
           python tests/test_updates.py
+          python tests/test_update_subfolders.py
           python tests/test_av_handoff.py
           python tests/test_project_live.py
           python tests/test_personnel_times.py

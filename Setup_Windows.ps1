@@ -12,7 +12,7 @@ if (Test-Path (Join-Path $Base 'data\maschinenplanung.sqlite3')) {
     throw "Es existiert bereits eine Installation mit Datenbank in $Base. Bitte UPDATE_LIVE.ps1 verwenden."
 }
 foreach ($name in $MP_AppFiles) {
-    if (-not (Test-Path (Join-Path $SourceBase $name))) { throw "Paket unvollstaendig: $name fehlt." }
+    if (-not (Test-Path -LiteralPath (Get-MPAppPath $SourceBase $name))) { throw "Paket unvollstaendig: $name fehlt." }
 }
 
 $PythonExe = Get-MPPython
@@ -25,11 +25,7 @@ Install-MPTzdata $PythonExe $SourceBase
 
 Write-Host "Programmdateien nach $Base kopieren ..."
 New-Item -ItemType Directory -Path $Base -Force | Out-Null
-foreach ($name in $MP_AppFiles) {
-    $src = Join-Path $SourceBase $name
-    $dst = Join-Path $Base $name
-    if ([IO.Path]::GetFullPath($src) -ine [IO.Path]::GetFullPath($dst)) { Copy-Item -LiteralPath $src -Destination $dst -Force }
-}
+foreach ($name in $MP_AppFiles) { Copy-MPAppFile $SourceBase $Base $name }
 Protect-MPInstall $Base
 Set-Location $Base
 

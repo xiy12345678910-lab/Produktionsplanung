@@ -40,6 +40,8 @@ HERE = Path(__file__).resolve().parent
 SRC = HERE.parent
 sys.path.insert(0, str(HERE))
 import deploy_lib as L  # noqa: E402
+sys.path.insert(0, str(SRC))
+from app_updates import member_name  # noqa: E402
 
 STRICT = os.environ.get("MP_UPGRADE_STRICT") == "1"
 FIXED_BASELINES = [("V12.10.1", "5343676"), ("V12.13.0", "dac0860"), ("V12.14.0", "4624619")]
@@ -147,17 +149,59 @@ def run_py(live: Path, args: list[str], env_extra: dict | None = None, timeout=6
                           encoding="utf-8", errors="replace", env=env, timeout=timeout)
 
 
+def app_path(root: Path, name: str) -> Path:
+    """Wie Get-MPAppPath (MP_Common.ps1): Name oder genau eine Ordnerebene mit '/', sonst Fehler."""
+    return root.joinpath(*member_name(name).split("/"))
+
+
+def copy_app_file(src: Path, dst: Path, name: str):
+    """Wie Copy-MPAppFile: Unterordner bei Bedarf anlegen."""
+    target = app_path(dst, name)
+    target.parent.mkdir(exist_ok=True)
+    shutil.copy2(app_path(src, name), target)
+
+
 def copy_files(src: Path, dst: Path, names: list[str]):
     for n in names:
-        shutil.copy2(src / n, dst / n)
+        copy_app_file(src, dst, n)
 
 
 def simulate_update(live: Path, pkg_src: Path, app: list[str], obsolete: list[str]):
     """Wie UPDATE_LIVE.ps1 Schritt 6: nur $MP_AppFiles kopieren, $MP_ObsoleteFiles und __pycache__ entfernen."""
     for n in app:
-        shutil.copy2(pkg_src / n, live / n)
+        copy_app_file(pkg_src, live, n)
     for n in obsolete:
-        (live / n).unlink(missing_ok=True)
+        app_path(live, n).unlink(missing_ok=True)
+    shutil.rmtree(live / "__pycache__", ignore_errors=True)
+
+
+def backup_code(live: Path, rb: Path, old_app: list[str], app: list[str]):
+    """Wie UPDATE_LIVE.ps1 Schritt 5: alle Dateien der obersten Ebene plus Unterordner-Programmdateien (alte UND neue Liste)."""
+    rb.mkdir(parents=True, exist_ok=True)
+    for p in live.iterdir():
+        if p.is_file():
+            shutil.copy2(p, rb / p.name)
+    for n in sorted({n for n in old_app + app if "/" in n}):
+        if app_path(live, n).is_file():
+            copy_app_file(live, rb, n)
+
+
+def rollback_code(rb: Path, live: Path, app: list[str]):
+    """Wie der Rollback in UPDATE_LIVE.ps1: gesicherte Dateien (auch eine Unterordnerebene, nie config) zurück,
+    Dateien des neuen Pakets ohne Sicherung entfernen, leer gewordenen Unterordner entfernen. Sonst nichts löschen."""
+    for p in rb.iterdir():
+        if p.is_file():
+            shutil.copy2(p, live / p.name)
+        elif p.is_dir() and p.name != "config":
+            for f in p.iterdir():
+                if f.is_file():
+                    copy_app_file(rb, live, f"{p.name}/{f.name}")
+    for n in app:
+        if not app_path(rb, n).exists():
+            target = app_path(live, n)
+            target.unlink(missing_ok=True)
+            if "/" in n and target.parent.is_dir() and not any(target.parent.iterdir()):
+                target.parent.rmdir()
     shutil.rmtree(live / "__pycache__", ignore_errors=True)
 
 
@@ -245,13 +289,10 @@ def run_case(label: str, commit: str, scenario: str, keep: bool, ip: str):
                         f"{len(stateA.get('workSteps', []))} Arbeitsschritte, {sum(len(v) for t, v in dbA.items() if t.startswith('chat_'))} Chat-Zeilen, "
                         f"{len(dbA.get('notifications', {}))} Benachrichtigungen")
         old_pkg = root / "old_pkg"
-        old_pkg.mkdir()
-        for p in live.iterdir():
-            if p.is_file():
-                shutil.copy2(p, old_pkg / p.name)
+        app, obsolete = L.package_lists((SRC / "MP_Common.ps1").read_text(encoding="utf-8-sig"))
+        backup_code(live, old_pkg, old_app, app)
 
         # ---------- 3. Update ----------
-        app, obsolete = L.package_lists((SRC / "MP_Common.ps1").read_text(encoding="utf-8-sig"))
         missing = [n for n in app if not (SRC / n).exists()]
         ok_all &= check(not missing, f"[{tag}] Updatepaket vollständig ({len(app)} Dateien)", ", ".join(missing))
         # Ein Altstand von V11 o. ä. soll Obsolete-Dateien enthalten dürfen
@@ -383,12 +424,7 @@ def run_case(label: str, commit: str, scenario: str, keep: bool, ip: str):
         ok_all &= check(all(treeC.get(k) == treeB.get(k) for k in treeB if k not in app), f"[{tag}] zweites Update: Dateien außerhalb des Pakets byte-gleich")
 
         # ---------- 6. Rollback auf den Paketstand davor ----------
-        for p in old_pkg.iterdir():
-            shutil.copy2(p, live / p.name)
-        for n in app:
-            if not (old_pkg / n).exists():
-                (live / n).unlink(missing_ok=True)
-        shutil.rmtree(live / "__pycache__", ignore_errors=True)
+        rollback_code(old_pkg, live, app)
         ok, code, log = srv.start(old_ver)
         ok_all &= check(ok, f"[{tag}] Rollback auf V{old_ver}: alter Server startet mit den migrierten Daten", log[-600:])
         if ok:

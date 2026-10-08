@@ -482,3 +482,4 @@ MP-UPD-002   Eine andere Installation laeuft bereits.
 MP-UPD-003   Update-Wartungssperre: Aenderungen bis Healthcheck blockiert.
 MP-UPD-004   Vorabtest/Backup unvollstaendig oder ungueltig; Live-Eingriff wird abgebrochen.
 MP-UPD-005   Rollback-Healthcheck fehlgeschlagen; Wartungssperre bleibt bestehen, Wiederherstellung durch IT erforderlich.
+MP-UPD-006   Ungueltiger Programmdateiname im Paket (nur Name oder eine Ordnerebene mit /, kein .., kein Laufwerk); nichts wird kopiert.

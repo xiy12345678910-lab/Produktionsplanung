@@ -13,7 +13,7 @@ Assert-MPAdmin 'UPDATE_LIVE.ps1'
 $NewVersion = Get-MPPackageVersion $NewSource
 if (-not $NewVersion) { throw 'server.py im Updatepaket fehlt oder enthaelt keine APP_VERSION.' }
 foreach ($name in $MP_AppFiles) {
-    if (-not (Test-Path (Join-Path $NewSource $name))) { throw "Updatepaket unvollstaendig: $name fehlt." }
+    if (-not (Test-Path -LiteralPath (Get-MPAppPath $NewSource $name))) { throw "Updatepaket unvollstaendig: $name fehlt." }
 }
 $Stamp = Get-Date -Format 'yyyy-MM-dd_HHmmss'
 $TargetBase = $MP_InstallBase
@@ -124,6 +124,10 @@ try {
     $RollbackCode = Join-Path $TargetBase "update_backups\pre_V$($NewVersion)_$Stamp"
     New-Item -ItemType Directory -Path $RollbackCode -Force | Out-Null
     Get-ChildItem -LiteralPath $OldBase -File | Copy-Item -Destination $RollbackCode -Force
+    # Programmdateien in Unterordnern (z. B. core/x.py): alte UND neue Dateiliste, nur was im Live-Ordner existiert.
+    foreach ($name in @(@(Get-MPAppFileList $OldBase) + @($MP_AppFiles) | Where-Object { $_.Contains('/') -and (Test-MPAppName $_) } | Sort-Object -Unique)) {
+        if (Test-Path -LiteralPath (Get-MPAppPath $OldBase $name) -PathType Leaf) { Copy-MPAppFile $OldBase $RollbackCode $name }
+    }
     if (Test-Path -LiteralPath (Join-Path $OldBase $MP_ConfigDir)) {
         Copy-Item -LiteralPath (Join-Path $OldBase $MP_ConfigDir) -Destination (Join-Path $RollbackCode $MP_ConfigDir) -Recurse -Force
     }
@@ -145,12 +149,8 @@ try {
         Remove-Item (Join-Path $TargetBase 'data\maschinenplanung.sqlite3-wal'), (Join-Path $TargetBase 'data\maschinenplanung.sqlite3-shm') -Force -ErrorAction SilentlyContinue
         Copy-Item -LiteralPath $FinalBackup.FullName -Destination (Join-Path $TargetBase 'data\maschinenplanung.sqlite3') -Force
     }
-    foreach ($name in $MP_AppFiles) {
-        $src = Join-Path $NewSource $name
-        $dst = Join-Path $TargetBase $name
-        if ([IO.Path]::GetFullPath($src) -ine [IO.Path]::GetFullPath($dst)) { Copy-Item -LiteralPath $src -Destination $dst -Force }
-    }
-    foreach ($name in $MP_ObsoleteFiles) { Remove-Item -LiteralPath (Join-Path $TargetBase $name) -Force -ErrorAction SilentlyContinue }
+    foreach ($name in $MP_AppFiles) { Copy-MPAppFile $NewSource $TargetBase $name }
+    foreach ($name in $MP_ObsoleteFiles) { Remove-Item -LiteralPath (Get-MPAppPath $TargetBase $name) -Force -ErrorAction SilentlyContinue }
     Remove-Item -LiteralPath (Join-Path $TargetBase '__pycache__') -Recurse -Force -ErrorAction SilentlyContinue
 
     Write-Host '7/9 Ordner sperren, Zeitzonendaten, Tasks ...'
@@ -209,13 +209,27 @@ catch {
     if (-not $migrating -and $RollbackCode -and (Test-Path $RollbackCode)) {
         Get-ChildItem -LiteralPath $RollbackCode -File | Where-Object { $_.Name -ne 'maschinenplanung_vor_update.sqlite3' } |
             Copy-Item -Destination $TargetBase -Force
+        # Gesicherte Programm-Unterordner (eine Ebene, nie config\) zurueckspielen; andere Dateien bleiben unberuehrt.
+        Get-ChildItem -LiteralPath $RollbackCode -Directory | Where-Object { $_.Name -ne $MP_ConfigDir } | ForEach-Object {
+            $sub = $_.Name
+            foreach ($file in @(Get-ChildItem -LiteralPath $_.FullName -File)) {
+                $rel = "$sub/$($file.Name)"
+                try { Copy-MPAppFile $RollbackCode $TargetBase $rel } catch { Write-Warning "Rollback: $rel nicht zurueckgespielt: $($_.Exception.Message)" }
+            }
+        }
         if (Test-Path -LiteralPath (Join-Path $RollbackCode $MP_ConfigDir)) {
             # Retain the directory and replace its contents from the verified saved profile.
             Get-ChildItem -LiteralPath (Join-Path $TargetBase $MP_ConfigDir) -Force | Remove-Item -Recurse -Force
             Copy-Item -LiteralPath (Join-Path $RollbackCode $MP_ConfigDir) -Destination $TargetBase -Recurse -Force
         }
         foreach ($name in $MP_AppFiles) {
-            if (-not (Test-Path (Join-Path $RollbackCode $name))) { Remove-Item -LiteralPath (Join-Path $TargetBase $name) -Force -ErrorAction SilentlyContinue }
+            if (-not (Test-Path -LiteralPath (Get-MPAppPath $RollbackCode $name))) {
+                $neu = Get-MPAppPath $TargetBase $name
+                Remove-Item -LiteralPath $neu -Force -ErrorAction SilentlyContinue
+                # Einen dadurch leer gewordenen Programm-Unterordner entfernen (nur wenn wirklich leer).
+                $parent = Split-Path -Parent $neu
+                if ($name.Contains('/') -and (Test-Path -LiteralPath $parent) -and -not (Get-ChildItem -LiteralPath $parent -Force)) { Remove-Item -LiteralPath $parent -Force -ErrorAction SilentlyContinue }
+            }
         }
         if ($FinalBackup) {
             # Eine evtl. bereits migrierte Datenbank durch den Stand vor dem Update ersetzen.
