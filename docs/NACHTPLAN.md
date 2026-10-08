@@ -53,8 +53,8 @@ Gleiche Regeln wie oben (ein Sub-Agent gleichzeitig, Weckruf alle 60 min, bei Li
 | N2 | Phase 1 flach: Konfiguration → `mp_config.py`, TLS → `mp_tls.py` | Opus | erledigt (cc5481c, a60891a) |
 | N3 | PR #82 mergen, wenn grün | – | offen |
 | N4 | Offene Issues (#73 Roadmap, #52, #50, #47, #49, #54) lesen: Aufgaben ohne Produktentscheidung auswählen, hier eintragen | Haiku | erledigt → N5a–N5c |
-| N5a | #52 K1 Negativtests Sicherheit (Logout/abgelaufene Session, Übergröße, Upload, Pfade) + #50 Backup-Zweitziel/Exitcode 2 – nur Tests, Befunde melden | Sonnet | läuft |
-| N5b | #73 Phase 1: Rollen & Rechte → `mp_rights.py` (flach, nur verschieben; Golden-Tests Rechte/Scope/Schreib-Matrix) | Opus | offen |
+| N5a | #52 K1 Negativtests Sicherheit (Logout/abgelaufene Session, Übergröße, Upload, Pfade) + #50 Backup-Zweitziel/Exitcode 2 – nur Tests, Befunde melden | Sonnet | erledigt (d1616ae; Befunde: Übergröße → 400 statt 413 [Frage]; SyntaxWarning behoben) |
+| N5b | #73 Phase 1: Rollen & Rechte → `mp_rights.py` (flach, nur verschieben; Golden-Tests Rechte/Scope/Schreib-Matrix) | Opus | läuft |
 | N5c | #47 Charge: reine Rechenfunktion ceil(Menge/Chargengröße) × Dauer mit Unit-Tests, ohne Verdrahtung | Sonnet | offen, nur wenn Zeit |
 
 Fragen aus N4 für Jonas: Gate 0 (Rechte am Code) vor Verkauf? · Rollback: nur Code oder auch Daten (#50)? · Lizenz bei Serverumzug (#52 K3)? · Code-Signing-Zertifikat kaufen? · Charge parallel/sequenziell, Reinigung zwischen Chargen (#47)? · Lager (#54) in Release 1.0? · Scheduler-Performance-Ziel für 1500 FA?
