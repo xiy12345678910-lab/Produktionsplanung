@@ -57,7 +57,7 @@ httpd = server.MPHTTPServer(("127.0.0.1", ${PORT}), server.Handler)
 print("READY", flush=True)
 httpd.serve_forever()
 `;
-const srv = spawn(process.platform === 'win32' ? 'python' : 'python3', ['-c', py], { stdio: ['ignore', 'pipe', 'inherit'] });
+const srv = spawn(process.platform === 'win32' ? 'python' : 'python3', ['-c', py], { stdio: ['ignore', 'pipe', 'inherit'], env: { ...process.env, MP_CONFIG_DIR: path.join(dataDir, 'config') } });
 await new Promise((resolve, reject) => {
   const t = setTimeout(() => reject(new Error('Server startet nicht')), 20000);
   srv.stdout.on('data', d => { const s = String(d); if (s.includes('SEED-FEHLER')) reject(new Error(s)); if (s.includes('READY')) { clearTimeout(t); resolve(); } });
