@@ -21,7 +21,7 @@ Auftrag (Jonas, 08.10. abends): über Nacht selbständig an #73, #55, #51, #52 a
 | # | Issue | Aufgabe | Modell | Status |
 |---|---|---|---|---|
 | 1 | #73 Phase 0 | Rechte-Matrix für Schreibzugriffe (Rolle × Datenbereich) als Referenztest | Sonnet | erledigt (Commit „Phase 0: Schreib-Matrix (Rolle × Datenbereich) als Referenztest (#73)“) |
-| 2 | #73 Phase 0 | Release-Regeln dokumentieren (nur über den Workflow; GitHub-Regeln für Tags) | Haiku | offen |
+| 2 | #73 Phase 0 | Release-Regeln dokumentieren (nur über den Workflow; GitHub-Regeln für Tags) | Haiku | erledigt (Commit „Doku: Release-Regeln (#73)“) |
 | 3 | #55 | Warnung bei riskanten Rollen-Kombinationen im Rolleneditor | Sonnet | offen |
 | 4 | #51 | Inventur der fest verdrahteten IDs (cnc, thermoforming, konf …) – nur Analyse | Haiku | offen |
 | 5 | #51 | Fest verdrahtete IDs in der Logik durch Bereichs-Flags ersetzen (nach #4) | Sonnet | offen |
@@ -31,7 +31,14 @@ Auftrag (Jonas, 08.10. abends): über Nacht selbständig an #73, #55, #51, #52 a
 | 9 | #52 K6 | System-Status/Diagnosepaket für den Admin (ohne Geheimnisse) | Sonnet | offen |
 
 ## Fragen für morgen (Jonas)
-- (wird über Nacht gefüllt)
+- Rechte: Darf der Vertrieb Projekte bearbeiten? (heute nein)
+- Rechte: GF darf Bereiche ändern – so gewollt?
+- Release: `README_Windows.txt` Abschnitt „RELEASE ANLEGEN“ und die Fehlermeldung in `Update_von_GitHub.ps1` beschreiben noch das Anlegen von Tag/Release von Hand. Auf den Workflow-Weg umschreiben? (siehe docs/RELEASE_REGELN.md)
+- Release: Ein Tag-Push `v*` veröffentlicht sofort ohne Entwurf. Soll der Tag-Weg abgeschaltet werden (nur noch manueller Lauf → Entwurf)?
+- Release: Der Schritt „checked assets“ prüft nichts, und die komplette RELEASE_NOTES.txt (83 KB) wird Release-Text. Kürzen auf den obersten Abschnitt?
+- Einrichtungsschritt „Branche“ entfernen? (Deep Dive 09.10., #51/#53)
+- HTTPS als Standard? Lizenz? (#52)
+- Wann wird V12.27 auf Windows installiert?
 
 ## Protokoll
 - 08.10. abends: Plan angelegt. PR #80 (V12.27 Teil 2) offen.

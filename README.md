@@ -7,6 +7,7 @@ Formate (Tiefziehen), Personal und Nachrichten. Zentraler Windows-LAN-Server, Br
 - Windows: `README_Windows.txt` (Installation, Update, Update direkt von GitHub), `BENUTZER_KURZANLEITUNG.txt`
 - A–D: `docs/BLOCKS_A_D.md` · Admin-Updates (I 7a): `docs/ADMIN_UPDATES.md`
 - Änderungen: `RELEASE_NOTES.txt` · Fehlercodes: `FEHLERCODES.txt` · Übergabe: `docs/UEBERGABE.md`
+- Release-Regeln (nur über Workflow, Veröffentlichung, Windows-Update): `docs/RELEASE_REGELN.md`
 - Reinigung nach FA (Block F) V12.27.0: `docs/V12_27_0.md`
 - Planung schneller (Scheduler-Performance) V12.26.0: `docs/V12_26_0.md`
 - Trocknung durch Abteilungsleitung (hh:mm), Phase-0-Referenztests V12.25.0: `docs/V12_25_0.md`
