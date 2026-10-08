@@ -25,7 +25,7 @@ $MP_ConfigDir = 'config'
 
 # Alle Programmdateien des Pakets. Nur diese werden kopiert/gesichert.
 $MP_AppFiles = @(
-    'server.py', 'mp_config.py', 'mp_license.py', 'release_gates.py', 'app_updates.py', 'index.html',
+    'server.py', 'mp_config.py', 'mp_tls.py', 'mp_license.py', 'release_gates.py', 'app_updates.py', 'index.html',
     'Backup_Datenbank.py', 'Backup_Datenbank.ps1',
     'MP_Common.ps1', 'Setup_Windows.ps1', 'INSTALLIEREN_ALS_ADMIN.ps1', 'UPDATE_LIVE.ps1',
     'Run_Server_LAN.ps1', 'Start_Server.ps1', 'Stop_Server.ps1', 'Neustart_Server.ps1',

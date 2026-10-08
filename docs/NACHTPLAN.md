@@ -27,7 +27,7 @@ Auftrag (Jonas, 08.10. abends): über Nacht selbständig an #73, #55, #51, #52 a
 | 5 | #51 | Fest verdrahtete IDs in der Logik durch Bereichs-Flags ersetzen (nach #4) | Sonnet | erledigt (Commit „#51: Bereichs-Flags statt fester IDs (Bedienerkapazität, Fallback-Bereich)“) |
 | 6 | #73 Phase 1 | Backend-Trennung Schritt 1: Konfiguration → `mp_config.py` (flach, Entscheidung 10) | Opus | erledigt (flach als `mp_config.py`; Commit „#73 Phase 1: Konfiguration nach mp_config.py“) |
 | 6a | #73 Phase 1 | Vorbereitung: Updater, PowerShell-Kopie, Preflight, Rollback und Tests können Dateien in Unterordnern (`core/x.py`), noch ohne verschobenen Code | Opus | erledigt (Commit „Phase 1 Vorbereitung: Updater und Skripte unterstützen Unterordner (#73)“) |
-| 7 | #73 Phase 1 | Schritt 2: TLS → `core/tls.py` | Sonnet | zurückgestellt (wie 6) |
+| 7 | #73 Phase 1 | Schritt 2: TLS → `mp_tls.py` (flach, Entscheidung 10) | Opus | erledigt (flach als `mp_tls.py`; Commit „#73 Phase 1: TLS nach mp_tls.py“) |
 | 8 | #73 Phase 1 | Review der Schritte 6–7 (rein lesend) | Opus | erledigt (Review: keine Blocker; Nacharbeit Commit „Phase 1 Vorbereitung: Review-Nacharbeit Updater (#73)“) |
 | 9 | #52 K6 | System-Status/Diagnosepaket für den Admin (ohne Geheimnisse) | Sonnet | erledigt (Commit „#52 K6: Systemstatus und Diagnosepaket für den Admin“) |
 

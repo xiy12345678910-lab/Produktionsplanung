@@ -26,9 +26,9 @@ KEY_BITS = 3072   # reines Python: Erzeugung dauert einige Sekunden bis ca. 1 Mi
 PRIVATE_NAME = "lizenz_privat.pem"
 
 
-def _server():
-    import server   # rsa_generate/_rsa_private_pem/_rsa_private_load (bereits für HTTPS vorhanden)
-    return server
+def _rsa():
+    import mp_tls   # rsa_generate/_rsa_private_pem/_rsa_private_load/_write_private (bereits für HTTPS vorhanden)
+    return mp_tls
 
 
 def inside_repo(path: Path) -> bool:
@@ -59,10 +59,10 @@ def cmd_keygen(a) -> int:
     if target.exists():
         print(f"FEHLER: {target} existiert bereits – vorhandenen Schlüssel nicht überschreiben (alle Lizenzen hängen daran).", file=sys.stderr)
         return 2
-    srv = _server()
+    rsa = _rsa()
     print(f"Erzeuge RSA-{a.bits}-Schlüsselpaar … (kann etwas dauern)", flush=True)
-    key = srv.rsa_generate(a.bits)
-    srv._write_private(target, srv._rsa_private_pem(key))
+    key = rsa.rsa_generate(a.bits)
+    rsa._write_private(target, rsa._rsa_private_pem(key))
     print(f"Privater Schlüssel: {target}")
     print("  -> sicher aufbewahren (zweite Kopie offline), NIE weitergeben, NIE ins Repository oder in eine Cloud.")
     print("\nÖffentlichen Schlüssel per PR in mp_license.py eintragen (Zeile PUBLIC_KEY ersetzen):\n")
@@ -74,7 +74,7 @@ def _load_private(path: str) -> dict:
     p = Path(path).expanduser()
     if inside_repo(p):
         print(f"WARNUNG: {p} liegt in einem Git-Repository – privaten Schlüssel dort entfernen!", file=sys.stderr)
-    return _server()._rsa_private_load(p)
+    return _rsa()._rsa_private_load(p)
 
 
 def cmd_create(a) -> int:
@@ -105,7 +105,7 @@ def _public_from(arg: str | None) -> tuple[int, int] | None:
         return mp_license.public_key()
     p = Path(arg).expanduser()
     if p.is_file():
-        k = _server()._rsa_private_load(p)
+        k = _rsa()._rsa_private_load(p)
         return k["n"], k["e"]
     return int(arg.strip().removeprefix("0x"), 16), 65537
 
