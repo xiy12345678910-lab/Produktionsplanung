@@ -9,6 +9,12 @@ REINIGUNG NACH FA JE MASCHINE (Block F)
 - Fertig gemeldete FA blockieren die Maschine bis Fertigmeldung + Reinigung.
 - Server prüft die Eingabe (MP-MACH-018). Ohne Reinigungszeit unveränderte Planung (Referenztest unverändert).
 
+FEINERE AKTIONSRECHTE IN ROLLEN (#55)
+- Eigene Rollen: neue Aktionsrechte "FA anlegen", "FA einplanen", "Produktion starten/pausieren", "Produktion fertigmelden".
+- Rechte schraenken nur ein (Standard = erlaubt, soweit die Systemrolle es kann). Ohne eigene Rolle aendert sich nichts.
+- Altes Recht "Produktion melden" = aus: wirkt wie beide neuen Produktionsrechte aus.
+- Server prueft verbindlich (MP-ROLE-001 bei Produktion, MP-ROLE-010 beim Speichern); Schaltflaechen werden ausgeblendet bzw. gesperrt.
+
 MASCHINENPLANUNG V12.26.0 - RELEASE NOTES
 =========================================
 Datum: 08.10.2026 · Basis: V12.25.0 · Update gemäß README_Windows.txt 2b, Daten bleiben erhalten
