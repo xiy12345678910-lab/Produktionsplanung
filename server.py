@@ -866,9 +866,12 @@ FUNCTION_DATA = {
     "projects": ("projects", "processTemplates"),
     "personnel": ("employees", "personnelAssignments", "personnelAbsences", "weeklyEmployeeDeployments", "departmentStaffNeeds"),
     "formats": ("formats", "baseFormats"),
+    "history": ("history",),
     "system": ("machines", "departments", "shiftTemplates", "yearRules", "weekRules", "exceptions", "operatorCapacity", "personnelGate", "palletTemplates"),
 }
 # Planung und System bleiben sichtbar: Scheduler und Projekt-Liveansicht brauchen Ressourcen und FA.
+# V12.27.0 (Rechte-Audit): Schreibbare Schlüssel der GF-Rolle (siehe gf_change_allowed); gilt nur für Benutzer der Rolle gf.
+GF_FUNCTION_KEYS = ("departmentStaffNeeds", "weeklyEmployeeDeployments", "exceptions", "employees", "departments", "machines")
 FUNCTION_HIDDEN = {"projects": ("projects", "processTemplates"), "personnel": FUNCTION_DATA["personnel"],
                    "formats": FUNCTION_DATA["formats"], "frameOrders": ("frameOrders", "callOffs"), "history": ("history",)}
 
@@ -967,6 +970,10 @@ def rights_change_error(old: dict, incoming: dict, user: dict) -> str:
             for key in keys:
                 if canonical(old.get(key)) != canonical(incoming.get(key)):
                     return f"Für „{label}“ besteht nur Leserecht."
+    if user.get("role") == "gf" and user_level(user, "gf") != "edit":
+        for key in GF_FUNCTION_KEYS:
+            if canonical(old.get(key)) != canonical(incoming.get(key)):
+                return "Für „GF-Steuerung“ besteht nur Leserecht."
     before_ws = _record_map(old.get("workSteps"))
     after_ws = _record_map(incoming.get("workSteps"))
     if not user_action(user, "faCreate") and any(rid not in before_ws for rid in after_ws):
@@ -1698,6 +1705,17 @@ def verify_password(password: str, salt_b64: str, digest_b64: str) -> bool:
 
 
 DUMMY_SALT, DUMMY_HASH = hash_password(secrets.token_urlsafe(16))
+
+
+META_KEYS = {"revision", "serverRevision", "actor", "storage", "createdAt", "serverReady", "clientVersion"}
+MAX_UI_BYTES = 20 * 1024
+
+
+def password_policy_error(password: str) -> str:
+    """V12.27.0: Regel für NEUE/geänderte Passwörter (bestehende bleiben gültig); leer = ok."""
+    if len(password) < 10 or not any(c.isalpha() for c in password) or not any(c.isdigit() for c in password):
+        return "Passwort muss mindestens 10 Zeichen sowie Buchstaben und Ziffern enthalten."
+    return ""
 
 
 def create_or_reset_admin(username: str, password: str) -> None:
@@ -5842,6 +5860,8 @@ class Handler(BaseHTTPRequestHandler):
             user = self.require_user()
             if not user:
                 return
+            if not self.require_rights(user, "notifications"):
+                return
             if not self.require_current_client():
                 return
             if not module_on("notifications"):
@@ -5858,6 +5878,8 @@ class Handler(BaseHTTPRequestHandler):
                 with REVISION_CONDITION:
                     REVISION_CONDITION.notify_all()
             return self.json_response(status, payload)
+        # Rechte-Audit V12.27.0: Produktions-/Bedarfsaktionen prüfen bewusst NICHT die Funktionsstufe „planning“;
+        # dafür gelten die eigenen Aktionsrechte prodStartPause/prodFinish (siehe ROLE_ACTIONS).
         production_path = re.fullmatch(r"/api/production/([A-Za-z0-9_-]{1,80})/(release|start|pause|resume|partial|finish|abort|label)", path)
         if production_path:
             user = self.require_user(["admin", *DEPARTMENT_ROLES, "production"])
@@ -5960,6 +5982,8 @@ class Handler(BaseHTTPRequestHandler):
                     state = json.loads(con.execute("SELECT json FROM state WHERE id=1").fetchone()[0])
                 if department_id not in {str(d.get("id")) for d in state.get("departments") or []}:
                     return self.json_response(400, mp_error("MP-AUTH-010", "Bereich ist ungültig."))
+            if password_policy_error(password) and len(username) >= 2 and role in ROLES:
+                return self.json_response(400, mp_error("MP-AUTH-017", password_policy_error(password)))
             if len(username) < 2 or len(password) < 8 or role not in ROLES or (role in DEPARTMENT_ROLES | {"production"} and not department_id):
                 return self.json_response(400, mp_error("MP-AUTH-010", "Benutzername, Passwort, Rolle oder Bereich ungültig."))
             if len(username) > 40 or any(ch in username for ch in "⟦⟧|<>\"'`") or any(ord(ch) < 32 for ch in username):
@@ -5994,8 +6018,8 @@ class Handler(BaseHTTPRequestHandler):
             return
         current = str(body.get("currentPassword", ""))
         new_pw = str(body.get("newPassword", ""))
-        if len(new_pw) < 8:
-            return self.json_response(400, mp_error("MP-AUTH-017", "Passwort muss mindestens 8 Zeichen haben."))
+        if password_policy_error(new_pw):
+            return self.json_response(400, mp_error("MP-AUTH-017", password_policy_error(new_pw)))
         ip = self.client_address[0]
         stamp = login_attempt_reserve(ip, user["username"])
         if stamp is None:
@@ -6121,8 +6145,8 @@ class Handler(BaseHTTPRequestHandler):
             vals = [role, department_id, active, now_iso(), profile_id]
             if "password" in body:
                 pw = str(body["password"])
-                if len(pw) < 8:
-                    return self.json_response(400, mp_error("MP-AUTH-017", "Passwort muss mindestens 8 Zeichen haben."))
+                if password_policy_error(pw):
+                    return self.json_response(400, mp_error("MP-AUTH-017", password_policy_error(pw)))
                 salt, digest = hash_password(pw)
                 fields += ["salt=?", "password_hash=?"]
                 vals += [salt, digest]
@@ -6270,6 +6294,11 @@ class Handler(BaseHTTPRequestHandler):
                 if not ok:
                     con.execute("ROLLBACK")
                     return self.json_response(403, mp_error("MP-LOG-001", reason))
+            # V12.27.0 (Rechte-Audit): meta nur mit bekannten Schlüsseln, ui nur als kleines Objekt.
+            incoming["meta"] = {k: v for k, v in (incoming.get("meta") or {}).items() if k in META_KEYS}
+            if len(canonical(incoming.get("ui") or {}).encode("utf-8")) > MAX_UI_BYTES:
+                con.execute("ROLLBACK")
+                return self.json_response(400, mp_error("MP-SYNC-003", "UI-Einstellungen sind zu groß (max. 20 KB)."))
             # MP-AUD-017: fachlich unveränderter Stand erzeugt keine neue Revision.
             if canonical({k: v for k, v in incoming.items() if k != "meta"}) == canonical({k: v for k, v in old.items() if k != "meta"}):
                 con.execute("ROLLBACK")
