@@ -3641,12 +3641,15 @@ def sales_change_allowed(old: dict, new: dict) -> tuple[bool, str]:
     return True, ""
 
 
-# Phasenwechsel je Rolle (Admin: alle). Nach der Annahme wird der Produktionsstand
-# nicht gespeichert, sondern aus den verknüpften FA abgeleitet.
+# Phasenwechsel je Rolle (Admin: alle). Der Produktionsstand wird nicht gespeichert,
+# sondern aus den verknüpften FA abgeleitet.
+# V12.23.0: Keine Übergabe mehr – PM (Entwicklung & Vertrieb) und AV (Produktion) arbeiten ab Anlage
+# gleichzeitig. Offene Projekte (inquiry/pm/offer_sent/accepted) werden direkt „Produktion fertig“;
+# der Wechsel nach „accepted“ bleibt für Altbestände und ältere Clients erlaubt.
+_PROJECT_OPEN_PHASES = ("inquiry", "pm", "offer_sent", "accepted")
 PROJECT_TRANSITIONS = {
-    # PM legt an und übergibt an die Produktion; alte Phasen (Eingang/Angebot) gelten als PM.
-    "project_management": {("pm", "accepted"), ("inquiry", "accepted"), ("offer_sent", "accepted"), ("accepted", "closed")},
-    "production_planning": {("pm", "accepted"), ("inquiry", "accepted"), ("offer_sent", "accepted"), ("accepted", "closed")},
+    role: {(a, "accepted") for a in _PROJECT_OPEN_PHASES if a != "accepted"} | {(a, "closed") for a in _PROJECT_OPEN_PHASES}
+    for role in ("project_management", "production_planning")
 }
 PROJECT_BASE_FIELDS = {"customer", "contact", "name", "note", "wt", "workflow", "quantity"}
 PROJECT_FIELDS = {

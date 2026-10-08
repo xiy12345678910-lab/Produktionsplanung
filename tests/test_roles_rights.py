@@ -191,5 +191,36 @@ class ProductionOnlyProjects(RoleProfiles):
     test_actions_and_endpoints = None
 
 
+class ParallelProjects(RoleProfiles):
+    '''V12.23.0: Keine Übergabe-Schritte – PM und AV legen an und arbeiten gleichzeitig.'''
+    def test_pm_and_av_work_in_parallel(self):
+        self.user('pmpar', 'project_management')
+        self.user('avpar', 'production_planning')
+        _, ck_pm, _ = self.login('pmpar')
+        _, ck_av, _ = self.login('avpar')
+        def save(ck, mutate):
+            _, state, _ = self.req('GET', '/api/state', None, ck)
+            mutate(state['data'])
+            return self.req('PUT', '/api/state', state, ck)
+        proj = lambda d, pid: next(p for p in d['projects'] if p['id'] == pid)
+        base = {'customer': 'Kunde', 'name': 'Teil', 'processes': [], 'offer': {}}
+        st, r, _ = save(ck_av, lambda d: d['projects'].append({**base, 'id': 'p_av', 'number': 'P-AV-1', 'phase': 'pm', 'log': [{'id': 'l1', 'actor': 'avpar', 'text': 'Projekt angelegt', 'ts': '2026-10-08T08:00:00Z'}]}))
+        self.assertEqual(st, 200, f'AV legt Projekt an {r}')
+        st, r, _ = save(ck_pm, lambda d: proj(d, 'p_av').update(name='Teil PM'))
+        self.assertEqual(st, 200, f'PM bearbeitet das AV-Projekt ohne Übergabe {r}')
+        st, r, _ = save(ck_av, lambda d: proj(d, 'p_av').update(phase='closed'))
+        self.assertEqual((st, r.get('errorCode')), (400, 'MP-PM-008'), 'Produktion fertig nur mit AB')
+        st, r, _ = save(ck_av, lambda d: proj(d, 'p_av').update(phase='closed', ab='AB-AV-1'))
+        self.assertEqual(st, 200, f'Direkt von „In Arbeit“ zu „Produktion fertig“ {r}')
+        st, r, _ = save(ck_pm, lambda d: d['projects'].append({**base, 'id': 'p_pm', 'number': 'P-PM-1', 'phase': 'pm', 'ab': 'AB-PM-1', 'dueDate': '2026-11-30', 'log': []}))
+        self.assertEqual(st, 200, r)
+        st, r, _ = save(ck_pm, lambda d: proj(d, 'p_pm').update(phase='accepted'))
+        self.assertEqual(st, 200, f'Altphase „accepted“ bleibt für ältere Clients erlaubt {r}')
+
+    test_profile_validation_and_management = None
+    test_av_profile_is_enforced_on_server = None
+    test_actions_and_endpoints = None
+
+
 if __name__ == '__main__':
     unittest.main(verbosity=2)
