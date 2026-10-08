@@ -68,6 +68,16 @@ try {
   const viaDept = await ev(() => { const h = data.history[0], d = departmentById(h.departmentId); delete h.dryingHours; d.dryingHours = 3; const a = dryingHoursOf(h); h.dryingHours = 0.5; const b = dryingHoursOf(h); delete d.dryingHours; return [a, b]; });
   check(viaDept[0] === 3 && viaDept[1] === 0.5, `Standard je Bereich (3 h), Wert am Arbeitsgang hat Vorrang (0,5 h) ${JSON.stringify(viaDept)}`);
 
+  // hh:mm-Format und Beschriftung der Bereiche (Entwicklung ohne Planungslogik, Bereich ohne Ressource als Warnung).
+  const fmt = await ev(() => [fmtHHMM(2.5), fmtHHMM(0.25), fmtHHMM(0), parseHHMM('2:30'), parseHHMM('1'), parseHHMM('2:75'), parseHHMM('721'), parseHHMM('')]);
+  check(JSON.stringify(fmt) === JSON.stringify(['2:30', '0:15', '', 2.5, 1, null, null, 0]), `hh:mm: Anzeige und Eingabe (${JSON.stringify(fmt)})`);
+  const labels = await ev(() => { const d = { id: 'dx_empty', name: 'Leer', planningType: 'MACHINE' }; data.departments.push(d); const a = deptLogicLabel(d); data.departments.pop(); return a; });
+  check(labels.includes('keine Maschine'), `Produktionsbereich ohne Ressource wird als nicht planbar markiert („${labels}“)`);
+  await page.click('#navSystem'); await page.locator('[data-systab="functions"]').click(); await page.waitForTimeout(300);
+  const sysText = await page.locator('#adminDepartmentControls').innerText();
+  check(/^Bereiche/m.test(sysText) && !sysText.includes('Produktionsbereiche'), 'System: Überschrift „Bereiche“');
+  check(await page.locator('[data-dep-dry]').first().getAttribute('placeholder') === '0:00', 'System: Standard-Trocknung als hh:mm');
+
   // Server: Trocknungszeit wird geprüft; Bereichsleitung darf sie am AV-FA nicht ändern (Feldliste der AV).
   const bad = await page.evaluate(async () => { const s = await (await fetch('/api/state')).json(), h = await (await fetch('/api/health')).json(); s.data.departments[0].dryingHours = 1000; const r = await fetch('/api/state', { method: 'PUT', headers: { 'Content-Type': 'application/json', 'X-MP-Client-Version': h.version }, body: JSON.stringify({ revision: s.revision, data: s.data }) }); return [r.status, (await r.json()).errorCode]; });
   check(bad[0] === 400 && bad[1] === 'MP-DEPT-007', `Server lehnt Trocknungszeit > 720 h ab (${bad})`);

@@ -1,5 +1,26 @@
-MASCHINENPLANUNG V12.24.0 - RELEASE NOTES
+MASCHINENPLANUNG V12.25.0 - RELEASE NOTES
 =========================================
+Datum: 08.10.2026 · Basis: V12.24.0 · Update gemäß README_Windows.txt 2b, Daten bleiben erhalten
+
+TROCKNUNG: ABTEILUNGSLEITUNG ENTSCHEIDET, EINGABE IN hh:mm
+- Trocknung je FA legt die Abteilungsleitung fest: im Einplanungsfenster („Trocknung danach“) und in der
+  Auftragsliste (Feld unter den Stunden). Eingabe als hh:mm, z. B. 2:30. Leer = Standard des Bereichs.
+- Standard je Bereich (Admin) unter System > Funktionen & Bereiche, ebenfalls hh:mm.
+- Die AV legt keine Trocknung mehr fest (Feld im FA-Dialog entfernt, Server prüft).
+
+SYSTEM > FUNKTIONEN & BEREICHE
+- Überschrift „Bereiche“ statt „Produktionsbereiche“.
+- Entwicklung-&-Vertrieb-Bereiche zeigen „nur Projektaufgaben“ statt Planungslogik und keine Trocknung.
+- Produktionsbereiche ohne Maschine/Linie sind als „keine Maschine/Linie – nicht planbar“ markiert.
+- GF-Steuerung: Schalter „Formate“ und „Bediener geteilt“ beschriftet.
+
+PHASE 0 (Roadmap #73): REFERENZTESTS VOR DEN UMBAUTEN
+- tests/test_golden.py: Datenstand, sichtbare Daten je Rolle und Rechte-Matrix (Rolle × Endpunkt) als Referenz.
+- tests/e2e_golden_schedule.mjs: Planungsergebnis bei festem Zeitpunkt als Referenz + Scheduler-Benchmark.
+  Befund: 300 FA ~2,5 s, 600 FA ~16 s, 1500 FA ~186 s (Wachstum ~n^2,6) – Optimierung als eigener Punkt in #73.
+
+MASCHINENPLANUNG V12.24.0
+=========================
 Datum: 08.10.2026 · Basis: V12.23.0 · Update gemäß README_Windows.txt 2b, Daten bleiben erhalten
 
 TROCKNUNGS-/WARTEZEIT NACH ARBEITSGANG (z. B. Siebdruck)

@@ -1,0 +1,448 @@
+{
+ "admin": {
+  "GET /api/chat/channels": [
+   200
+  ],
+  "GET /api/config": [
+   200
+  ],
+  "GET /api/history-archive": [
+   200
+  ],
+  "GET /api/notifications": [
+   200
+  ],
+  "GET /api/revision": [
+   200
+  ],
+  "GET /api/roles": [
+   200
+  ],
+  "GET /api/session": [
+   200
+  ],
+  "GET /api/state": [
+   200
+  ],
+  "GET /api/templates": [
+   200
+  ],
+  "GET /api/updates": [
+   200
+  ],
+  "GET /api/users": [
+   200
+  ],
+  "POST /api/demand/reserve (unbekannt)": [
+   404,
+   "MP-DEM-020"
+  ],
+  "POST /api/production/<unbekannt>/start": [
+   404,
+   "MP-PROD-040"
+  ],
+  "PUT /api/state (unverändert)": [
+   200
+  ]
+ },
+ "av1": {
+  "GET /api/chat/channels": [
+   200
+  ],
+  "GET /api/config": [
+   200
+  ],
+  "GET /api/history-archive": [
+   200
+  ],
+  "GET /api/notifications": [
+   200
+  ],
+  "GET /api/revision": [
+   200
+  ],
+  "GET /api/roles": [
+   403,
+   "MP-AUTH-002"
+  ],
+  "GET /api/session": [
+   200
+  ],
+  "GET /api/state": [
+   200
+  ],
+  "GET /api/templates": [
+   403,
+   "MP-AUTH-002"
+  ],
+  "GET /api/updates": [
+   403,
+   "MP-AUTH-002"
+  ],
+  "GET /api/users": [
+   403,
+   "MP-AUTH-002"
+  ],
+  "POST /api/demand/reserve (unbekannt)": [
+   404,
+   "MP-DEM-020"
+  ],
+  "POST /api/production/<unbekannt>/start": [
+   403,
+   "MP-AUTH-002"
+  ],
+  "PUT /api/state (unverändert)": [
+   200
+  ]
+ },
+ "dep1": {
+  "GET /api/chat/channels": [
+   200
+  ],
+  "GET /api/config": [
+   200
+  ],
+  "GET /api/history-archive": [
+   200
+  ],
+  "GET /api/notifications": [
+   200
+  ],
+  "GET /api/revision": [
+   200
+  ],
+  "GET /api/roles": [
+   403,
+   "MP-AUTH-002"
+  ],
+  "GET /api/session": [
+   200
+  ],
+  "GET /api/state": [
+   200
+  ],
+  "GET /api/templates": [
+   403,
+   "MP-AUTH-002"
+  ],
+  "GET /api/updates": [
+   403,
+   "MP-AUTH-002"
+  ],
+  "GET /api/users": [
+   200
+  ],
+  "POST /api/demand/reserve (unbekannt)": [
+   403,
+   "MP-AUTH-002"
+  ],
+  "POST /api/production/<unbekannt>/start": [
+   404,
+   "MP-PROD-040"
+  ],
+  "PUT /api/state (unverändert)": [
+   200
+  ]
+ },
+ "gf1": {
+  "GET /api/chat/channels": [
+   200
+  ],
+  "GET /api/config": [
+   200
+  ],
+  "GET /api/history-archive": [
+   200
+  ],
+  "GET /api/notifications": [
+   200
+  ],
+  "GET /api/revision": [
+   200
+  ],
+  "GET /api/roles": [
+   403,
+   "MP-AUTH-002"
+  ],
+  "GET /api/session": [
+   200
+  ],
+  "GET /api/state": [
+   200
+  ],
+  "GET /api/templates": [
+   403,
+   "MP-AUTH-002"
+  ],
+  "GET /api/updates": [
+   403,
+   "MP-AUTH-002"
+  ],
+  "GET /api/users": [
+   403,
+   "MP-AUTH-002"
+  ],
+  "POST /api/demand/reserve (unbekannt)": [
+   403,
+   "MP-AUTH-002"
+  ],
+  "POST /api/production/<unbekannt>/start": [
+   403,
+   "MP-AUTH-002"
+  ],
+  "PUT /api/state (unverändert)": [
+   200
+  ]
+ },
+ "lead1": {
+  "GET /api/chat/channels": [
+   200
+  ],
+  "GET /api/config": [
+   200
+  ],
+  "GET /api/history-archive": [
+   200
+  ],
+  "GET /api/notifications": [
+   200
+  ],
+  "GET /api/revision": [
+   200
+  ],
+  "GET /api/roles": [
+   403,
+   "MP-AUTH-002"
+  ],
+  "GET /api/session": [
+   200
+  ],
+  "GET /api/state": [
+   200
+  ],
+  "GET /api/templates": [
+   403,
+   "MP-AUTH-002"
+  ],
+  "GET /api/updates": [
+   403,
+   "MP-AUTH-002"
+  ],
+  "GET /api/users": [
+   200
+  ],
+  "POST /api/demand/reserve (unbekannt)": [
+   403,
+   "MP-AUTH-002"
+  ],
+  "POST /api/production/<unbekannt>/start": [
+   404,
+   "MP-PROD-040"
+  ],
+  "PUT /api/state (unverändert)": [
+   200
+  ]
+ },
+ "pm1": {
+  "GET /api/chat/channels": [
+   200
+  ],
+  "GET /api/config": [
+   200
+  ],
+  "GET /api/history-archive": [
+   200
+  ],
+  "GET /api/notifications": [
+   200
+  ],
+  "GET /api/revision": [
+   200
+  ],
+  "GET /api/roles": [
+   403,
+   "MP-AUTH-002"
+  ],
+  "GET /api/session": [
+   200
+  ],
+  "GET /api/state": [
+   200
+  ],
+  "GET /api/templates": [
+   403,
+   "MP-AUTH-002"
+  ],
+  "GET /api/updates": [
+   403,
+   "MP-AUTH-002"
+  ],
+  "GET /api/users": [
+   403,
+   "MP-AUTH-002"
+  ],
+  "POST /api/demand/reserve (unbekannt)": [
+   403,
+   "MP-AUTH-002"
+  ],
+  "POST /api/production/<unbekannt>/start": [
+   403,
+   "MP-AUTH-002"
+  ],
+  "PUT /api/state (unverändert)": [
+   200
+  ]
+ },
+ "prod1": {
+  "GET /api/chat/channels": [
+   200
+  ],
+  "GET /api/config": [
+   200
+  ],
+  "GET /api/history-archive": [
+   200
+  ],
+  "GET /api/notifications": [
+   200
+  ],
+  "GET /api/revision": [
+   200
+  ],
+  "GET /api/roles": [
+   403,
+   "MP-AUTH-002"
+  ],
+  "GET /api/session": [
+   200
+  ],
+  "GET /api/state": [
+   200
+  ],
+  "GET /api/templates": [
+   403,
+   "MP-AUTH-002"
+  ],
+  "GET /api/updates": [
+   403,
+   "MP-AUTH-002"
+  ],
+  "GET /api/users": [
+   403,
+   "MP-AUTH-002"
+  ],
+  "POST /api/demand/reserve (unbekannt)": [
+   403,
+   "MP-AUTH-002"
+  ],
+  "POST /api/production/<unbekannt>/start": [
+   404,
+   "MP-PROD-040"
+  ],
+  "PUT /api/state (unverändert)": [
+   403,
+   "MP-AUTH-002"
+  ]
+ },
+ "view1": {
+  "GET /api/chat/channels": [
+   200
+  ],
+  "GET /api/config": [
+   200
+  ],
+  "GET /api/history-archive": [
+   200
+  ],
+  "GET /api/notifications": [
+   200
+  ],
+  "GET /api/revision": [
+   200
+  ],
+  "GET /api/roles": [
+   403,
+   "MP-AUTH-002"
+  ],
+  "GET /api/session": [
+   200
+  ],
+  "GET /api/state": [
+   200
+  ],
+  "GET /api/templates": [
+   403,
+   "MP-AUTH-002"
+  ],
+  "GET /api/updates": [
+   403,
+   "MP-AUTH-002"
+  ],
+  "GET /api/users": [
+   403,
+   "MP-AUTH-002"
+  ],
+  "POST /api/demand/reserve (unbekannt)": [
+   403,
+   "MP-AUTH-002"
+  ],
+  "POST /api/production/<unbekannt>/start": [
+   403,
+   "MP-AUTH-002"
+  ],
+  "PUT /api/state (unverändert)": [
+   403,
+   "MP-AUTH-002"
+  ]
+ },
+ "vt1": {
+  "GET /api/chat/channels": [
+   200
+  ],
+  "GET /api/config": [
+   200
+  ],
+  "GET /api/history-archive": [
+   200
+  ],
+  "GET /api/notifications": [
+   200
+  ],
+  "GET /api/revision": [
+   200
+  ],
+  "GET /api/roles": [
+   403,
+   "MP-AUTH-002"
+  ],
+  "GET /api/session": [
+   200
+  ],
+  "GET /api/state": [
+   200
+  ],
+  "GET /api/templates": [
+   403,
+   "MP-AUTH-002"
+  ],
+  "GET /api/updates": [
+   403,
+   "MP-AUTH-002"
+  ],
+  "GET /api/users": [
+   403,
+   "MP-AUTH-002"
+  ],
+  "POST /api/demand/reserve (unbekannt)": [
+   403,
+   "MP-AUTH-002"
+  ],
+  "POST /api/production/<unbekannt>/start": [
+   403,
+   "MP-AUTH-002"
+  ],
+  "PUT /api/state (unverändert)": [
+   200
+  ]
+ }
+}

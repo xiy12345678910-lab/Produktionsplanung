@@ -62,7 +62,7 @@ class AVHandoffAuthorization(unittest.TestCase):
 
     def test_department_cannot_change_av_fa_project_quantity_or_predecessors(self):
         old = {"departments": copy.deepcopy(DEPARTMENTS), "machines": [{"id": "m1", "departmentId": "cnc"}], "workSteps": [step(machineId="m1", handoffUnassigned=False, fa="4711", projectId="p1", targetQty=8, sequence=10, predecessorIds=[])]}
-        for field, value in (("fa", "changed"), ("projectId", "p2"), ("targetQty", 9), ("sequence", 20), ("predecessorIds", ["other"]), ("avNote", "vom Bereich"), ("dryingHours", 3)):
+        for field, value in (("fa", "changed"), ("projectId", "p2"), ("targetQty", 9), ("sequence", 20), ("predecessorIds", ["other"]), ("avNote", "vom Bereich")):
             new = copy.deepcopy(old)
             new["workSteps"][0][field] = value
             self.assertFalse(server.department_change_allowed(old, new, "cnc")[0], field)
@@ -92,6 +92,17 @@ class AVHandoffAuthorization(unittest.TestCase):
             bad = copy.deepcopy(old)
             bad["workSteps"][0].update(patch)
             self.assertFalse(server.department_change_allowed(old, bad, "cnc")[0], patch)
+
+    def test_drying_time_is_decided_by_department_lead_not_av(self):
+        """V12.24.0: Trocknung nach dem Arbeitsgang legt die Abteilungsleitung fest, nicht die AV."""
+        old = {"departments": copy.deepcopy(DEPARTMENTS), "machines": [{"id": "m1", "departmentId": "cnc"}], "workSteps": [step(machineId="m1", handoffUnassigned=False, hours=2, fa="4711")]}
+        new = copy.deepcopy(old); new["workSteps"][0]["dryingHours"] = 2.5
+        self.assertTrue(server.department_change_allowed(old, new, "cnc")[0], "Abteilungsleitung setzt Trocknung")
+        self.assertFalse(server.department_change_allowed(old, new, "konf1")[0], "fremder Bereich nicht")
+        self.assertFalse(server.production_planning_change_allowed(old, new)[0], "AV nicht")
+        fresh = {"departments": copy.deepcopy(DEPARTMENTS), "machines": [], "workSteps": []}
+        created = copy.deepcopy(fresh); created["workSteps"] = [step(fa="4712", dryingHours=1)]
+        self.assertFalse(server.production_planning_change_allowed(fresh, created)[0], "AV legt keinen FA mit Trocknung an")
 
     def test_same_department_twice_and_av_note(self):
         """V12.23.0: Ein FA darf denselben Bereich mehrfach enthalten; die AV-Notiz ist Text bis 500 Zeichen."""
