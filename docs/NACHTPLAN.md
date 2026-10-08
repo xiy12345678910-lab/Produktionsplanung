@@ -43,5 +43,9 @@ Auftrag (Jonas, 08.10. abends): über Nacht selbständig an #73, #55, #51, #52 a
 - Wann wird V12.27 auf Windows installiert?
 - Phase 1: Backend-Module in den Ordner `core/` (braucht ein Zwischen-Release mit Ordner-Unterstützung im Updater, dann folgt die Verschiebung ein Release später) oder flach als `mp_config.py`/`mp_tls.py` neben server.py (geht sofort)? Über Nacht wird nur die Ordner-Unterstützung vorbereitet (6a); verschoben wird noch nichts.
 
+## Beobachtungen (kein Handlungsbedarf über Nacht)
+- Firmenprofil: Schnell nacheinander geänderte Felder speichern einzeln. Eine ältere Serverantwort kann die gerade gewählte Akzentfarbe kurz mit dem alten Stand überschreiben, bis die eigene Antwort ankommt. Der Endzustand stimmt. Kleiner Client-Schönheitsfehler, im Test jetzt berücksichtigt.
+- CI-e2e: Heute schlugen nacheinander verschiedene Browser-Tests einmalig fehl (Bedarf, Ruhezeit, Firmenprofil), alle lokal grün. Bei Wiederholung den jeweiligen Test gezielt robuster machen.
+
 ## Protokoll
 - 08.10. abends: Plan angelegt. PR #80 (V12.27 Teil 2) offen.
