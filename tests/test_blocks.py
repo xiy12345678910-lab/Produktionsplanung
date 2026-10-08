@@ -298,6 +298,25 @@ class HttpTests(unittest.TestCase):
         self.assertEqual(record['departmentId'],M['departmentId'])
         self.assertEqual(record['fa'],'4711')
 
+    def test_scoped_save_with_interleaved_foreign_bookings(self):
+        # Bereichsrollen sehen nur eigene Buchungen; der Server ergänzt fremde am Listenende.
+        other=next(d['id'] for d in BASE['departments'] if d['id']!=M['departmentId'])
+        s=state();s['workSteps']=[]
+        s['productionEvents']=[{'id':f'e{i}','departmentId':dep,'orderId':f'o{i}'} for i,dep in enumerate([M['departmentId'],other,M['departmentId']])]
+        with server.db_session() as con:con.execute('UPDATE state SET json=?,revision=10 WHERE id=1',(json.dumps(s),))
+        self.assertEqual(self.req('POST','/api/users',{'username':'lead-interleave','password':'Test-Passwort-1','role':'department_lead','departmentId':M['departmentId']})[0],201)
+        _,_,ck=self.req('POST','/api/login',{'username':'lead-interleave','password':'Test-Passwort-1'},cookie='')
+        _,body,_=self.req('GET','/api/state',cookie=ck)
+        self.assertEqual([e['id'] for e in body['data']['productionEvents']],['e0','e2'])
+        body['data']['ui']={**body['data'].get('ui',{}),'week':'2026-10-12'}
+        status,response,_=self.req('PUT','/api/state',body,cookie=ck)
+        self.assertEqual(status,200,response)
+        with server.db_session() as con:saved=json.loads(con.execute('SELECT json FROM state WHERE id=1').fetchone()[0])
+        self.assertEqual([e['id'] for e in saved['productionEvents']],['e0','e1','e2'])
+        body['data']['productionEvents'][0]['orderId']='forged'
+        body['revision']=response['revision']
+        self.assertEqual(self.req('PUT','/api/state',body,cookie=ck)[0],403)
+
     def test_forged_source_and_fa_reference_are_rejected(self):
         for change in [{'sourceType':'UNKNOWN'},{'faNumber':'different'}]:
             _,body,_=self.req('GET','/api/state');body['data']['workSteps'][0].update(change)

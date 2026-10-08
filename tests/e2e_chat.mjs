@@ -117,7 +117,7 @@ try {
   await lena.keyboard.press('Enter');
   check((await lena.inputValue('#chatInput')) === 'Bitte /FA 4711 vorziehen @tom ', `Eingabe zeigt lesbare Verweise (${await lena.inputValue('#chatInput')})`);
   await lena.keyboard.press('Enter');
-  await lena.waitForTimeout(500);
+  await lena.locator('.chatMsg.me .chatRef').first().waitFor({ state: 'attached', timeout: 5000 }).catch(() => {});
   check(await lena.locator('.chatMsg.me .chatRef').count() === 1, 'Gesendete Nachricht enthält Auftrags-Link');
   await shot(lena, '1_klein');
   const stored = await lena.evaluate(async () => { const c = (await (await fetch('/api/chat/channels')).json()).channels.find(x => x.name === 'CNC Frühschicht'); return (await (await fetch('/api/chat/messages?channel=' + c.id)).json()).messages[0].text; });

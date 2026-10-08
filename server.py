@@ -5538,8 +5538,10 @@ class Handler(BaseHTTPRequestHandler):
                 con.execute("ROLLBACK")
                 return self.json_response(403, mp_error("MP-AUTH-002", "Etikettenvorlagen dürfen nur Admins verwalten."))
             for key in ("productionEvents", "palletLabels", "inventory"):
-                if canonical(old.get(key)) != canonical(incoming.get(key)):
+                # Reihenfolge egal: Bereichsrollen erhalten ausgeblendete Datensätze am Listenende zurück.
+                if sorted(map(canonical, old.get(key) or [])) != sorted(map(canonical, incoming.get(key) or [])):
                     return self.json_response(403, mp_error("MP-PROD-041", "Produktionsbuchungen erfolgen über die Produktionsaktionen."))
+                incoming[key] = old.get(key) or []
             before_steps, after_steps = _record_map(old.get("workSteps")), _record_map(incoming.get("workSteps"))
             runtime_fields = {"actualStartedAt", "runningSince", "pausedAt", "pauseIntervals", "productionPhases", "partialCompletions", "goodQty", "scrapQty", "remainingHours", "lockedSegments", "lockedStart", "runtimeVersion"}
             for oid, before in before_steps.items():
