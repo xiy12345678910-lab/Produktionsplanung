@@ -171,11 +171,16 @@ try {
   await lb.evaluate(() => Object.defineProperty(document, 'hidden', { get: () => false, configurable: true }));
   await lb.click('#notifBtn'); await lb.click('#notifCfgBtn');
   await lb.fill('#nqFrom', '00:00'); await lb.fill('#nqTo', '23:59'); await lb.check('#nqOn');
-  await lb.waitForTimeout(500);
+  // Erst weiter, wenn die Ruhezeit am Server gespeichert ist (feste Pausen waren auf CI zu knapp).
+  for (let i = 0; i < 50; i++) { const q = (await api(lb, '/api/notifications/prefs')).body?.quiet; if (q?.on && q.from === '00:00' && q.to === '23:59') break; await lb.waitForTimeout(100); }
   await lb.evaluate(() => Object.defineProperty(document, 'hidden', { get: () => true, configurable: true }));
   await lb.keyboard.press('Escape');
+  const badgeBefore = await lb.locator('#notifBtn').innerText();
   await api(tom, '/api/chat/messages', 'POST', { channel: 1, text: 'Nachts ⟦u:lena⟧' });
-  await lb.waitForTimeout(2500);
+  for (let i = 0; i < 100 && (await items(lb, 'mention')).length < 2; i++) await lb.waitForTimeout(100);
+  // Der Client hat die neue Meldung verarbeitet, sobald sich die Glocke ändert.
+  await lb.waitForFunction(b => document.getElementById('notifBtn').innerText !== b, badgeBefore, { timeout: 10000 }).catch(() => {});
+  await lb.waitForTimeout(300);
   check((await lb.evaluate(() => window.__nlog.length)) === 1 && (await items(lb, 'mention')).length >= 2, 'Ruhezeit: Eintrag in der Glocke, aber keine Browser-Meldung');
 
   // LAN über HTTP: Notification API unbrauchbar -> nur Glocke, ohne Fehler
