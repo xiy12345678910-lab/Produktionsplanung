@@ -12,7 +12,7 @@ import server
 
 DEPARTMENTS = [
     {"id": "cnc", "name": "CNC", "planningType": "MACHINE"},
-    {"id": "konf1", "name": "Konfektion 1", "planningType": "MACHINE"},
+    {"id": "konf1", "name": "Konfektion 1", "planningType": "MACHINE", "avHours": True},
 ]
 BASE = {"departments": copy.deepcopy(DEPARTMENTS), "machines": [], "workSteps": []}
 

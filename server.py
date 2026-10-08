@@ -916,6 +916,12 @@ def user_level(user: dict, function: str) -> str:
     return (user.get("rights") or {}).get(function, "edit")
 
 
+def av_hours_department(state_or_deps, did) -> bool:
+    """V12.27.0: Bereich, für den die AV die Sollstunden vorgibt (Bereichs-Eigenschaft avHours, nicht der Name)."""
+    deps = state_or_deps.get("departments") if isinstance(state_or_deps, dict) else state_or_deps
+    return any(isinstance(d, dict) and str(d.get("id")) == str(did) and d.get("avHours") is True for d in (deps or []))
+
+
 def user_action(user: dict, action: str) -> bool:
     return bool((user.get("actions") or {}).get(action, True))
 
@@ -974,12 +980,11 @@ def rights_change_error(old: dict, incoming: dict, user: dict) -> str:
                     (canonical(prev.get("handoffUnassigned")) != canonical(after.get("handoffUnassigned")) and prev.get("handoffUnassigned") and not after.get("handoffUnassigned")):
                 return "FA einplanen ist für diese Rolle gesperrt."
     if not user_action(user, "confectionHours"):
-        dep_names = {str(d.get("id")): str(d.get("name") or "") for d in old.get("departments") or [] if isinstance(d, dict)}
         before = _record_map(old.get("workSteps"))
         for rid, after in _record_map(incoming.get("workSteps")).items():
             prev = before.get(rid) or {}
             dep = str(after.get("departmentId") or "")
-            confection = "konf" in dep.casefold() or "konf" in dep_names.get(dep, "").casefold() or after.get("planningType") == "LABOR_HOURS"
+            confection = av_hours_department(old, dep) or after.get("planningType") == "LABOR_HOURS"
             if confection and (canonical(prev.get("hours", 0)) != canonical(after.get("hours", 0)) or canonical(prev.get("requiredHours")) != canonical(after.get("requiredHours"))):
                 return "Konfektionsstunden vorgeben ist für diese Rolle gesperrt."
     return ""
@@ -1052,9 +1057,9 @@ LEGACY_MACHINES = [
 ]
 LEGACY_DEPARTMENTS = [
     {"id": "cnc", "name": "CNC", "planningType": "MACHINE", "active": True, "sharedOperators": True},
-    {"id": "konf1", "name": "Konfektion 1", "planningType": "LABOR_HOURS", "active": True},
-    {"id": "konf2", "name": "Konfektion 2", "planningType": "LABOR_HOURS", "active": True},
-    {"id": "konf3", "name": "Konfektion 3", "planningType": "LABOR_HOURS", "active": True},
+    {"id": "konf1", "name": "Konfektion 1", "planningType": "LABOR_HOURS", "active": True, "avHours": True},
+    {"id": "konf2", "name": "Konfektion 2", "planningType": "LABOR_HOURS", "active": True, "avHours": True},
+    {"id": "konf3", "name": "Konfektion 3", "planningType": "LABOR_HOURS", "active": True, "avHours": True},
     {"id": "screenprint", "name": "Siebdruck", "planningType": "PROCESS", "active": True},
     {"id": "thermoforming", "name": "Tiefziehen", "planningType": "CYCLE", "active": True, "formats": True},
 ]
@@ -1188,6 +1193,7 @@ def init_db(seed: str = "neutral") -> None:
         migrate_state_v1216(con)
         migrate_state_v1218(con)
         migrate_state_v1219(con)
+        migrate_state_v12270(con)
         if not con.execute("SELECT 1 FROM chat_channels WHERE kind='all'").fetchone():
             con.execute("INSERT INTO chat_channels(kind,name,members,created_by,created_at) VALUES('all','Alle','[]','Server',?)", (now_iso(),))
         migrate_chat_v1291(con)
@@ -1299,6 +1305,25 @@ def migrate_state_v1216(con: sqlite3.Connection) -> None:
         con.execute("UPDATE state SET json=?,updated_at=?,updated_by=? WHERE id=1",
                     (json.dumps(state, ensure_ascii=False, separators=(",", ":")), now_iso(), "V12.16.0 migration"))
         print("DB-MIGRATION state: V12.16.0 Bereichs-Eigenschaften (formats, sharedOperators)")
+
+
+def migrate_state_v12270(con: sqlite3.Connection) -> None:
+    """V12.27.0: Bereichs-Eigenschaft avHours ("Stunden gibt die AV vor") statt Namenserkennung. Additiv und idempotent:
+    Bereiche OHNE den Schluessel bekommen avHours=true, wenn die alte Erkennung ("konf" in ID/Name) zutraf; sonst bleibt
+    der Schluessel abwesend (= false). Vorhandene Werte werden nie ueberschrieben."""
+    row = con.execute("SELECT json FROM state WHERE id=1").fetchone()
+    if not row:
+        return
+    state = json.loads(row["json"])
+    changed = False
+    for d in state.get("departments") or []:
+        if isinstance(d, dict) and "avHours" not in d and "konf" in (str(d.get("id") or "") + " " + str(d.get("name") or "")).casefold():
+            d["avHours"] = True
+            changed = True
+    if changed:
+        con.execute("UPDATE state SET json=?,updated_at=?,updated_by=? WHERE id=1",
+                    (json.dumps(state, ensure_ascii=False, separators=(",", ":")), now_iso(), "V12.27.0 migration"))
+        print("DB-MIGRATION state: V12.27.0 Bereichs-Eigenschaft avHours (AV gibt Stunden vor)")
 
 
 def migrate_state_v1242(con: sqlite3.Connection) -> None:
@@ -2817,8 +2842,8 @@ def validate_state(old: dict, new: dict) -> tuple[bool, str, str]:
             return False, "MP-DEPT-002", "Produktionsbereich hat eine ungültige ID."
         did = str(dep["id"])
         ptype = str(dep.get("planningType") or "")
-        if any(k in dep and not isinstance(dep[k], bool) for k in ("formats", "sharedOperators")):
-            return False, "MP-DEPT-007", f"Bereich '{did}': Eigenschaften formats/sharedOperators sind true/false."
+        if any(k in dep and not isinstance(dep[k], bool) for k in ("formats", "sharedOperators", "avHours")):
+            return False, "MP-DEPT-007", f"Bereich '{did}': Eigenschaften formats/sharedOperators/avHours sind true/false."
         if "dryingHours" in dep and (_finite_float(dep["dryingHours"]) is None or not 0 <= float(dep["dryingHours"]) <= 720 or isinstance(dep["dryingHours"], bool)):
             return False, "MP-DEPT-007", f"Bereich '{did}': Trocknungszeit muss 0–720 Stunden sein."
         if did in dept_ids:
@@ -3611,7 +3636,7 @@ def _gf_departments_change(old: dict, new: dict) -> tuple[bool, str]:
     for did, b in db.items():
         a = da.get(did)
         if a is None:
-            if set(b) - {"id", "name", "kind", "active", "planningType"} or str(b.get("planningType") or "") != "MACHINE":
+            if set(b) - {"id", "name", "kind", "active", "planningType", "avHours"} or b.get("avHours", False) is not False or str(b.get("planningType") or "") != "MACHINE":
                 return False, "Neuer Bereich: nur Name, Art und aktiv (Planung über Maschinen/Linien)."
             continue
         diff = {k for k in set(a) | set(b) if canonical(a.get(k)) != canonical(b.get(k))}
@@ -3902,7 +3927,6 @@ def production_planning_change_allowed(old: dict, new: dict) -> tuple[bool, str]
         if key not in allowed_root and canonical(old.get(key)) != canonical(new.get(key)):
             return False, f"Arbeitsvorbereitung darf '{key}' nicht ändern."
     a, b = _record_map(old.get("workSteps")), _record_map(new.get("workSteps"))
-    dep_names = {str(d.get("id")): str(d.get("name") or d.get("id") or "") for d in (new.get("departments") or []) if isinstance(d, dict)}
     for rid in set(a) | set(b):
         if canonical(a.get(rid)) == canonical(b.get(rid)):
             continue
@@ -3916,14 +3940,14 @@ def production_planning_change_allowed(old: dict, new: dict) -> tuple[bool, str]
             return False, "Die Bereichsplanung übernimmt offene AV-Aufträge über die Planen-Aktion."
         if before is None and after is not None:
             did = str(after.get("departmentId") or "")
-            is_confection = "konf" in did.casefold() or "konf" in dep_names.get(did, "").casefold()
+            is_confection = av_hours_department(new, did)
             if not after.get("handoffUnassigned") or str(after.get("machineId") or "") or str(after.get("altMachineId") or "") or after.get("allowAlternative") or after.get("baselinePlan") is not None or after.get("planningWeek") or str(after.get("direction") or "forward") != "forward" or str(after.get("anchorMode") or "none") != "none" or after.get("requiredStart") or after.get("requiredFinish") or after.get("laneIndex"):
                 return False, "Neue AV-Aufträge müssen ohne Ressource und Terminanker an die Bereichsplanung gehen."
             if not is_confection and (_finite_float(after.get("hours", 0)) or 0) > 0:
                 return False, "Arbeitsvorbereitung darf Stunden nur für Konfektion vorgeben."
         if after is not None and canonical((before or {}).get("hours", 0)) != canonical(after.get("hours", 0)):
             dept = str(after.get("departmentId") or "")
-            if ("konf" not in dept.casefold() and "konf" not in dep_names.get(dept, "").casefold()) and (_finite_float(after.get("hours", 0)) or 0) > 0:
+            if not av_hours_department(new, dept) and (_finite_float(after.get("hours", 0)) or 0) > 0:
                 return False, "Arbeitsvorbereitung darf Stunden nur für Konfektion vorgeben."
         if before and after:
             for field in ("machineId", "altMachineId", "allowAlternative", "laneIndex", "pos", "direction", "anchorMode", "requiredStart", "requiredFinish", "planningWeek", "baselinePlan"):
@@ -4045,8 +4069,7 @@ def department_change_allowed(old: dict, new: dict, department_id: str) -> tuple
                         return False, "FA, Projekt, Menge und Vorgänger pflegt die Arbeitsvorbereitung."
         resource = next((m for m in old.get("machines") or [] if m.get("id") == (before or {}).get("machineId")), {})
         dep = str((before or rec).get("departmentId") or "")
-        dep_name = next((str(d.get("name") or "") for d in (old.get("departments") or []) if str(d.get("id")) == dep), "")
-        if before is not None and ("konf" in dep.casefold() or "konf" in dep_name.casefold() or resource.get("kind") == "line" or resource.get("effortScaling")) and canonical(before.get("hours")) != canonical(rec.get("hours")):
+        if before is not None and (av_hours_department(old, dep) or resource.get("kind") == "line" or resource.get("effortScaling")) and canonical(before.get("hours")) != canonical(rec.get("hours")):
             return False, "Konfektionsstunden pflegt die Arbeitsvorbereitung."
         if before is not None and before.get("planningType") == "LABOR_HOURS" and canonical(before.get("requiredHours")) != canonical(rec.get("requiredHours")):
             return False, "Konfektionsstunden pflegt die Arbeitsvorbereitung."
@@ -5141,7 +5164,7 @@ def template_merge(state: dict, tpl: dict) -> tuple[dict, dict]:
             summary["skipped"] += 1
             continue
         rec = {"id": did, "name": name[:60], "planningType": d["planningType"], "active": True}
-        for flag in ("formats", "sharedOperators"):
+        for flag in ("formats", "sharedOperators", "avHours"):
             if d.get(flag) is True:
                 rec[flag] = True
         deps.append(rec)

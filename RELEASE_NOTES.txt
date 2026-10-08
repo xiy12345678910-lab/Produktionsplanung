@@ -2,6 +2,10 @@ MASCHINENPLANUNG V12.27.0 - RELEASE NOTES
 =========================================
 Datum: 08.10.2026 · Basis: V12.26.0 · Update gemäß README_Windows.txt 2b, Daten bleiben erhalten
 
+PLANUNG AV JA/NEIN JE BEREICH
+- Neue Bereichs-Option "Planung AV" (GF-Steuerung und System > Funktionen & Bereiche). Ja: die AV gibt die Stunden je FA vor (wie Konfektion). Nein: die Abteilung plant ihre Stunden selbst.
+- Ersetzt die Namenserkennung "Konfektion". Beim Start werden Bereiche mit "konf" in ID/Name einmalig auf "ja" gesetzt, bestehende Werte bleiben. Neue Bereiche mit Personenstunden starten mit "nein".
+
 REINIGUNG NACH FA JE MASCHINE (Block F)
 - Neues optionales Maschinenfeld "Reinigung" (hh:mm, 0-24 h) in den Maschineneinstellungen, neben Umrüsten min.
 - Nach jedem FA (geplant, gesperrt, freigegeben) ist die Maschine für diese Zeit belegt (Arbeitszeit der Maschine/des Platzes).

@@ -12,17 +12,20 @@
   {
    "id": "konf1",
    "name": "Konfektion 1",
-   "planningType": "LABOR_HOURS"
+   "planningType": "LABOR_HOURS",
+   "avHours": true
   },
   {
    "id": "konf2",
    "name": "Konfektion 2",
-   "planningType": "LABOR_HOURS"
+   "planningType": "LABOR_HOURS",
+   "avHours": true
   },
   {
    "id": "konf3",
    "name": "Konfektion 3",
-   "planningType": "LABOR_HOURS"
+   "planningType": "LABOR_HOURS",
+   "avHours": true
   },
   {
    "id": "screenprint",
