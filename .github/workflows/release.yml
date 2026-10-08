@@ -1,9 +1,8 @@
-# Manual runs create drafts. A reviewed tag on a green main commit publishes.
+# Releases only via a manual run on main: the workflow builds and checks the package and creates a DRAFT.
+# Jonas publishes the draft on GitHub; publishing creates the tag vX.Y.Z. No tag pushes, no hand-made releases.
 name: Release package
 on:
   workflow_dispatch:
-  push:
-    tags: ['v*']
 permissions:
   contents: write
   actions: read
@@ -21,21 +20,17 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
-            const tagged = context.eventName === 'push' && context.ref.startsWith('refs/tags/');
-            if (!tagged && context.ref !== 'refs/heads/main') throw new Error('Releases must be built on main');
+            if (context.ref !== 'refs/heads/main') throw new Error('Releases must be built on main');
             await exec.exec('git', ['merge-base', '--is-ancestor', context.sha, 'origin/main']);
             const { data } = await github.rest.actions.listWorkflowRunsForRepo({ ...context.repo, head_sha: context.sha, status: 'completed', per_page: 100 });
             if (!data.workflow_runs.some(r => r.name === 'CI' && r.event === 'push' && r.head_branch === 'main' && r.conclusion === 'success' && r.head_sha === context.sha)) throw new Error('Main CI must pass for the exact release commit');
       - run: python tests/test_version.py
-      - run: python tools/build_release.py --output /tmp/release
-      - name: Create release with checked assets
+      - name: Build and check assets
+        run: python tools/build_release.py --output /tmp/release --notes /tmp/release-notes.md
+      - name: Create draft release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           version=$(python -c 'import json; print(json.load(open("/tmp/release/update-manifest.json"))["version"])')
-          options=(--draft)
-          if [[ "$GITHUB_EVENT_NAME" == 'push' ]]; then
-            [[ "$GITHUB_REF" == "refs/tags/v$version" ]] || { echo 'Tag must match the application version'; exit 1; }
-            options=()
-          fi
-          gh release create "v$version" /tmp/release/* --target "$GITHUB_SHA" "${options[@]}" --title "Produktionsplanung v$version" --notes-file RELEASE_NOTES.txt
+          if gh release view "v$version" >/dev/null 2>&1; then echo "Release v$version exists already"; exit 1; fi
+          gh release create "v$version" /tmp/release/* --draft --target "$GITHUB_SHA" --title "Produktionsplanung v$version" --notes-file /tmp/release-notes.md

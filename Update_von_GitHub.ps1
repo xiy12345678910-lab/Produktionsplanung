@@ -60,7 +60,7 @@ if ($Commit) {
 } else {
     if (-not $Tag) {
         try { $Tag = [string](Invoke-MPGitHubApi 'releases/latest').tag_name }
-        catch { throw 'Kein Release gefunden. Auf GitHub ein Release (Tag vX.Y.Z auf main) anlegen oder -Commit <hash> angeben.' }
+        catch { throw 'Kein veroeffentlichtes Release gefunden. Release nur ueber GitHub Actions "Release package" (Entwurf) anlegen und veroeffentlichen, siehe docs/RELEASE_REGELN.md.' }
     }
     try { $sha = [string](Invoke-MPGitHubApi ("commits/" + [uri]::EscapeDataString($Tag))).sha }
     catch { throw "Tag $Tag nicht gefunden." }

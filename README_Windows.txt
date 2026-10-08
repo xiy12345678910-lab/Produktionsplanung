@@ -25,8 +25,11 @@ MASCHINENPLANUNG V12.27.0 - WINDOWS-SERVER (LAN ONLY)
         $B = '<Branch>'
         irm "https://raw.githubusercontent.com/<GitHub-Konto>/<Repo>/$B/Update_von_GitHub.ps1" -OutFile "$env:USERPROFILE\Downloads\Update_von_GitHub.ps1"
         powershell -ExecutionPolicy Bypass -File "$env:USERPROFILE\Downloads\Update_von_GitHub.ps1" -Branch $B -UnsicherBranch
-   RELEASE ANLEGEN (GitHub, einmal je Version): Stand nach main mergen -> Releases -> "Draft a new
-   release" -> Tag vX.Y.Z auf main -> Veroeffentlichen.
+   RELEASE ANLEGEN (GitHub, einmal je Version): nur ueber Actions -> "Release package" -> "Run workflow"
+   (Branch main). Der Lauf baut und prueft das Paket und legt einen ENTWURF an; Jonas veroeffentlicht ihn
+   ("Publish release"), erst dabei entsteht der Tag vX.Y.Z. Keine Tags und Releases von Hand anlegen.
+   Details: docs/RELEASE_REGELN.md. Normalweg fuer die Installation: Admin klickt in System ->
+   Softwareupdate auf "Update installieren"; der Befehl oben ist der Ersatzweg.
    BRANCH-SCHUTZ (GitHub -> Settings -> Branches -> main): "Require a pull request before merging",
    "Do not allow bypassing", kein Force-Push; Tags v* unter Settings -> Rules schuetzen.
 
