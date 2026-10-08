@@ -1,3 +1,21 @@
+MASCHINENPLANUNG V12.22.0 - RELEASE NOTES
+=========================================
+Datum: 08.10.2026 · Basis: V12.21.0 · Update gemäß README_Windows.txt 2b, Daten bleiben erhalten
+
+RAHMENAUFTRÄGE, ABRUFE UND BESTAND (BLOCK E, #46)
+- Neuer Menüpunkt „Rahmenaufträge“ (wie V9-Zielbild, mit Kennzahlen): Rahmenaufträge (Kunde, Artikel, Bereich, Gesamtmenge, Rest), Abrufe mit Termin,
+  Reservierung und Lieferung sowie Bestand mit Sollbestand. Pflege durch Arbeitsvorbereitung und Admin;
+  GF, Lesende, Bereichsrollen und Produktion sehen ihren Bereich lesend.
+- Verfügbar = physisch − reserviert. „FA anlegen“ reserviert zuerst freien Bestand und legt nur die Fehlmenge
+  als FA im Bereichsvorrat an; Bestandsbedarf (Sollbestand) ebenso. Kein doppelter FA bei Wiederholung,
+  keine Doppelreservierung bei gleichzeitigen Abrufen.
+- Ab FA gilt der gemeinsame Produktionskern: Abteilung plant Ressource/Laufzeit, Start/Pause/Fertig wie
+  immer. Fertig- oder Abbruchmeldung bucht die Gutmenge einmal in den Bestand und reserviert sie für den Abruf.
+- Abruf ändern/stornieren gibt Reservierungen frei und kürzt bzw. entfernt noch nicht begonnene FA;
+  laufende FA produzieren in den freien Bestand. Bedarfs-FA lassen sich nicht per Speichern fälschen.
+- Bedarfsaktionen prüfen Altbestände (Historie ohne neue Kanonfelder) korrekt und werden dadurch nicht gesperrt.
+- Fehlercodes MP-DEM-0xx. Tests: test_demand.py, e2e_demand.mjs. Abnahme: docs/V12_22_0.md.
+
 MASCHINENPLANUNG V12.21.0 - RELEASE NOTES
 =========================================
 Datum: 07.10.2026 · Basis: V12.20.0 · Update gemäß README_Windows.txt 2b, Daten bleiben erhalten

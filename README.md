@@ -1,13 +1,14 @@
 # Produktionsplanung
 
-Maschinenplanung V12.21.0 – Wochen-/Ressourcenplanung je Bereich (Maschinen & Linien), Projekte,
+Maschinenplanung V12.22.0 – Wochen-/Ressourcenplanung je Bereich (Maschinen & Linien), Projekte,
 Formate (Tiefziehen), Personal und Nachrichten. Zentraler Windows-LAN-Server, Browser-Oberfläche.
 
 - `server.py` – Python-Server (nur Standardbibliothek, SQLite), `index.html` – Oberfläche, `release_gates.py` – Freigabeprüfung, `app_updates.py` – allgemeine Releaseupdates
 - Windows: `README_Windows.txt` (Installation, Update, Update direkt von GitHub), `BENUTZER_KURZANLEITUNG.txt`
 - A–D: `docs/BLOCKS_A_D.md` · Admin-Updates (I 7a): `docs/ADMIN_UPDATES.md`
 - Änderungen: `RELEASE_NOTES.txt` · Fehlercodes: `FEHLERCODES.txt` · Übergabe: `docs/UEBERGABE.md`
-- Lazy Loading und FA-Dialog V12.21.0: `docs/V12_21_0.md`
+- Rahmenaufträge, Abrufe & Bestand (Block E) V12.22.0: `docs/V12_22_0.md`
+- Lazy Loading, FA-Dialog und HTTPS V12.21.0: `docs/V12_21_0.md`
 - AV-Dialog und Projekt-Liveverfolgung V12.20.0: `docs/V12_20_0.md`
 - Hotfixes V12.19.1 (#57–#62): `docs/V12_19_1.md`
 
@@ -16,6 +17,8 @@ Formate (Tiefziehen), Personal und Nachrichten. Zentraler Windows-LAN-Server, Br
 ```
 python tests/test_blocks.py                   # A–D: Migration, Planung, Rechte, atomare Produktion
 python tests/test_updates.py                  # I 7a: Folgeversionen, Paketprüfung, Status, Wiederherstellung
+python tests/test_demand.py                   # Block E: Rahmenauftrag, Abruf, Bestand, Bedarf → FA
+node tests/e2e_demand.mjs                    # Bedarf über die Oberfläche bis zur Bereichsplanung
 python tests/test_project_live.py             # Produktion: Projekt-Lesescope und Schreibschutz
 node tests/e2e_project_live.mjs              # Geoeffnetes Projekt aktualisiert Plan und Istfortschritt
 python tests/test_av_handoff.py               # AV-Übergabe, Vorgaben und Bereichsrechte
