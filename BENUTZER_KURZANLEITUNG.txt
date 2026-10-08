@@ -155,7 +155,7 @@ MODULE UND VORLAGEN (nur Admin, System > Firmenprofil)
 - Vorlage waehlen, Vorschau pruefen, Pfeil druecken: ergaenzt nur Fehlendes, nichts wird ueberschrieben.
 
 EINRICHTUNGSASSISTENT (nur Admin, neue Installation)
-- Erscheint beim ersten Admin-Login: Firma, Branche, Module, Bereiche, Benutzer. Jeder Schritt laesst sich ueberspringen; x = spaeter weitermachen.
+- Erscheint beim ersten Admin-Login: Firma, Funktionen, Bereiche, Benutzer. Branchenvorlagen: System > Firmenprofil > Vorlage anwenden. Jeder Schritt laesst sich ueberspringen; x = spaeter weitermachen.
 - Erneut: System > Firmenprofil > Assistent.
 
 PERSONAL-GATE (nur Admin, Personal)

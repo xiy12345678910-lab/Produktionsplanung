@@ -2,6 +2,10 @@ MASCHINENPLANUNG V12.27.0 - RELEASE NOTES
 =========================================
 Datum: 08.10.2026 · Basis: V12.26.0 · Update gemäß README_Windows.txt 2b, Daten bleiben erhalten
 
+EINRICHTUNG OHNE SCHRITT BRANCHE (#51/#53)
+- Der Einrichtungsassistent hat vier Schritte: Firma, Funktionen, Bereiche, Benutzer. Der Schritt "Branche" (Vorlage waehlen) entfaellt; neue Installationen starten ohne Vorlage mit leerem Bereichs-Stand und legen Bereiche und Maschinen im Schritt Bereiche selbst an.
+- Branchenvorlagen bleiben im Firmenprofil ("Vorlage anwenden - ergaenzt nur") verfuegbar. Server und Daten unveraendert, kein Schritt-Stand wird gespeichert.
+
 SYSTEMSTATUS UND DIAGNOSEPAKET FUER DEN ADMIN (#52 K6)
 - System zeigt dem Admin einen Systemstatus (Version, Datenbank-Pruefung, freier Speicher, letztes Backup, Warnungen) und bietet ein Diagnosepaket als JSON zum Download. Nur Zaehler und technische Werte, keine Auftrags-, Chat-, Personal- oder Zugangsdaten.
 

@@ -1421,13 +1421,12 @@ async function ciTplPreview(panel){const id=tplSel,prev=panel.querySelector('#ci
  prev.innerHTML=chips.length?chips.map(c=>`<span class="pChip">${escapeHtml(c)}</span>`).join(''):'<span class="pChip" title="Nichts zu ergänzen" aria-label="Nichts zu ergänzen">=</span>';btn.disabled=!chips.length}
 function ciTplInit(panel){const s=panel.querySelector('#ciTpl'),btn=panel.querySelector('#ciTplApply');if(!s||!btn)return;if(!tplCache){tplCache=[];api('/api/templates',{method:'GET'}).then(({r,body})=>{tplCache=r.ok?(body.templates||[]):[];ciTplFill(panel)})}else if(s.options.length!==tplCache.length+1)ciTplFill(panel);s.onchange=()=>{tplSel=s.value;ciTplPreview(panel)};btn.onclick=async()=>{const id=tplSel;if(!id)return;btn.disabled=true;const {r,body}=await api('/api/templates/apply',{method:'POST',body:JSON.stringify({id,modules:false})});if(!r.ok){fail(body?.errorCode||'MP-TPL-040',body?.error||'Vorlage nicht angewendet.');return ciTplPreview(panel)}tplSel='';s.value='';panel.querySelector('#ciTplPrev').innerHTML='';toast('Vorlage angewendet.');await syncFromServer();await loadConfig();renderAll()}}
 // ---- Einrichtungsassistent (V12.19.1): erscheint nur bei Neuinstallation (setupDone=false), später über das Firmenprofil erneut aufrufbar.
-const SETUP_STEPS=[['Firma','◧'],['Branche','▦'],['Funktionen','▤'],['Bereiche','⚙'],['Benutzer','👤']];
-let setup={step:0,tpl:'',applied:'',fresh:true,name:'',color:'#1f5eff',busy:false,added:[],pw:false,orig:{}};
+const SETUP_STEPS=[['Firma','◧'],['Funktionen','▤'],['Bereiche','⚙'],['Benutzer','👤']];
+let setup={step:0,fresh:true,name:'',color:'#1f5eff',busy:false,added:[],pw:false,orig:{}};
 function setupLater(v){try{if(v===undefined)return sessionStorage.getItem('mpSetupLater')==='1';v?sessionStorage.setItem('mpSetupLater','1'):sessionStorage.removeItem('mpSetupLater')}catch(_){}return false}
 function maybeOpenSetup(){if(serverMode&&sessionUser?.role==='admin'&&CFG&&CFG.setupDone===false&&!setupLater())openSetup()}
-function openSetup(){if(sessionUser?.role!=='admin'||!CFG)return;setup={step:0,tpl:'',applied:'',fresh:CFG.setupDone===false,name:CFG.company.name||'',color:HEX6.test(CFG.company.uiAccent)?CFG.company.uiAccent:'#1f5eff',busy:false,added:[],pw:CFG.adminPwUnchanged===true,orig:{name:CFG.company.name||'',uiAccent:CFG.company.uiAccent,color:CFG.company.color}};document.getElementById('setupModal').classList.add('show');renderSetup()}
+function openSetup(){if(sessionUser?.role!=='admin'||!CFG)return;setup={step:0,fresh:CFG.setupDone===false,name:CFG.company.name||'',color:HEX6.test(CFG.company.uiAccent)?CFG.company.uiAccent:'#1f5eff',busy:false,added:[],pw:CFG.adminPwUnchanged===true,orig:{name:CFG.company.name||'',uiAccent:CFG.company.uiAccent,color:CFG.company.color}};document.getElementById('setupModal').classList.add('show');renderSetup()}
 function closeSetup(){document.getElementById('setupModal').classList.remove('show')}
-function tplChips(sm){return [...(sm.departments||[]).map(x=>`+ ▦ ${x}`),...((sm.machines||[]).length?[`+ ${sm.machines.length} ⚙`]:[]),...(sm.processTemplates||[]).map(x=>`+ ⇢ ${x}`)]}
 function renderSetup(){const s=setup,body=document.getElementById('setupBody'),last=s.step===SETUP_STEPS.length-1,name=SETUP_STEPS[s.step][0];
  document.getElementById('setupDots').innerHTML=SETUP_STEPS.map(([n,i],k)=>`<span class="sDot${k<s.step?' done':''}${k===s.step?' cur':''}" role="listitem" title="${n}" aria-label="${n}${k===s.step?' (aktuell)':''}"${k===s.step?' aria-current="step"':''}>${i}</span>`).join('');
  document.getElementById('setupTitle').textContent=`${SETUP_STEPS[s.step][1]} ${name}`;
@@ -1442,19 +1441,10 @@ function renderSetup(){const s=setup,body=document.getElementById('setupBody'),l
   q('#suLogo').onchange=e=>{const f=e.target.files?.[0];e.target.value='';if(!f)return;if(!/^image\/(png|jpeg|svg\+xml)$/.test(f.type))return fail('MP-CFG-005','Logo bitte als PNG, JPG oder SVG.');if(f.size>420*1024)return fail('MP-CFG-005','Logo max. 420 KB.');
    const rd=new FileReader();rd.onload=async()=>{if(await cfgSend('/api/config/logo','POST',{contentType:f.type,data:String(rd.result).split(',')[1]||''}))renderSetup()};rd.readAsDataURL(f)}}
  else if(s.step===1){
-  body.innerHTML=`<div class="setupCards" id="suCards" role="group" aria-label="Branche"></div><div class="ciTplPrev" id="suPrev" aria-live="polite"></div>`;
-  const fill=()=>{q('#suCards').innerHTML=(tplCache||[]).filter(t=>t.id!=='demo').map(t=>`<button type="button" class="setupCard${s.tpl===t.id?' sel':''}" data-tpl="${escapeHtml(t.id)}" aria-pressed="${s.tpl===t.id}" title="${escapeHtml(t.description||'')}"><strong>${escapeHtml(t.name)}</strong><span class="hint">${t.departments.length?'▦ '+t.departments.length:'—'}${t.machines?' · ⚙ '+t.machines:''}</span></button>`).join('');
-   q('#suCards').querySelectorAll('[data-tpl]').forEach(b=>b.onclick=()=>{s.tpl=s.tpl===b.dataset.tpl?'':b.dataset.tpl;fill();preview()})};
-  const preview=async()=>{const id=s.tpl,prev=q('#suPrev');prev.innerHTML='';if(!id)return;const {r,body:b}=await api('/api/templates/apply',{method:'POST',body:JSON.stringify({id,dryRun:true,modules:true})});if(s.tpl!==id||!prev.isConnected)return;
-   if(!r.ok){prev.innerHTML=`<span class="pChip">${escapeHtml(b?.error||'Vorschau nicht möglich.')}</span>`;return}
-   const chips=tplChips(b.summary||{});prev.innerHTML=chips.length?chips.map(c=>`<span class="pChip">${escapeHtml(c)}</span>`).join(''):'<span class="pChip" title="Nichts zu ergänzen" aria-label="Nichts zu ergänzen">=</span>'};
-  if(tplCache)fill();else api('/api/templates',{method:'GET'}).then(({r,body:b})=>{tplCache=r.ok?(b.templates||[]):[];if(q('#suCards'))fill()});
-  preview()}
- else if(s.step===2){
   body.innerHTML=`<div class="ciMods" id="suMods" role="group" aria-label="Funktionen"></div><p class="hint">Funktionen lassen sich nach der Einrichtung unter Funktionen &amp; Bereiche anpassen.</p>`;
   q('#suMods').innerHTML=MODS.map(([m,ico,lbl])=>{const on=modOn(m),deps=MOD_DEPS[m]||[],blocked=deps.some(d=>!modOn(d))&&!on;return `<button type="button" class="btn${on?' primary':''}" data-mod-sw="${m}" aria-pressed="${on}" aria-label="${escapeHtml(lbl)}" title="${escapeHtml(lbl)}" ${blocked?'disabled':''}><span aria-hidden="true">${ico}</span> ${escapeHtml(lbl)}</button>`}).join('');
   q('#suMods').querySelectorAll('[data-mod-sw]').forEach(b=>b.onclick=async()=>{const m=b.dataset.modSw;if(await cfgSend('/api/config','PATCH',{modules:{[m]:!modOn(m)}}))renderSetup()})}
- else if(s.step===3){
+ else if(s.step===2){
   const deps=prodDepartments(true),cnt=id=>data.machines.filter(m=>String(m.departmentId||'')===id).length;
   body.innerHTML=`<div class="setupList">${deps.map(d=>`<div class="setupRow"><input data-sd="${escapeHtml(d.id)}" value="${escapeHtml(d.name)}" maxlength="60" aria-label="Bereich" title="Bereich"><span class="setupCnt"><button type="button" class="iconBtn" data-sm="${escapeHtml(d.id)}|-1" title="Eine Maschine weniger" aria-label="Eine Maschine weniger" ${s.fresh&&cnt(d.id)>0?'':'disabled'}>−</button><strong title="Maschinen" aria-label="${cnt(d.id)} Maschinen">⚙ ${cnt(d.id)}</strong><button type="button" class="iconBtn" data-sm="${escapeHtml(d.id)}|1" title="Eine Maschine mehr" aria-label="Eine Maschine mehr">+</button></span>${s.fresh?`<button type="button" class="iconBtn" data-sx="${escapeHtml(d.id)}" title="Bereich entfernen" aria-label="Bereich entfernen">×</button>`:''}</div>`).join('')}<div class="setupRow"><input id="suDepNew" maxlength="60" placeholder="Neuer Bereich" aria-label="Neuer Bereich"><button type="button" class="iconBtn" id="suDepAdd" title="Bereich anlegen" aria-label="Bereich anlegen">+</button></div></div>`;
   body.querySelectorAll('[data-sd]').forEach(i=>i.onchange=()=>{const d=departmentById(i.dataset.sd),v=i.value.trim();if(!d)return;if(!v||(data.departments||[]).some(x=>x.id!==d.id&&businessKey(x.name)===businessKey(v))){renderSetup();return fail('MP-DEPT-005','Name des Bereichs fehlt oder existiert bereits.')}d.name=v;save('Bereich geändert',v);renderAll();renderSetup()});
@@ -1482,9 +1472,6 @@ function renderSetup(){const s=setup,body=document.getElementById('setupBody'),l
 async function setupLeave(step){const s=setup;
  if(step===0){const patch={},o=s.orig,nm=s.name.trim();if(nm!==o.name)patch.name=nm;if(HEX6.test(s.color)){if(s.color!==o.uiAccent)patch.uiAccent=s.color;if(s.color!==o.color)patch.color=s.color}
   if(!Object.keys(patch).length)return true;const ok=await cfgSend('/api/config','PATCH',{company:patch});if(ok)s.orig={name:nm,uiAccent:s.color,color:s.color};return ok}
- if(step===1&&s.tpl&&s.applied!==s.tpl){const id=s.tpl,{r,body}=await api('/api/templates/apply',{method:'POST',body:JSON.stringify({id,modules:true})});
-  if(!r.ok){fail(body?.errorCode||'MP-TPL-040',body?.error||'Vorlage nicht angewendet.');return false}
-  s.applied=id;await syncFromServer();await loadConfig();renderAll()}
  return true}
 async function setupNext(){const s=setup;if(s.busy)return;s.busy=true;try{if(!await setupLeave(s.step))return;
  if(s.step<SETUP_STEPS.length-1){s.step++;renderSetup();return}
