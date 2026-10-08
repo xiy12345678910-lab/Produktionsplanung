@@ -33,6 +33,7 @@ Auftrag (Jonas, 08.10. abends): über Nacht selbständig an #73, #55, #51, #52 a
 ## Fragen für morgen (Jonas)
 - Rechte: Darf der Vertrieb Projekte bearbeiten? (heute nein)
 - Rechte: GF darf Bereiche ändern – so gewollt?
+- #55: Eine unveränderte Kopie der Rolle Abteilungsleitung zeigt sofort alle drei Warnungen (MP-ROLE-011/012/013). Zu laut, oder genau richtig als Hinweis?
 - Release: `README_Windows.txt` Abschnitt „RELEASE ANLEGEN“ und die Fehlermeldung in `Update_von_GitHub.ps1` beschreiben noch das Anlegen von Tag/Release von Hand. Auf den Workflow-Weg umschreiben? (siehe docs/RELEASE_REGELN.md)
 - Release: Ein Tag-Push `v*` veröffentlicht sofort ohne Entwurf. Soll der Tag-Weg abgeschaltet werden (nur noch manueller Lauf → Entwurf)?
 - Release: Der Schritt „checked assets“ prüft nichts, und die komplette RELEASE_NOTES.txt (83 KB) wird Release-Text. Kürzen auf den obersten Abschnitt?
