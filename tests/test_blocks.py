@@ -318,9 +318,13 @@ class HttpTests(unittest.TestCase):
         self.assertEqual(self.req('PUT','/api/state',body,cookie=ck)[0],403)
 
     def test_forged_source_and_fa_reference_are_rejected(self):
-        for change in [{'sourceType':'UNKNOWN'},{'faNumber':'different'}]:
+        # Bedarfs-FA (hier Bestand): Quelle ist serverseitig gesperrt (403), FA-Nummer bleibt Validierungssache (400).
+        for change,code in [({'sourceType':'UNKNOWN'},403),({'faNumber':'different'},400)]:
             _,body,_=self.req('GET','/api/state');body['data']['workSteps'][0].update(change)
-            self.assertEqual(self.req('PUT','/api/state',body)[0],400)
+            self.assertEqual(self.req('PUT','/api/state',body)[0],code)
+        with server.db_session() as con:con.execute('UPDATE state SET json=?,revision=10 WHERE id=1',(json.dumps(state('PROJECT')),))
+        _,body,_=self.req('GET','/api/state');body['data']['workSteps'][0]['sourceType']='UNKNOWN'
+        self.assertEqual(self.req('PUT','/api/state',body)[0],400)
 
 
 if __name__=='__main__':unittest.main(verbosity=2)

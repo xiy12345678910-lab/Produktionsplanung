@@ -1,4 +1,4 @@
-MASCHINENPLANUNG V12.21.0 - FEHLERCODES
+MASCHINENPLANUNG V12.22.0 - FEHLERCODES
 ======================================
 
 Jeder Fehler wird dem Mitarbeiter als Klartext + Code angezeigt.
@@ -396,6 +396,17 @@ V12.14.0 NEU (Firmen-Config config\firma.json)
 MP-CFG-001   firma.json nicht lesbar oder kein JSON. Start verweigert, Datei unveraendert. Letzte gueltige
              Sicherung steht in der Meldung (config\firma.json.bak-<zeit>), zurueckkopieren oder Restore -MitConfig.
 MP-CFG-002   Feld in firma.json ungueltig (Meldung nennt Feld, z. B. company.color). Start verweigert.
+MP-DEM-001   Bedarf: Pflichtfeld fehlt oder ist zu lang.            MP-DEM-002   Menge muss ganze Zahl (> 0) sein.
+MP-DEM-003   Datum im Format JJJJ-MM-TT angeben.                     MP-DEM-004   Kein aktiver Produktionsbereich.
+MP-DEM-005   Rahmenauftrag: Status ungültig.                         MP-DEM-006   Rahmennummer existiert bereits.
+MP-DEM-007   Artikel/Bereich nach dem ersten Abruf fest.             MP-DEM-008   Gesamtmenge kleiner als abgerufen.
+MP-DEM-010   Rahmenauftrag nicht gefunden.                           MP-DEM-011   Rahmenauftrag abgeschlossen.
+MP-DEM-012   Abrufmenge größer als Rahmenrest.                       MP-DEM-020   Abruf nicht gefunden.
+MP-DEM-021   Abruf nicht mehr offen.                                 MP-DEM-022   Abrufmenge kleiner als geliefert.
+MP-DEM-023   FA ist Vorgänger und kann nicht entfallen.              MP-DEM-030   Kein offener Bedarf (bereits gedeckt/FA vorhanden).
+MP-DEM-031   Abruf oder Bestand angeben.                             MP-DEM-032   Liefermenge > reserviert.
+MP-DEM-040   Bedarf pflegt nur AV/Admin.                             MP-DEM-041   Bedarfs-FA nur über „Rahmenaufträge“.
+MP-DEM-050   Bestand nicht gefunden.                                 MP-DEM-051   Physischer Bestand kleiner als reserviert.
 MP-TLS-001   HTTPS-Zertifikat in config\tls ungueltig oder nicht lesbar. Server startet nicht (kein stiller Rueckfall
              auf HTTP). HTTPS_Einrichten.ps1 erneut ausfuehren oder config\tls umbenennen (= wieder HTTP).
 MP-CFG-003   schemaVersion neuer als dieses Programm (nur Warnung): Datei wird gelesen, nicht geaendert.
