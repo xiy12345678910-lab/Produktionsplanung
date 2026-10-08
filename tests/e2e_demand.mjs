@@ -42,8 +42,11 @@ try {
   const { chromium } = await import('playwright'); browser = await chromium.launch();
   async function login(user) { const p = await browser.newPage({ viewport: { width: 1440, height: 950 }, timezoneId: 'Europe/Berlin' }); p.on('pageerror', e => errors.push(user + ': ' + e.message)); await p.goto(BASE); await p.fill('#loginUser', user); await p.fill('#loginPassword', PASS); await p.click('#loginBtn'); await p.waitForFunction(() => !document.getElementById('loginModal').classList.contains('show')); await p.waitForTimeout(300); return p; }
   const getState = p => p.evaluate(async () => (await (await fetch('/api/state')).json()).data);
-  const form = async (p, values) => { for (const [k, v] of Object.entries(values)) { const el = p.locator('#dm_' + k); if (await el.evaluate(e => e.tagName) === 'SELECT') await el.selectOption(v); else await el.fill(String(v)); } await p.click('#demandOk'); await p.waitForTimeout(400); };
-  const ask = async (p, value) => { if (value != null) await p.fill('#askInput', String(value)); await p.click('#askOk'); await p.waitForTimeout(400); };
+  // Auf die Serverantwort der Bedarfsaktion warten (feste Pausen waren auf CI zu knapp) und dem Client Zeit zum Rendern geben.
+  const done = p => p.waitForResponse(r => r.url().includes('/api/demand/') && r.request().method() === 'POST', { timeout: 15000 });
+  const settle = async (p, response) => { const r = await response; check(r.ok(), `Bedarfsaktion ${new URL(r.url()).pathname} erfolgreich (${r.status()})`); await p.waitForTimeout(150); };
+  const form = async (p, values) => { for (const [k, v] of Object.entries(values)) { const el = p.locator('#dm_' + k); if (await el.evaluate(e => e.tagName) === 'SELECT') await el.selectOption(v); else await el.fill(String(v)); } const r = done(p); await p.click('#demandOk'); await settle(p, r); };
+  const ask = async (p, value) => { if (value != null) await p.fill('#askInput', String(value)); const r = done(p); await p.click('#askOk'); await settle(p, r); };
 
   const av = await login('av');
   check(await av.locator('#navDemand').isVisible() && (await av.locator('#navDemand').innerText()).includes('Rahmenaufträge'), 'AV sieht den Menüpunkt „Rahmenaufträge“');
