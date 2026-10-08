@@ -40,9 +40,15 @@ class Rules(unittest.TestCase):
         p['rights']['system'] = 'read'
         self.assertEqual(codes(p), [])
 
+    def test_unchanged_copy_collapses_to_one_hint(self):
+        self.assertEqual(codes({'baseRole': 'department_lead', 'rights': {}, 'actions': {}}), ['MP-ROLE-014'])
+        self.assertEqual(codes({'baseRole': 'department_deputy', 'rights': {'planning': 'edit'}, 'actions': {'userAdmin': True}}), ['MP-ROLE-014'])
+        self.assertIn('Stellv. Abteilungsleiter', server.role_risk_warnings({'baseRole': 'department_deputy'})[0]['text'])
+        self.assertEqual(codes({'baseRole': 'department_lead', 'rights': {'report': 'read'}, 'actions': {}}), ['MP-ROLE-011', 'MP-ROLE-012', 'MP-ROLE-013'])
+
     def test_legacy_and_garbage_input(self):
         self.assertEqual(server.role_risk_warnings(None), [])
-        self.assertEqual(server.role_risk_warnings({'baseRole': 'department_lead', 'actions': 'x', 'rights': 5})[0]['code'], 'MP-ROLE-011')
+        self.assertEqual(server.role_risk_warnings({'baseRole': 'department_lead', 'actions': 'x', 'rights': 5})[0]['code'], 'MP-ROLE-014')
         for w in server.role_risk_warnings({'baseRole': 'department_lead'}):
             self.assertTrue(w['code'].startswith('MP-ROLE-') and w['text'])
 
@@ -51,10 +57,12 @@ class Api(base.RoleProfiles):
     def test_save_and_list_return_warnings_without_blocking(self):
         st, body, _ = self.put_role('risiko-lead', {'name': 'Risiko Lead', 'baseRole': 'department_lead'})
         self.assertEqual(st, 200, body)
-        self.assertEqual({w['code'] for w in body['warnings']}, {'MP-ROLE-011', 'MP-ROLE-012', 'MP-ROLE-013'})
+        self.assertEqual([w['code'] for w in body['warnings']], ['MP-ROLE-014'])  # unveränderte Kopie: ein Hinweis
         st, body, _ = self.req('GET', '/api/roles', None, self.admin)
         prof = {p['id']: p for p in body['profiles']}['risiko-lead']
-        self.assertEqual(len(prof['warnings']), 3)
+        self.assertEqual([w['code'] for w in prof['warnings']], ['MP-ROLE-014'])
+        st, body, _ = self.put_role('risiko-lead', {'name': 'Risiko Lead', 'baseRole': 'department_lead', 'rights': {'chat': 'read'}})
+        self.assertEqual({w['code'] for w in body['warnings']}, {'MP-ROLE-011', 'MP-ROLE-012', 'MP-ROLE-013'})
         st, body, _ = self.put_role('sicher-lead', {'name': 'Sicher Lead', 'baseRole': 'department_lead', 'rights': {'system': 'read'},
                                                     'actions': {'userAdmin': False, 'faCreate': False}})
         self.assertEqual((st, body['warnings']), (200, []))

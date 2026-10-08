@@ -995,6 +995,11 @@ def role_risk_warnings(profile) -> list:
         out.append({"code": "MP-ROLE-012", "text": "FA anlegen und Produktion fertigmelden in einer Rolle: Aufträge können ohne zweite Kontrolle angelegt und selbst fertiggemeldet werden."})
     if manager and actions["userAdmin"] and rights.get("system", "edit") == "edit":
         out.append({"code": "MP-ROLE-013", "text": "Benutzer verwalten zusammen mit Bearbeitungsrecht für System: Konten und Systemeinstellungen (Maschinen, Bereiche, Schichten) lassen sich ohne Gegenkontrolle ändern."})
+    # Unveränderte Kopie (alle Rechte „Bearbeiten“, alle Aktionen erlaubt): nur ein Hinweis statt aller Einzelwarnungen.
+    if len(out) > 1 and all(rights.get(k, "edit") == "edit" for k, _ in ROLE_FUNCTIONS) and all(actions.values()):
+        label = {"department_lead": "Abteilungsleiter", "department_deputy": "Stellv. Abteilungsleiter"}.get(base, base)
+        out = [{"code": "MP-ROLE-014", "text": f"Unveränderte Kopie der Rolle {label}: nur der Name ist anders, die Rechte sind dieselben "
+                "(u. a. Benutzer verwalten, FA anlegen und fertigmelden, System bearbeiten)."}]
     return out
 
 

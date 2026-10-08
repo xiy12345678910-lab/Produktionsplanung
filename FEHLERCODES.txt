@@ -422,6 +422,7 @@ MP-ROLE-010  Speichern abgewiesen: Funktion nur lesbar bzw. Konfektionsstunden, 
 MP-ROLE-011  Hinweis (kein Fehler): Benutzer verwalten zusammen mit operativen Rechten (Vier-Augen-Prinzip).
 MP-ROLE-012  Hinweis (kein Fehler): FA anlegen und Produktion fertigmelden in einer Rolle.
 MP-ROLE-013  Hinweis (kein Fehler): Benutzer verwalten zusammen mit Bearbeitungsrecht für System.
+MP-ROLE-014  Hinweis (kein Fehler): Unveränderte Kopie einer Leitungsrolle – ersetzt die Einzelhinweise 011–013.
 MP-TLS-001   HTTPS-Zertifikat in config\tls ungueltig oder nicht lesbar. Server startet nicht (kein stiller Rueckfall
              auf HTTP). HTTPS_Einrichten.ps1 erneut ausfuehren oder config\tls umbenennen (= wieder HTTP).
 MP-CFG-003   schemaVersion neuer als dieses Programm (nur Warnung): Datei wird gelesen, nicht geaendert.
