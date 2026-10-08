@@ -61,6 +61,7 @@ jobs:
           python tests/test_no_quantity.py
           python tests/test_shared_operators_flag.py
           python tests/test_security_negative.py
+          python tests/test_batch_calc.py
       - name: Backup/Restore
         run: |
           python tests/test_backup.py
