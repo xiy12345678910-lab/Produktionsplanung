@@ -5155,6 +5155,8 @@ class Handler(BaseHTTPRequestHandler):
                         raise ProductionError("MP-SYNC-001", "Revision veraltet.", 409)
                     old = json.loads(row["json"])
                     if validate:
+                        # Wie beim Speichern: beide Seiten normalisieren, sonst gälten ergänzte Kanonfelder als Änderung.
+                        normalize_fa_state(old)
                         normalize_fa_state(state)
                     result = apply(state)
                     if validate:

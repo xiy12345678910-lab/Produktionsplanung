@@ -13,6 +13,7 @@ RAHMENAUFTRÄGE, ABRUFE UND BESTAND (BLOCK E, #46)
   immer. Fertig- oder Abbruchmeldung bucht die Gutmenge einmal in den Bestand und reserviert sie für den Abruf.
 - Abruf ändern/stornieren gibt Reservierungen frei und kürzt bzw. entfernt noch nicht begonnene FA;
   laufende FA produzieren in den freien Bestand. Bedarfs-FA lassen sich nicht per Speichern fälschen.
+- Bedarfsaktionen prüfen Altbestände (Historie ohne neue Kanonfelder) korrekt und werden dadurch nicht gesperrt.
 - Fehlercodes MP-DEM-0xx. Tests: test_demand.py, e2e_demand.mjs. Abnahme: docs/V12_22_0.md.
 
 MASCHINENPLANUNG V12.21.0 - RELEASE NOTES

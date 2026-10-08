@@ -194,6 +194,14 @@ class DemandFlow(unittest.TestCase):
         inv = next(x for x in self.db()['inventory'] if x['articleId'] == 'ART-R')
         self.assertEqual(inv['reservedQty'], 50)
 
+    def test_legacy_history_does_not_block_demand_actions(self):
+        # Altbestand: Historieneintrag ohne kanonische FA-/Quellfelder (vor V12.19) darf Bedarfsaktionen nicht sperren.
+        s = self.db()
+        s['history'].append({'id': 'h_legacy', 'originalOrderId': 'old_legacy', 'recordType': 'done', 'order': 'ALT-1', 'machineId': M['id'], 'goodQty': 1, 'scrapQty': 0, 'finishedAt': '2026-09-01T10:00:00Z'})
+        self.put_db(s)
+        st, r, _ = self.act('frame-order-save', {'number': 'RA-LEGACY', 'customer': 'K', 'articleId': 'ART-L', 'departmentId': DEP, 'totalQty': 5})
+        self.assertEqual(st, 200, r)
+
     def test_roles_and_scope(self):
         st, r, _ = self.act('frame-order-save', {'number': 'RA-SCOPE', 'customer': 'K', 'articleId': 'ART-X', 'departmentId': DEP, 'totalQty': 10})
         for ck in (self.lead, self.prod, self.view):
