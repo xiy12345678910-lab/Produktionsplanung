@@ -15,6 +15,11 @@ ANSICHTEN BEI BEDARF UND FA-DIALOG JE ABTEILUNG
   AV-Konfektionsstunden, operative Bereichsplanung und bestehende Schreibrechte bleiben maßgeblich.
 - Block E und die weiteren Blocks bleiben separate Aufgaben. Abnahme: docs/V12_21_0.md.
 
+FEHLERBEHEBUNG BEREICHSROLLEN
+- Abteilungsleitung/Stellvertretung konnten nicht mehr speichern (MP-PROD-041), sobald Produktionsbuchungen
+  mehrerer Bereiche abwechselnd vorlagen. Die Prüfung vergleicht Buchungen jetzt unabhängig von der
+  Reihenfolge; Fälschungen bleiben gesperrt und die gespeicherte Reihenfolge des Servers bleibt erhalten.
+
 HTTPS IM LAN (Altbefund B-H1, Deep Audit #64)
 - Optional verschlüsselt: HTTPS_Einrichten.ps1 (Administrator, Live-Ordner) legt eine eigene Firmen-CA und ein
   Serverzertifikat in config\tls an, vertraut der CA auf dem Server und startet ihn per HTTPS neu.
