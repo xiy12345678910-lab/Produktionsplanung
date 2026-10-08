@@ -20,6 +20,23 @@ REPO = re.compile(r'[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+')
 VERSION = re.compile(r'(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)')
 ACTIVE = {'checking', 'download', 'preflight', 'backup', 'installation', 'migration', 'restart', 'healthcheck', 'rollback'}
 MAX_PACKAGE = 64 * 1024 * 1024
+# Program files: a flat name or exactly one subfolder level, always with '/' (e.g. core/config.py).
+MEMBER = re.compile(r'[A-Za-z0-9_.-]+(/[A-Za-z0-9_.-]+)?')
+RESERVED_DIRS = {'config', 'data', 'backups', 'update_backups', 'updates', '__pycache__'}
+WINDOWS_RESERVED = re.compile(r'(?i)(con|prn|aux|nul|com[0-9]|lpt[0-9])(\..*)?')
+
+
+def member_name(name):
+    """Validate one package member name. Rejects '..', absolute paths, backslashes, drive letters, empty
+    segments, hidden/dot segments, trailing dots, Windows device names and more than one folder level."""
+    if not isinstance(name, str) or not MEMBER.fullmatch(name):
+        raise ValueError('Ungültige Datei im Updatepaket.')
+    for part in name.split('/'):
+        if part.startswith('.') or part.endswith('.') or WINDOWS_RESERVED.fullmatch(part):
+            raise ValueError('Ungültige Datei im Updatepaket.')
+    if '/' in name and name.split('/')[0].lower() in RESERVED_DIRS:
+        raise ValueError('Ungültige Datei im Updatepaket.')
+    return name
 
 
 class ReleaseRedirect(HTTPRedirectHandler):
@@ -111,8 +128,14 @@ def validate_manifest(manifest, expected, current):
     if not isinstance(files, dict) or not {'server.py', 'index.html', 'release_gates.py', 'MP_Common.ps1', 'UPDATE_LIVE.ps1', 'app_updates.py'} <= set(files):
         raise ValueError('Updatepaket ist unvollständig.')
     for name, digest in files.items():
-        if not re.fullmatch(r'[A-Za-z0-9_.-]+', name) or name.startswith('.') or not re.fullmatch('[0-9a-f]{64}', str(digest)):
+        member_name(name)
+        if not re.fullmatch('[0-9a-f]{64}', str(digest)):
             raise ValueError('Ungültige Datei im Updatepaket.')
+    # Windows paths are case-insensitive; a file must never share its name with a folder (core vs. core/x.py).
+    folded = [n.lower() for n in files]
+    folders = {n.split('/')[0] for n in folded if '/' in n}
+    if len(set(folded)) != len(folded) or folders & set(folded):
+        raise ValueError('Ungültige Datei im Updatepaket.')
     if manifest.get('signature'):
         raise ValueError('Signaturprüfung ist für diese Distribution noch nicht konfiguriert.')
 
@@ -121,6 +144,7 @@ def unpack_package(blob, manifest, target):
     if len(blob) > MAX_PACKAGE or hashlib.sha256(blob).hexdigest() != manifest['sha256']:
         raise ValueError('Updatepaket ist beschädigt (SHA256).')
     target.mkdir(parents=True, exist_ok=False)
+    root = target.resolve()
     archive = target.parent / 'package.zip'
     archive.write_bytes(blob)
     try:
@@ -129,12 +153,20 @@ def unpack_package(blob, manifest, target):
             if len(set(names)) != len(names) or set(names) != set(manifest['files']) or sum(x.file_size for x in z.infolist()) > MAX_PACKAGE:
                 raise ValueError('Updatepaket enthält unerwartete Dateien.')
             for entry in z.infolist():
-                if (entry.external_attr >> 16) & 0o170000 == 0o120000:
+                member_name(entry.filename)
+                if entry.is_dir() or (entry.external_attr >> 16) & 0o170000 == 0o120000:
                     raise ValueError('Links im Updatepaket sind unzulässig.')
                 content = z.read(entry)
                 if hashlib.sha256(content).hexdigest() != manifest['files'][entry.filename]:
                     raise ValueError('Dateiprüfsumme stimmt nicht: '+entry.filename)
-                (target/entry.filename).write_bytes(content)
+                dest = target.joinpath(*entry.filename.split('/'))
+                # Zip-slip guard: the resolved destination must stay inside the fresh staging folder.
+                if dest.parent != target:
+                    dest.parent.mkdir(exist_ok=True)
+                if dest.resolve().parent not in (root, root/entry.filename.split('/')[0]):
+                    raise ValueError('Ungültige Datei im Updatepaket.')
+                with open(dest, 'xb') as out:
+                    out.write(content)
         py = (target/'server.py').read_text(encoding='utf-8-sig')
         html = (target/'index.html').read_text(encoding='utf-8-sig')
         if not re.search(r'^APP_VERSION\s*=\s*"'+re.escape(manifest['version'])+'"', py, re.M) or not re.search(r"CLIENT_VERSION\s*=\s*'"+re.escape(manifest['version'])+"'", html):

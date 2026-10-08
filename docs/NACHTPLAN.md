@@ -21,17 +21,31 @@ Auftrag (Jonas, 08.10. abends): über Nacht selbständig an #73, #55, #51, #52 a
 | # | Issue | Aufgabe | Modell | Status |
 |---|---|---|---|---|
 | 1 | #73 Phase 0 | Rechte-Matrix für Schreibzugriffe (Rolle × Datenbereich) als Referenztest | Sonnet | erledigt (Commit „Phase 0: Schreib-Matrix (Rolle × Datenbereich) als Referenztest (#73)“) |
-| 2 | #73 Phase 0 | Release-Regeln dokumentieren (nur über den Workflow; GitHub-Regeln für Tags) | Haiku | offen |
-| 3 | #55 | Warnung bei riskanten Rollen-Kombinationen im Rolleneditor | Sonnet | offen |
-| 4 | #51 | Inventur der fest verdrahteten IDs (cnc, thermoforming, konf …) – nur Analyse | Haiku | offen |
-| 5 | #51 | Fest verdrahtete IDs in der Logik durch Bereichs-Flags ersetzen (nach #4) | Sonnet | offen |
-| 6 | #73 Phase 1 | Backend-Trennung Schritt 1: Konfiguration → `core/config.py`, keine Funktionsänderung, Paketliste anpassen | Opus | offen |
-| 7 | #73 Phase 1 | Schritt 2: TLS → `core/tls.py` | Sonnet | offen |
-| 8 | #73 Phase 1 | Review der Schritte 6–7 (rein lesend) | Opus | offen |
-| 9 | #52 K6 | System-Status/Diagnosepaket für den Admin (ohne Geheimnisse) | Sonnet | offen |
+| 2 | #73 Phase 0 | Release-Regeln dokumentieren (nur über den Workflow; GitHub-Regeln für Tags) | Haiku | erledigt (Commit „Doku: Release-Regeln (#73)“) |
+| 3 | #55 | Warnung bei riskanten Rollen-Kombinationen im Rolleneditor | Sonnet | erledigt (Commit „#55: Warnung bei riskanten Rollen-Kombinationen“) |
+| 4 | #51 | Inventur der fest verdrahteten IDs (cnc, thermoforming, konf …) – nur Analyse | Haiku | erledigt (Commit „#51: Inventur fest verdrahteter IDs“) |
+| 5 | #51 | Fest verdrahtete IDs in der Logik durch Bereichs-Flags ersetzen (nach #4) | Sonnet | erledigt (Commit „#51: Bereichs-Flags statt fester IDs (Bedienerkapazität, Fallback-Bereich)“) |
+| 6 | #73 Phase 1 | Backend-Trennung Schritt 1: Konfiguration → `core/config.py` | Opus | **zurückgestellt**: Der installierte Updater (seit 12.19) lehnt Dateien in Unterordnern ab (`validate_manifest`), Setup/UPDATE_LIVE/Rollback kopieren flach. Erst muss ein Release die Ordner-Unterstützung ausliefern, dann folgt die Verschiebung ein Release später. |
+| 6a | #73 Phase 1 | Vorbereitung: Updater, PowerShell-Kopie, Preflight, Rollback und Tests können Dateien in Unterordnern (`core/x.py`), noch ohne verschobenen Code | Opus | erledigt (Commit „Phase 1 Vorbereitung: Updater und Skripte unterstützen Unterordner (#73)“) |
+| 7 | #73 Phase 1 | Schritt 2: TLS → `core/tls.py` | Sonnet | zurückgestellt (wie 6) |
+| 8 | #73 Phase 1 | Review der Schritte 6–7 (rein lesend) | Opus | erledigt (Review: keine Blocker; Nacharbeit Commit „Phase 1 Vorbereitung: Review-Nacharbeit Updater (#73)“) |
+| 9 | #52 K6 | System-Status/Diagnosepaket für den Admin (ohne Geheimnisse) | Sonnet | erledigt (Commit „#52 K6: Systemstatus und Diagnosepaket für den Admin“) |
 
 ## Fragen für morgen (Jonas)
-- (wird über Nacht gefüllt)
+- Rechte: Darf der Vertrieb Projekte bearbeiten? (heute nein)
+- Rechte: GF darf Bereiche ändern – so gewollt?
+- #55: Eine unveränderte Kopie der Rolle Abteilungsleitung zeigt sofort alle drei Warnungen (MP-ROLE-011/012/013). Zu laut, oder genau richtig als Hinweis?
+- Release: `README_Windows.txt` Abschnitt „RELEASE ANLEGEN“ und die Fehlermeldung in `Update_von_GitHub.ps1` beschreiben noch das Anlegen von Tag/Release von Hand. Auf den Workflow-Weg umschreiben? (siehe docs/RELEASE_REGELN.md)
+- Release: Ein Tag-Push `v*` veröffentlicht sofort ohne Entwurf. Soll der Tag-Weg abgeschaltet werden (nur noch manueller Lauf → Entwurf)?
+- Release: Der Schritt „checked assets“ prüft nichts, und die komplette RELEASE_NOTES.txt (83 KB) wird Release-Text. Kürzen auf den obersten Abschnitt?
+- Einrichtungsschritt „Branche“ entfernen? (Deep Dive 09.10., #51/#53)
+- HTTPS als Standard? Lizenz? (#52)
+- Wann wird V12.27 auf Windows installiert?
+- Phase 1: Backend-Module in den Ordner `core/` (braucht ein Zwischen-Release mit Ordner-Unterstützung im Updater, dann folgt die Verschiebung ein Release später) oder flach als `mp_config.py`/`mp_tls.py` neben server.py (geht sofort)? Über Nacht wird nur die Ordner-Unterstützung vorbereitet (6a); verschoben wird noch nichts.
+
+## Beobachtungen (kein Handlungsbedarf über Nacht)
+- Firmenprofil: Schnell nacheinander geänderte Felder speichern einzeln. Eine ältere Serverantwort kann die gerade gewählte Akzentfarbe kurz mit dem alten Stand überschreiben, bis die eigene Antwort ankommt. Der Endzustand stimmt. Kleiner Client-Schönheitsfehler, im Test jetzt berücksichtigt.
+- CI-e2e: Heute schlugen nacheinander verschiedene Browser-Tests einmalig fehl (Bedarf, Ruhezeit, Firmenprofil), alle lokal grün. Bei Wiederholung den jeweiligen Test gezielt robuster machen.
 
 ## Protokoll
 - 08.10. abends: Plan angelegt. PR #80 (V12.27 Teil 2) offen.

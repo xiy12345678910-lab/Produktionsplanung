@@ -52,8 +52,11 @@ check("$MP_ConfigDir" in pre.split("Start-Process")[0], "Invoke-MPPreflight kopi
 check("MitConfig" in restore and "--restore-config" in restore, "Restore_Datenbank.ps1 -MitConfig")
 check("config" in uninst and "Remove-Item" not in uninst.split("Unregister")[0].replace("Remove-NetFirewallRule", ""), "Deinstallieren behält config (nennt es, löscht keine Ordner)")
 check(not re.search(r"Remove-Item[^\n]*config", update + setup + uninst, re.I), "Kein Skript löscht config")
-body = update[update.index("foreach ($name in $MP_AppFiles) {\n        $src"):]
-check(body.split("}")[0].count("Copy-Item") == 1, "Updatekopie nimmt nur Namen aus $MP_AppFiles")
+# V12.27.0: Kopie über Copy-MPAppFile (Unterordner-fähig); der Helfer kopiert genau eine Datei.
+helper = common[common.index("function Copy-MPAppFile"):]
+helper = helper[:helper.index("\n}\n")]
+check("foreach ($name in $MP_AppFiles) { Copy-MPAppFile $NewSource $TargetBase $name }" in update and helper.count("Copy-Item") == 1
+      and "-Recurse" not in helper, "Updatekopie nimmt nur Namen aus $MP_AppFiles")
 
 
 def sha_tree(root: Path) -> dict:

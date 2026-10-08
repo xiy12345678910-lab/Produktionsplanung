@@ -76,8 +76,20 @@ def machine(state,mid):
     return next((m for m in state.get("machines") or []
                  if isinstance(m,dict) and str(m.get("id"))==mid),{})
 
+def default_dept(state):
+    """Erster aktiver Produktionsbereich (wie server.default_dept_id / Client defaultDepartmentId); 'cnc' nur ohne Bereiche."""
+    for d in (state or {}).get("departments") or []:
+        if isinstance(d,dict) and d.get("id") and d.get("active") is not False and str(d.get("kind") or "production")=="production":
+            return str(d["id"])
+    return "cnc"
+
 def dept_of(state,mid):
-    return str(machine(state,mid).get("departmentId") or "cnc")
+    return str(machine(state,mid).get("departmentId") or default_dept(state))
+
+def dept_shared(state,did):
+    """Bereichs-Eigenschaft sharedOperators (wie Client deptShared): nur ein ausdrückliches true zählt."""
+    return any(isinstance(d,dict) and str(d.get("id"))==did and d.get("sharedOperators") is True
+               for d in state.get("departments") or [])
 
 def mode_for_day(state,mid,day):
     key=day.strftime("%Y-%m-%d")
@@ -303,7 +315,7 @@ def home_machine_for(state,e,day,dk):
             or hm not in {str(x) for x in (e.get("skills") or [])}):
         return None
     m=machine(state,hm)
-    if not m or effective_dept(state,e,day)!=str(m.get("departmentId") or "cnc"):
+    if not m or effective_dept(state,e,day)!=str(m.get("departmentId") or default_dept(state)):
         return None
     return m
 
@@ -448,10 +460,11 @@ def validate_release_feasibility(old,new):
             if not ok:
                 return False,"MP-PERS-033",f"Freigabe '{name}' ist personell unterdeckt ({count}/{req})."
 
-        # Bedienerkapazität ist eine CNC-Ressource; andere Bereiche planen über Besetzung/Linien.
-        if dept_of(new,str((o.get("baselinePlan") or {}).get("machineId") or o.get("machineId") or ""))!="cnc":
+        # Bedienerkapazität gilt für Bereiche mit sharedOperators=true (wie Client deptShared; Bestand: cnc per V12.16.0-Migration); alle geteilten Bereiche teilen sich den Pool, andere planen über Besetzung/Linien.
+        odept=dept_of(new,str((o.get("baselinePlan") or {}).get("machineId") or o.get("machineId") or ""))
+        if not dept_shared(new,odept):
             continue
-        relevant=[x for x in fixed if x["orderId"]!=oid and dept_of(new,x["machineId"])=="cnc"]+segs
+        relevant=[x for x in fixed if x["orderId"]!=oid and dept_shared(new,dept_of(new,x["machineId"]))]+segs
         points=sorted({x["start"] for x in relevant}|{x["end"] for x in relevant})
         for i in range(len(points)-1):
             a,z=points[i],points[i+1]

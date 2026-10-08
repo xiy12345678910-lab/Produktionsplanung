@@ -181,7 +181,10 @@ try {
     await admin.$eval(id, (el, v) => { el.value = v; el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); }, val);
     await admin.waitForTimeout(250);
   }
-  check((await snap(admin)).brand.toLowerCase().includes('00aa55') || (await snap(admin)).accent === '#00aa55', 'Vorschau sofort: Akzentfarbe wirkt im Admin-Client (--accent/--brand)');
+  // Antworten der vorherigen Feld-Speicherungen (Firma, Begriff) können die Farbe kurz mit dem alten Serverstand überschreiben,
+  // bis die eigene Antwort eintrifft – deshalb auf den Endzustand warten statt einer festen Pause.
+  check(await waitFor(admin, () => getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() === '#00aa55' || getComputedStyle(document.documentElement).getPropertyValue('--brand').toLowerCase().includes('00aa55'), null, 5000),
+    `Vorschau: Akzentfarbe wirkt im Admin-Client (--accent/--brand) (${(await snap(admin)).accent})`);
   await admin.setInputFiles('#ciLogo', { name: 'logo.png', mimeType: 'image/png', buffer: PNG_RED });
   const seenBy = async page => waitFor(page, () => ciSettings().company === 'Muster *Werbung* GmbH' && ciSettings().color === '#aa0033' && ciSettings().logo.startsWith('data:image/png') && document.querySelector('.brandMark img') && pnLabel() === 'Auftrag-Nr / Projektnummer');
   check(await seenBy(viewer), 'Lesender Client: Name, Dokumentfarbe, Logo und Begriff übernommen');

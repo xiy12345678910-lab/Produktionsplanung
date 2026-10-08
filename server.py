@@ -29,6 +29,7 @@ from urllib.parse import parse_qs, urlparse
 
 MP_DEBUG_ABORTS = os.environ.get('MP_DEBUG_ABORTS') == '1'
 APP_VERSION = "12.27.0"
+SERVER_STARTED = time.time()
 HOST = os.environ.get("MP_HOST", "0.0.0.0")
 PORT = int(os.environ.get("MP_PORT", "8765"))
 BASE = Path(__file__).resolve().parent
@@ -658,6 +659,84 @@ def module_on(name: str) -> bool:
     return bool(modules_effective().get(name, CONFIG_MODULE_DEFAULTS.get(name, True)))
 
 
+def build_diagnostics(tls_on: bool = False) -> dict:
+    """#52 K6: Systemstatus fuer den Admin. Nur technische Werte und Zaehler, nie Auftrags-, Chat-, Personal- oder Zugangsdaten."""
+    import platform
+    now = time.time()
+    warnings: list[str] = []
+    cfg = current_config()
+    out: dict = {
+        "generatedAt": now_iso(),
+        "product": {"version": APP_VERSION, "python": sys.version.split()[0], "platform": platform.platform(),
+                    "startedAt": datetime.fromtimestamp(SERVER_STARTED, timezone.utc).isoformat(),
+                    "uptimeSeconds": int(now - SERVER_STARTED)},
+    }
+    db: dict = {"fileBytes": DB_PATH.stat().st_size if DB_PATH.exists() else 0}
+    counts: dict = {}
+    updates: list = []
+    errors: list = []
+    with DB_LOCK, db_session() as con:
+        try:
+            db["integrity"] = str(con.execute("PRAGMA integrity_check").fetchone()[0])
+        except sqlite3.DatabaseError as e:
+            db["integrity"] = f"Fehler: {type(e).__name__}"
+        row = con.execute("SELECT revision,json FROM state WHERE id=1").fetchone()
+        db["revision"] = row["revision"] if row else None
+        db["configSchema"] = CONFIG_SCHEMA
+        try:
+            st = json.loads(row["json"]) if row else {}
+        except ValueError:
+            st = {}
+        for k in ("workSteps", "projects", "departments", "machines"):
+            v = st.get(k)
+            counts[k] = len(v) if isinstance(v, list) else 0
+        counts["users"] = con.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+        for r in con.execute("SELECT ts,action,detail FROM server_audit WHERE action LIKE 'Update%' ORDER BY id DESC LIMIT 10"):
+            try:
+                d = json.loads(r["detail"])
+            except ValueError:
+                d = {}
+            d = d if isinstance(d, dict) else {}
+            updates.append({"ts": r["ts"], "action": r["action"], "version": d.get("version"), "stage": d.get("stage"), "error": str(d.get("error") or "")[:200]})
+        for r in con.execute("SELECT ts,action,detail FROM server_audit WHERE action LIKE '%fehlgeschlagen%' OR action LIKE '%Fehler%' ORDER BY id DESC LIMIT 10"):
+            try:
+                d = json.loads(r["detail"])
+            except ValueError:
+                d = {}
+            errors.append({"ts": r["ts"], "action": r["action"], "error": str(d.get("error") or "")[:200] if isinstance(d, dict) else ""})
+    out["database"] = db
+    out["counts"] = counts
+    if db["integrity"] != "ok":
+        warnings.append(f"Datenbankpruefung nicht ok: {db['integrity']}")
+    try:
+        du = shutil.disk_usage(DATA_DIR)
+        out["disk"] = {"freeBytes": du.free, "totalBytes": du.total, "freePercent": round(du.free * 100 / du.total, 1) if du.total else None}
+        if du.total and du.free * 10 < du.total:
+            warnings.append("Freier Speicherplatz unter 10 %")
+    except OSError:
+        out["disk"] = None
+    bdir = DATA_DIR.parent / "backups"
+    files = sorted(bdir.glob("maschinenplanung_*.sqlite3"), key=lambda p: p.stat().st_mtime, reverse=True) if bdir.is_dir() else []
+    if files:
+        age = max(0, int(now - files[0].stat().st_mtime))
+        out["backup"] = {"newest": files[0].name, "ageSeconds": age, "bytes": files[0].stat().st_size, "count": len(files)}
+        if age > 2 * 86400:
+            warnings.append("Letztes Backup aelter als 2 Tage")
+    else:
+        out["backup"] = {"newest": None, "ageSeconds": None, "count": 0}
+        warnings.append("Kein Backup gefunden")
+    out["updates"] = updates
+    if updates and updates[0]["action"] == "Update fehlgeschlagen":
+        warnings.append("Letztes Update fehlgeschlagen")
+    if errors:
+        out["recentErrors"] = errors
+    out["modules"] = modules_effective(cfg)
+    out["config"] = {"companyName": (cfg.get("company") or {}).get("name", ""), "template": cfg.get("template", ""),
+                     "tenantId": cfg.get("tenantId", ""), "timezone": (cfg.get("locale") or {}).get("timezone", ""), "tls": bool(tls_on)}
+    out["warnings"] = warnings
+    return out
+
+
 def module_error(name: str) -> dict:
     return mp_error("MP-MOD-001", f"Funktion „{MODULE_LABELS.get(name, name)}“ ist abgeschaltet.", module=name)
 
@@ -897,6 +976,26 @@ def resolve_profile_id(con, actor: dict, role: str, requested, current: str = ""
     if not profile or not profile.get("active", True) or profile.get("baseRole") != role:
         raise ValueError("Rollenprofil fehlt, ist deaktiviert oder passt nicht zur Systemrolle.")
     return pid
+
+
+def role_risk_warnings(profile) -> list:
+    """V12.27.0 (#55): Hinweise zu riskanten Rechte-Kombinationen eines Rollenprofils. Rein beratend – blockiert nie das Speichern
+    und ändert keine Rechteprüfung. Regeln nur dort, wo das Datenmodell sie hergibt (Aktionen sind standardmäßig erlaubt)."""
+    profile = profile if isinstance(profile, dict) else {}
+    actions = effective_actions(profile.get("actions"))
+    rights = profile.get("rights") if isinstance(profile.get("rights"), dict) else {}
+    base = profile.get("baseRole")
+    planning_edit = rights.get("planning", "edit") == "edit"
+    manager = base in USER_MANAGER_ROLES  # nur hier wirkt „Benutzer verwalten“ überhaupt
+    out = []
+    if manager and actions["userAdmin"] and planning_edit and (actions["faCreate"] or actions["faPlan"] or actions["prodFinish"]):
+        out.append({"code": "MP-ROLE-011", "text": "Benutzer verwalten zusammen mit operativen Rechten (FA anlegen/einplanen, Produktion fertigmelden): "
+                    "Vier-Augen-Prinzip fehlt, die Rolle könnte sich selbst Rechte geben und damit arbeiten."})
+    if manager and planning_edit and actions["faCreate"] and actions["prodFinish"]:  # beide Rechte hat nur Bereichsleiter/Vertretung
+        out.append({"code": "MP-ROLE-012", "text": "FA anlegen und Produktion fertigmelden in einer Rolle: Aufträge können ohne zweite Kontrolle angelegt und selbst fertiggemeldet werden."})
+    if manager and actions["userAdmin"] and rights.get("system", "edit") == "edit":
+        out.append({"code": "MP-ROLE-013", "text": "Benutzer verwalten zusammen mit Bearbeitungsrecht für System: Konten und Systemeinstellungen (Maschinen, Bereiche, Schichten) lassen sich ohne Gegenkontrolle ändern."})
+    return out
 
 
 def role_profiles(con) -> dict:
@@ -1383,7 +1482,7 @@ def migrate_state_v1243(con: sqlite3.Connection) -> None:
                 "id": str(x.get("id") or f"legacy_o_{i+1}"),
                 "planningType": "MACHINE", "sequence": seq,
                 "predecessorIds": list(x.get("predecessorIds") or []),
-                "departmentId": str(x.get("departmentId") or (machines.get(mid) or {}).get("departmentId") or "cnc"),
+                "departmentId": str(x.get("departmentId") or (machines.get(mid) or {}).get("departmentId") or default_dept_id(state)),
                 "projectId": str(x.get("projectId") or ""),
                 "fa": fa, "ab": str(x.get("ab") or ""), "wt": str(x.get("wt") or ""),
                 "machineId": mid, "altMachineId": alt, "allowAlternative": bool(alt),
@@ -1586,12 +1685,13 @@ def migrate_state_v1270(con: sqlite3.Connection) -> None:
     used_mids = {str(m.get("id")) for m in machines}
     start_default = next((str(m.get("start")) for m in machines if m.get("start")), "2026-09-07T06:30")
     dept_machine: dict[str, str] = {}
+    dd = default_dept_id(state)
     created = 0
     for d in departments:
         did = str(d.get("id"))
         if did not in legacy:
             continue
-        own = [m for m in machines if str(m.get("departmentId") or "cnc") == did]
+        own = [m for m in machines if str(m.get("departmentId") or dd) == did]
         if own:
             dept_machine[did] = str(own[0].get("id"))
         else:
@@ -2080,7 +2180,7 @@ def default_dept_id(state: dict) -> str:
     return "cnc"
 
 
-def _step_dept(step: dict, machine_dept: dict, dd: str = "cnc") -> str:
+def _step_dept(step: dict, machine_dept: dict, dd: str) -> str:
     return str(step.get("departmentId") or machine_dept.get(str(step.get("machineId")), dd))
 
 
@@ -5451,7 +5551,7 @@ class Handler(BaseHTTPRequestHandler):
                         changes[f"{group}.{key}"] = {"alt": old_g.get(key), "neu": new_g.get(key)}
             detail = {"rolle": rid, "neu": before is None, "aenderungen": changes, "profil": profile}
             con.execute("INSERT INTO server_audit(ts,username,action,detail,revision) VALUES(?,?,?,?,NULL)", (stamp, user["username"], "Rolle angelegt" if before is None else "Rolle geändert", json.dumps(detail, ensure_ascii=False)))
-        return self.json_response(200, {"ok": True, "profile": profile, "users": assigned})
+        return self.json_response(200, {"ok": True, "profile": profile, "users": assigned, "warnings": role_risk_warnings(profile)})
 
     def require_rights(self, user, function=None, level="read", action=None) -> bool:
         """Rechte des Rollenprofils (#63) zusätzlich zur Systemrolle prüfen."""
@@ -5568,6 +5668,22 @@ class Handler(BaseHTTPRequestHandler):
             if not user:
                 return
             return self.json_response(200, update_manager().poll())
+        if path == "/api/diagnostics":
+            user = self.require_user(["admin"])
+            if not user:
+                return
+            info = build_diagnostics(self.server.ssl_context is not None)
+            if parse_qs(parsed.query).get("download") == ["1"]:
+                raw = json.dumps(info, ensure_ascii=False, indent=2).encode("utf-8")
+                self.send_response(200)
+                self._security_headers()
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.send_header("Content-Disposition", f'attachment; filename="diagnose-{APP_VERSION}-{time.strftime("%Y-%m-%d")}.json"')
+                self.send_header("Content-Length", str(len(raw)))
+                self.end_headers()
+                self.wfile.write(raw)
+                return
+            return self.json_response(200, info)
         if path == "/api/health":
             return self.json_response(200, {"ok": True, "version": APP_VERSION})
         if path == "/api/session":
@@ -5709,7 +5825,7 @@ class Handler(BaseHTTPRequestHandler):
                 profiles = role_profiles(con)
                 usage = {r["profile_id"]: r["n"] for r in con.execute("SELECT profile_id,count(*) n FROM users WHERE profile_id<>'' GROUP BY profile_id")}
             return self.json_response(200, {"functions": [list(x) for x in ROLE_FUNCTIONS], "actions": [list(x) for x in ROLE_ACTIONS],
-                                            "profiles": [{**p, "users": usage.get(pid, 0)} for pid, p in profiles.items()]})
+                                            "profiles": [{**p, "users": usage.get(pid, 0), "warnings": role_risk_warnings(p)} for pid, p in profiles.items()]})
         if path == "/api/users":
             user = self.require_user(USER_MANAGER_ROLES)
             if not user:

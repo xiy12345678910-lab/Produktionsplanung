@@ -1,12 +1,16 @@
 #!/usr/bin/env python3
-"""Build the immutable flat release package and schema-1 update manifest."""
+"""Build the immutable release package and schema-1 update manifest (flat names or one subfolder level, e.g. core/x.py)."""
 import argparse
 import hashlib
 import json
 from pathlib import Path
 import re
 import subprocess
+import sys
 import zipfile
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from app_updates import member_name  # noqa: E402
 
 
 def build(root, output, commit):
@@ -22,6 +26,7 @@ def build(root, output, commit):
     files = {}
     with zipfile.ZipFile(archive, 'w', zipfile.ZIP_DEFLATED) as z:
         for name in names:
+            member_name(name)  # same rule as the updater: '/' separator, at most one folder level
             content = (root/name).read_bytes()
             z.writestr(name, content)
             files[name] = hashlib.sha256(content).hexdigest()

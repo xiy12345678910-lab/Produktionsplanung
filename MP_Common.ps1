@@ -43,6 +43,43 @@ $MP_ObsoleteFiles = @(
     'FEHLERCODES_V11_3_1.txt', 'RELEASE_NOTES_V11_3_1.txt', 'BENUTZER_KURZANLEITUNG.zip'
 )
 
+# V12.27.0 (#73 Phase 1 Vorbereitung): Programmdateien duerfen hoechstens EINE Ordnerebene tief liegen
+# (z. B. 'core/config.py', immer mit '/'). Gleiche Regel wie app_updates.member_name.
+function Test-MPAppName([string]$Name) {
+    # Kein '..', kein Laufwerk, kein '\', keine leeren Teile, keine Punkt-Teile, keine Geraetenamen, max. eine Ebene.
+    if ($Name -cnotmatch '\A[A-Za-z0-9_.-]+(/[A-Za-z0-9_.-]+)?\z') { return $false }
+    # Reservierte Ordner (Konfiguration, Daten, Sicherungen) sind keine Programmordner.
+    if ($Name.Contains('/') -and (@('config', 'data', 'backups', 'update_backups', 'updates', '__pycache__') -contains $Name.Split('/')[0])) { return $false }
+    foreach ($part in $Name.Split('/')) {
+        if ($part.StartsWith('.') -or $part.EndsWith('.') -or $part -match '^(con|prn|aux|nul|com[0-9]|lpt[0-9])(\..*)?$') { return $false }
+    }
+    return $true
+}
+
+function Get-MPAppPath([string]$Root, [string]$Name) {
+    if (-not (Test-MPAppName $Name)) { throw "MP-UPD-006: Ungueltiger Programmdateiname: $Name" }
+    return (Join-Path $Root ($Name.Replace('/', [string][IO.Path]::DirectorySeparatorChar)))
+}
+
+function Copy-MPAppFile([string]$Source, [string]$Target, [string]$Name) {
+    # Kopiert eine Programmdatei und legt den Unterordner bei Bedarf an. Gleiche Quelle/Ziel: nichts tun.
+    $src = Get-MPAppPath $Source $Name
+    $dst = Get-MPAppPath $Target $Name
+    if ([IO.Path]::GetFullPath($src) -ieq [IO.Path]::GetFullPath($dst)) { return }
+    $parent = Split-Path -Parent $dst
+    if (-not (Test-Path -LiteralPath $parent)) { New-Item -ItemType Directory -Path $parent -Force | Out-Null }
+    Copy-Item -LiteralPath $src -Destination $dst -Force
+}
+
+function Get-MPAppFileList([string]$Folder) {
+    # Liest $MP_AppFiles aus einem (z. B. alten installierten) MP_Common.ps1 ohne es auszufuehren.
+    $f = Join-Path $Folder 'MP_Common.ps1'
+    if (-not (Test-Path -LiteralPath $f)) { return @() }
+    $m = [regex]::Match([IO.File]::ReadAllText($f), '\$MP_AppFiles\s*=\s*@\((.*?)\r?\n\)', 'Singleline')
+    if (-not $m.Success) { return @() }
+    return @([regex]::Matches($m.Groups[1].Value, "'([^']+)'") | ForEach-Object { $_.Groups[1].Value })
+}
+
 function Test-MPAdmin {
     $id = [Security.Principal.WindowsIdentity]::GetCurrent()
     $p = New-Object Security.Principal.WindowsPrincipal($id)
@@ -332,7 +369,7 @@ function Invoke-MPPreflight([string]$NewSource, [string]$PythonExe, [string]$DbC
     # Das Live-System wird dabei nicht beruehrt.
     $dir = Join-Path $env:TEMP ('mp_preflight_' + [guid]::NewGuid().ToString('N').Substring(0, 8))
     New-Item -ItemType Directory -Path (Join-Path $dir 'data') -Force | Out-Null
-    foreach ($name in $MP_AppFiles) { Copy-Item -LiteralPath (Join-Path $NewSource $name) -Destination $dir -Force }
+    foreach ($name in $MP_AppFiles) { Copy-MPAppFile $NewSource $dir $name }
     Copy-Item -LiteralPath $DbCopySource -Destination (Join-Path $dir 'data\maschinenplanung.sqlite3') -Force
     # V12.14.0: neue Version mit der ECHTEN Firmenkonfiguration pruefen (Kopie, Live bleibt unberuehrt).
     if ($LiveBase -and (Test-Path -LiteralPath (Join-Path $LiveBase $MP_ConfigDir))) {
