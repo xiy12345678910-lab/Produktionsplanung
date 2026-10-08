@@ -76,8 +76,8 @@ try {
     try { $oldRepo = [string](Read-MPConfig $Base).UpdateRepo; if ($oldRepo) { $config['UpdateRepo'] = $oldRepo } } catch { }
     Write-InfoFile "$Base\LAN_CONFIG.json" @($config | ConvertTo-Json) | Out-Null
     Write-InfoFile "$Base\LAN_ADRESSEN.txt" @(
-        "PC-Name: http://$env:COMPUTERNAME`:$Port",
-        "LAN-IP:  http://$($lan.IP)`:$Port",
+        "PC-Name: $(Get-MPScheme $Base)://$env:COMPUTERNAME`:$Port",
+        "LAN-IP:  $(Get-MPScheme $Base)://$($lan.IP)`:$Port",
         "Subnetz: $Subnet",
         "Adapter: $($lan.InterfaceAlias) / $($lan.InterfaceDescription)",
         '',

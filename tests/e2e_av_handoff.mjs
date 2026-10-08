@@ -21,6 +21,7 @@ with server.DB_LOCK,server.db_session() as con:
  old=json.loads(con.execute('SELECT json FROM state WHERE id=1').fetchone()['json'])
  new=json.loads(json.dumps(old))
  new['workSteps']=[]
+ new['machines'].append({**new['machines'][0],'id':'foreign_resource','name':'Fremder Bereich','departmentId':'thermoforming'})
  new['workSteps'].append({'id':'legacy-manual-cnc','sequence':1,'planningType':'MACHINE','pos':1,'departmentId':'cnc','projectId':'','predecessorIds':[],'fa':'FA-MANUAL-1001','faNumber':'FA-MANUAL-1001','ab':'','wt':'','machineId':'m1','altMachineId':'','allowAlternative':False,'order':'FA-MANUAL-1001','articleNo':'','description':'Manueller Legacy-Auftrag','targetQty':10,'dueDate':'','baselinePlan':None,'hours':3,'goodQty':0,'scrapQty':0,'status':'planned','direction':'forward','anchorMode':'none','requiredStart':'','requiredFinish':'','createdAt':server.now_iso(),'lockedStart':'','lockedSegments':[],'actualStartedAt':'','runningSince':'','pausedAt':'','pauseIntervals':[],'remainingHours':None,'lastStatusCheckAt':''})
  new['projects']=[{'id':'p1','number':'P-2026-001','phase':'accepted','name':'Gehäuse','customer':'Kunde A','ab':'AB-500','dueDate':'2026-11-30','log':[],'processes':[]}]
  ok,code,reason=server.validate_state(old,new)
@@ -33,7 +34,7 @@ httpd=server.MPHTTPServer(('127.0.0.1',${PORT}),server.Handler)
 print('READY',flush=True)
 httpd.serve_forever()
 `;
-const srv=spawn('python3',['-c',py],{stdio:['ignore','pipe','inherit']});
+const srv=spawn('python3',['-c',py],{stdio:['ignore','pipe','inherit'], env: { ...process.env, MP_CONFIG_DIR: path.join(tmp, 'config') } });
 const checks=[];const check=(v,label)=>{checks.push(!!v);if(!v)console.log('FAIL '+label)};
 try{
  await new Promise((resolve,reject)=>{let out='';const t=setTimeout(()=>reject(new Error('Server start timeout '+out)),20000);srv.stdout.on('data',d=>{out+=String(d);if(out.includes('SEED-ERROR'))reject(new Error(out));if(out.includes('READY')){clearTimeout(t);resolve()}});srv.on('exit',c=>reject(new Error('Server exit '+c)))});
@@ -85,7 +86,11 @@ const denied=async(patch,id)=>av.evaluate(async([stepId,changes])=>{const state=
 const denyMachine=await denied({machineId:'m1',handoffUnassigned:false,hours:4},rows[0]?.id);check(denyMachine===403,`server rejects AV resource assignment (${denyMachine})`);
 const denyFlag=await denied({handoffUnassigned:false,machineId:'m1',hours:4},rows[0]?.id);check(denyFlag===403,`server rejects AV takeover marker bypass (${denyFlag})`);
 const denyHours=await denied({hours:6},rows[0]?.id);check(denyHours===403,`server rejects AV CNC hours (${denyHours})`);
- let cnc=await login('cnclead');await cnc.click('#navPlan');await cnc.waitForTimeout(250);await cnc.click('#navList');await cnc.waitForTimeout(250);
+ let cnc=await login('cnclead');await cnc.click('#navPlan');await cnc.waitForTimeout(250);await cnc.click('#quickAdd');
+ const deptDialog=await cnc.evaluate(async()=>{const s=await(await fetch('/api/state')).json();return {departments:[...document.querySelector('#qDept').options].map(x=>x.value),machines:[...document.querySelector('#qMachine').options].map(x=>x.value),machineDepartments:[...document.querySelector('#qMachine').options].map(x=>s.data.machines.find(m=>m.id===x.value)?.departmentId),title:document.querySelector('#qDialogTitle').textContent,hasMachine:!!document.querySelector('#qMachine').offsetParent,hasHours:!!document.querySelector('#qHours').offsetParent,handoff:!!document.querySelector('#qAvDepartmentsField').offsetParent}});
+ check(deptDialog.departments.length===1&&deptDialog.departments[0]==='cnc'&&deptDialog.machines.length>0&&deptDialog.machineDepartments.every(id=>id==='cnc')&&deptDialog.title==='Fertigungsauftrag anlegen'&&deptDialog.hasMachine&&deptDialog.hasHours&&!deptDialog.handoff,'department lead keeps the common FA dialog with own resources and runtime');
+ const foreignResource=await cnc.evaluate(async()=>{const s=await(await fetch('/api/state')).json(),o=s.data.workSteps.find(x=>x.id==='legacy-manual-cnc');o.machineId='foreign_resource';o.departmentId='thermoforming';const h=await(await fetch('/api/health')).json(),r=await fetch('/api/state',{method:'PUT',headers:{'Content-Type':'application/json','X-MP-Client-Version':h.version},body:JSON.stringify({revision:s.revision,data:s.data,action:'Foreign resource rejection test'})});return r.status});
+ check(foreignResource===403,`server rejects a foreign-department resource (${foreignResource})`);await cnc.click('#cancelModal');await cnc.click('#navList');await cnc.waitForTimeout(250);
 const legacyId='legacy-manual-cnc',legacyRow=cnc.locator(`#ordersBody tr[data-id="${legacyId}"]`);
 check(await legacyRow.count()===1,'manueller Legacy-Auftrag ohne AV-Übergabeflag ist im Bereich sichtbar');
 await legacyRow.locator('select[data-f="machineId"]').selectOption('m2');await cnc.waitForSelector('#moveModal.show');await cnc.click('#confirmMove');
@@ -115,9 +120,18 @@ const leadDenied=await cnc.evaluate(async id=>{const s=await(await fetch('/api/s
  check(await conf.locator(`#board [data-handoff-plan="${rows[1]?.id}"]`).isVisible(),'later step visible to its department');
  check((await conf.locator('#board').innerText()).includes('Vorgänger offen'),'backlog explains open predecessor');
  const admin=await login('admin');await admin.click('#navPlan');await admin.waitForTimeout(200);await admin.click('#quickAdd');
+ check(await admin.locator('#qDialogTitle').innerText()==='Fertigungsauftrag anlegen'&&await admin.locator('#qFAField label').innerText()==='FA · Fertigungsauftrag *','admin quick order uses the prominent common FA header');
  check(await admin.locator('#qMachine').isVisible(),'standard order dialog retains resource selector');
  check(await admin.locator('#qHours').isVisible(),'standard order dialog retains its hours field');
  check(!(await admin.locator('#qAvDepartmentsField').isVisible()),'AV handoff editor stays hidden from admin quick orders');
+ await admin.click('#cancelModal');await admin.click('#navOrders');await admin.locator('[data-project-open="p1"]').click();await admin.locator('#projectNewOrder').click();
+ check(await admin.locator('#qAvDepartmentsField').isVisible()&&!(await admin.locator('#qMachine').isVisible())&&!(await admin.locator('#qHours').isVisible()),'admin project FA opens the resource-free department handoff dialog');
+ await admin.fill('#qFA','FA-ADMIN-PROJECT');await admin.fill('#qQty','12');await admin.fill('#qDue','2026-11-30');await admin.selectOption('[data-av-department="0"]','cnc');
+ check(await admin.locator('[data-av-hours="0"]').count()===0,'admin handoff does not offer hours for CNC');await admin.selectOption('[data-av-department="0"]','konf1');
+ check(await admin.locator('[data-av-hours="0"]').isVisible(),'admin handoff exposes editable hours only for confection');await admin.fill('[data-av-hours="0"]','2.5');await admin.click('#createOrder');
+ for(let i=0;i<50&&!(await getState(admin)).workSteps.some(x=>x.fa==='FA-ADMIN-PROJECT');i++)await admin.waitForTimeout(200);
+ const adminHandoff=await getState(admin);const adminRows=adminHandoff.workSteps.filter(x=>x.fa==='FA-ADMIN-PROJECT');
+ check(adminRows.length===1&&adminRows[0].projectId==='p1'&&adminRows[0].departmentId==='konf1'&&adminRows[0].handoffUnassigned===true&&!adminRows[0].machineId&&adminRows[0].hours===2.5,'admin project FA is saved in the correct department backlog without resource assignment '+JSON.stringify(adminRows));
  await browser.close();console.log(`AV handoff E2E: ${checks.filter(Boolean).length}/${checks.length} checks passed`);
  if(checks.includes(false))process.exitCode=1;
 }catch(e){console.error(e);process.exitCode=1}finally{srv.kill('SIGTERM');try{rmSync(tmp,{recursive:true,force:true})}catch{}}

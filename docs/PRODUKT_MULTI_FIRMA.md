@@ -411,8 +411,7 @@ Features P17, P16, P14, P7, P12, P11 laufen zwischen C/D und danach (Abschnitt 5
 
 ```
 Repo: xiy12345678910-lab/Produktionsplanung, Branch: claude/new-session-95ro2l.
-Lies zuerst docs/AGENT_BRIEF.md (gilt vollständig: UX-Regel, Darstellung/Theme-Variablen, Tests, Doku, Version, Commit),
-docs/PRODUKT_MULTI_FIRMA.md (dieses Konzept), docs/UEBERGABE.md, docs/AUDIT.md, RELEASE_NOTES.txt, FEHLERCODES.txt.
+Lies zuerst docs/PRODUKT_MULTI_FIRMA.md (dieses Konzept), docs/UEBERGABE.md, docs/AUDIT.md, RELEASE_NOTES.txt, FEHLERCODES.txt.
 Produktziel: Die App wird für viele Firmen verkaufbar. Der heutige Arbeitgeber-Stand ist das Profil „Werbetechnik“
 und MUSS sich nach Migration identisch verhalten. Konfiguration statt Code, nur Python-Standardbibliothek,
 alles bleibt in index.html/server.py, keine Kundenforks.

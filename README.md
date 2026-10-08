@@ -1,12 +1,13 @@
 # Produktionsplanung
 
-Maschinenplanung V12.20.0 – Wochen-/Ressourcenplanung je Bereich (Maschinen & Linien), Projekte,
+Maschinenplanung V12.21.0 – Wochen-/Ressourcenplanung je Bereich (Maschinen & Linien), Projekte,
 Formate (Tiefziehen), Personal und Nachrichten. Zentraler Windows-LAN-Server, Browser-Oberfläche.
 
 - `server.py` – Python-Server (nur Standardbibliothek, SQLite), `index.html` – Oberfläche, `release_gates.py` – Freigabeprüfung, `app_updates.py` – allgemeine Releaseupdates
 - Windows: `README_Windows.txt` (Installation, Update, Update direkt von GitHub), `BENUTZER_KURZANLEITUNG.txt`
 - A–D: `docs/BLOCKS_A_D.md` · Admin-Updates (I 7a): `docs/ADMIN_UPDATES.md`
 - Änderungen: `RELEASE_NOTES.txt` · Fehlercodes: `FEHLERCODES.txt` · Übergabe: `docs/UEBERGABE.md`
+- Lazy Loading und FA-Dialog V12.21.0: `docs/V12_21_0.md`
 - AV-Dialog und Projekt-Liveverfolgung V12.20.0: `docs/V12_20_0.md`
 - Hotfixes V12.19.1 (#57–#62): `docs/V12_19_1.md`
 

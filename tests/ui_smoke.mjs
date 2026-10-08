@@ -43,7 +43,7 @@ httpd = server.MPHTTPServer(("127.0.0.1", ${PORT}), server.Handler)
 print("READY", flush=True)
 httpd.serve_forever()
 `;
-const srv = spawn(process.platform === 'win32' ? 'python' : 'python3', ['-c', py], { stdio: ['ignore', 'pipe', 'inherit'] });
+const srv = spawn(process.platform === 'win32' ? 'python' : 'python3', ['-c', py], { stdio: ['ignore', 'pipe', 'inherit'], env: { ...process.env, MP_CONFIG_DIR: path.join(dataDir, 'config') } });
 await new Promise((resolve, reject) => {
   const t = setTimeout(() => reject(new Error('Server startet nicht')), 20000);
   srv.stdout.on('data', d => { if (String(d).includes('READY')) { clearTimeout(t); resolve(); } });
@@ -110,7 +110,7 @@ try {
   await page.keyboard.press('Escape');
   await page.waitForTimeout(150);
   check(!(await page.evaluate(() => document.getElementById('orderModal').classList.contains('show'))), 'Escape schließt den Auftragsdialog');
-  check(await page.evaluate(() => document.activeElement?.id === 'quickAdd'), 'Fokus kehrt zu "+ Auftrag" zurück');
+  check(await page.evaluate(() => document.activeElement?.id === 'quickAdd'), 'Fokus kehrt zu "+ Fertigungsauftrag" zurück');
   check(await page.evaluate(() => document.getElementById('toast').getAttribute('aria-live') === 'polite'), 'Toast wird vorgelesen (aria-live)');
 
   // ------------------------------------------------------------------ eigener Eingabedialog statt prompt()

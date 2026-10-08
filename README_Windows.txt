@@ -1,4 +1,4 @@
-MASCHINENPLANUNG V12.20.0 - WINDOWS-SERVER (LAN ONLY)
+MASCHINENPLANUNG V12.21.0 - WINDOWS-SERVER (LAN ONLY)
 =====================================================
 
 1. VORAUSSETZUNGEN
@@ -14,7 +14,7 @@ MASCHINENPLANUNG V12.20.0 - WINDOWS-SERVER (LAN ONLY)
 2b. UPDATE DIREKT VON GITHUB (Windows-Benutzer, z. B. <Benutzername>) - ab V12.10.2 nur aus Releases
    Normale PowerShell (kein Administrator):
         powershell -ExecutionPolicy Bypass -File C:\ProgramData\Maschinenplanung\Update_von_GitHub.ps1
-   - Nimmt das neueste GitHub-Release; dessen Commit muss in "main" liegen. Bestimmte Version: -Tag v12.20.0
+   - Nimmt das neueste GitHub-Release; dessen Commit muss in "main" liegen. Bestimmte Version: -Tag v12.21.0
    - Installiert wird genau ein fester Commit (Hash wird angezeigt). Mit -Sha256 <hash> wird das ZIP
      zusaetzlich geprueft (Hash steht in den Release-Notizen bzw. wird beim Download angezeigt).
    - Download, Pruefung und Entpacken laufen erst im Administrator-Fenster (UAC) in
@@ -29,6 +29,21 @@ MASCHINENPLANUNG V12.20.0 - WINDOWS-SERVER (LAN ONLY)
    release" -> Tag vX.Y.Z auf main -> Veroeffentlichen.
    BRANCH-SCHUTZ (GitHub -> Settings -> Branches -> main): "Require a pull request before merging",
    "Do not allow bypassing", kein Force-Push; Tags v* unter Settings -> Rules schuetzen.
+
+2c. HTTPS IM LAN (ab V12.21.0, empfohlen)
+   Ohne HTTPS gehen Passwoerter und Sitzungen unverschluesselt durchs LAN. Einmalig als Administrator:
+        cd C:\ProgramData\Maschinenplanung
+        .\HTTPS_Einrichten.ps1                       (optional: -Name mp.firma.local)
+   - Legt config\tls an (Firmen-CA + Serverzertifikat, nur SYSTEM/Administratoren lesbar), vertraut der CA
+     auf dem Server und startet ihn neu. Adresse danach: https://<LAN-IP>:8765 bzw. https://<PC-Name>:8765
+   - Arbeitsplaetze: Datei Firmen-CA.crt (im Live-Ordner) EINMAL als vertrauenswuerdige Stammzertifizierungs-
+     stelle importieren - per Gruppenrichtlinie oder je PC als Administrator:
+        certutil -addstore -f Root \\<Server>\<Freigabe>\Firmen-CA.crt
+     Ohne Import zeigt der Browser eine Zertifikatswarnung. Firefox nutzt den Windows-Speicher, wenn die
+     Richtlinie "Enterprise Roots" aktiv ist.
+   - Neue LAN-IP oder Ablauf (< 30 Tage): Server erneuert das Zertifikat beim Start selbst; die Firmen-CA
+     bleibt, kein neuer Import. Zurueck auf HTTP: config\tls umbenennen, Neustart_Server.ps1.
+   - Fehler MP-TLS-001: siehe FEHLERCODES.txt.
 
 2a. FIRMENDATEN (config\firma.json)
    - Liegt in C:\ProgramData\Maschinenplanung\config\ (neben data\): firma.json, logo.png|jpg, lizenz.key.

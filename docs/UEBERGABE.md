@@ -1,8 +1,8 @@
 # Übergabe – Produktionsplanung (Stand 07.10.2026)
 
-Stand: **V12.20.0 in Vorbereitung** · AV-Dialog und Projekt-Liveverfolgung: `docs/V12_20_0.md` · Hotfix-Abnahme #57–#62: `docs/V12_19_1.md` · Abnahme A–D: `docs/BLOCKS_A_D.md` · ausschließlich I 7a: `docs/ADMIN_UPDATES.md` (echter Windows-Server-Hostnachweis separat ausstehend)
+Stand: **V12.21.0 in Vorbereitung** · Lazy Loading und FA-Dialog: `docs/V12_21_0.md` · AV und Projekte live: `docs/V12_20_0.md` · V12.20.0 vom Nutzer erfolgreich unter Windows installiert; Sicherheitscheck bestätigt
 
-Aktuelle Priorität: AV-Dialog mit sichtbarer FA und Sollstunden nur je Konfektionsbereich; Produktion verfolgt eigene Projekte live lesend. Danach GitHub-Release und Windows-Update ausschließlich über `README_Windows.txt` 2b. Lazy Loading und Block E erst nach bestätigter Installation von V12.20.0. Keine Remote-Desktop-Nutzung.
+Aktuelle Priorität (Roadmap 08.10.2026): #69 Lazy Loading/FA-Dialog plus HTTPS im LAN als V12.21.0 (PR #70) → Block E (#46) → Rollen & Rechte nach V9 (#63) → Blocks F–I. Ist-Übersicht: `docs/AUDIT_V12_21.md`. Windows-Updates ausschließlich über `README_Windows.txt` 2b, HTTPS über 2c; keine Remote-Desktop-Nutzung.
 
 ## 1. Bisher veröffentlichte Funktionen
 

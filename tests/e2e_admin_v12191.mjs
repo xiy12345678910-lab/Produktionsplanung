@@ -23,7 +23,7 @@ with server.DB_LOCK,server.db_session() as con:
  if not ok: raise RuntimeError(f'seed validation {code}: {reason}')
  con.execute('UPDATE state SET json=?,revision=revision+1 WHERE id=1',(json.dumps(new,ensure_ascii=False),))
 httpd=server.MPHTTPServer(('127.0.0.1',${PORT}),server.Handler);print('READY',flush=True);httpd.serve_forever()`;
-const srv=spawn('python3',['-c',py],{stdio:['ignore','pipe','inherit']});
+const srv=spawn('python3',['-c',py],{stdio:['ignore','pipe','inherit'], env: { ...process.env, MP_CONFIG_DIR: path.join(dir, 'config') } });
 try{
  await new Promise((resolve,reject)=>{const t=setTimeout(()=>reject(new Error('server timeout')),20000);srv.stdout.on('data',d=>{if(String(d).includes('READY')){clearTimeout(t);resolve()}});srv.on('exit',c=>reject(new Error('server exit '+c)))});
  const {chromium}=await loadPlaywright(),browser=await chromium.launch();

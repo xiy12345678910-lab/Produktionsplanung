@@ -1,4 +1,4 @@
-MASCHINENPLANUNG V12.20.0 - FEHLERCODES
+MASCHINENPLANUNG V12.21.0 - FEHLERCODES
 ======================================
 
 Jeder Fehler wird dem Mitarbeiter als Klartext + Code angezeigt.
@@ -396,6 +396,8 @@ V12.14.0 NEU (Firmen-Config config\firma.json)
 MP-CFG-001   firma.json nicht lesbar oder kein JSON. Start verweigert, Datei unveraendert. Letzte gueltige
              Sicherung steht in der Meldung (config\firma.json.bak-<zeit>), zurueckkopieren oder Restore -MitConfig.
 MP-CFG-002   Feld in firma.json ungueltig (Meldung nennt Feld, z. B. company.color). Start verweigert.
+MP-TLS-001   HTTPS-Zertifikat in config\tls ungueltig oder nicht lesbar. Server startet nicht (kein stiller Rueckfall
+             auf HTTP). HTTPS_Einrichten.ps1 erneut ausfuehren oder config\tls umbenennen (= wieder HTTP).
 MP-CFG-003   schemaVersion neuer als dieses Programm (nur Warnung): Datei wird gelesen, nicht geaendert.
              Beim Speichern im Firmenprofil: schreibgeschuetzt (409), Datei bleibt unveraendert.
 

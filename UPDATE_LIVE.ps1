@@ -173,10 +173,10 @@ try {
         Write-Host (Get-MPLogTail $TargetBase 40)
         throw "Server V$NewVersion antwortet nicht (Start ueber den Task fehlgeschlagen, siehe Log oben)."
     }
-    Write-Host "    PASS: http://$($health.Config.lan_ip):$($health.Config.port) / V$($health.Health.version)" -ForegroundColor Green
+    Write-Host "    PASS: $($health.Url) / V$($health.Health.version)" -ForegroundColor Green
 
     Write-Host '9/9 Sicherheitscheck private Dateien ...'
-    Assert-MPPrivatePaths $health.Config
+    Assert-MPPrivatePaths $health.Config $health.Url
     Write-Host '    PASS: Programm-, Daten- und Backupdateien sind nicht per HTTP abrufbar.' -ForegroundColor Green
 
     # V12.10.2: nur die letzten 5 Update-Sicherungen behalten (enthalten je eine volle Datenbankkopie).
