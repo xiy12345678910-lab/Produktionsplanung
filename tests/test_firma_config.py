@@ -31,7 +31,7 @@ def check(cond, label):
 
 
 def fresh():
-    """Neuer Temp-Ordner mit config\\ und data\; server-Globals darauf umgebogen."""
+    r"""Neuer Temp-Ordner mit config\\ und data\; server-Globals darauf umgebogen."""
     d = Path(tempfile.mkdtemp(prefix="mp-cfg-"))
     server.CONFIG_DIR = d / "config"
     server.CONFIG_PATH = server.CONFIG_DIR / "firma.json"
