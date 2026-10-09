@@ -63,15 +63,15 @@ try{
    check((await page.locator('#adminDepartmentControls').innerText()).includes('Takt · Formate'),'System: Planungslogik je Bereich sichtbar')}
   // V12.23.0: GF-Steuerung und Historie abschaltbar – Menüpunkte verschwinden, Wiedereinschalten stellt sie her.
   check(await page.locator('#navGF').isVisible(),'GF-Steuerung visible while enabled');
-  await page.locator('[data-admin-mod="gf"]').uncheck();await page.locator('[data-admin-mod="history"]').uncheck();await page.waitForTimeout(400);
+  await page.locator('[data-admin-mod="gf"]').uncheck();await page.locator('[data-admin-mod="history"]').uncheck();await page.waitForFunction(()=>{const off=document.documentElement.getAttribute('data-mod-off')||'';return /\bgf\b/.test(off)&&/\bhistory\b/.test(off)},null,{timeout:5000}).catch(()=>{});
   check(await page.locator('#navGF').isHidden()&&await page.evaluate(()=>{const off=document.documentElement.getAttribute('data-mod-off')||'';return /\bgf\b/.test(off)&&/\bhistory\b/.test(off)}),'disabled GF-Steuerung/Historie hide menu and views');
-  await page.locator('[data-admin-mod="gf"]').check();await page.locator('[data-admin-mod="history"]').check();await page.waitForTimeout(400);
+  await page.locator('[data-admin-mod="gf"]').check();await page.locator('[data-admin-mod="history"]').check();await page.waitForFunction(()=>!/\b(gf|history)\b/.test(document.documentElement.getAttribute('data-mod-off')||''),null,{timeout:5000}).catch(()=>{});
   check(await page.locator('#navGF').isVisible()&&await page.evaluate(()=>!/\b(gf|history)\b/.test(document.documentElement.getAttribute('data-mod-off')||'')),'re-enabling restores GF-Steuerung/Historie');
   // V12.23.0: GF-Steuerung und Historie abschaltbar – Menüpunkte verschwinden, Wiedereinschalten stellt sie her.
   check(await page.locator('#navGF').isVisible(),'GF-Steuerung visible while enabled');
-  await page.locator('[data-admin-mod="gf"]').uncheck();await page.locator('[data-admin-mod="history"]').uncheck();await page.waitForTimeout(400);
+  await page.locator('[data-admin-mod="gf"]').uncheck();await page.locator('[data-admin-mod="history"]').uncheck();await page.waitForFunction(()=>{const off=document.documentElement.getAttribute('data-mod-off')||'';return /\bgf\b/.test(off)&&/\bhistory\b/.test(off)},null,{timeout:5000}).catch(()=>{});
   check(await page.locator('#navGF').isHidden()&&await page.evaluate(()=>{const off=document.documentElement.getAttribute('data-mod-off')||'';return /\bgf\b/.test(off)&&/\bhistory\b/.test(off)}),'disabled GF-Steuerung/Historie hide menu and views');
-  await page.locator('[data-admin-mod="gf"]').check();await page.locator('[data-admin-mod="history"]').check();await page.waitForTimeout(400);
+  await page.locator('[data-admin-mod="gf"]').check();await page.locator('[data-admin-mod="history"]').check();await page.waitForFunction(()=>!/\b(gf|history)\b/.test(document.documentElement.getAttribute('data-mod-off')||''),null,{timeout:5000}).catch(()=>{});
   check(await page.locator('#navGF').isVisible()&&await page.evaluate(()=>!/\b(gf|history)\b/.test(document.documentElement.getAttribute('data-mod-off')||'')),'re-enabling restores GF-Steuerung/Historie');
   const errors=await page.locator('#errorModal.show').count();check(errors===0,'no admin error dialog');await page.close();
  }finally{await browser.close()}
