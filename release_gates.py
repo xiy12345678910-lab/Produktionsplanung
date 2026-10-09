@@ -481,32 +481,112 @@ def validate_release_feasibility(old,new):
     return True,"",""
 
 
-def batch_hours(qty, batch_size, process_hours):
-    """Chargenberechnung (#47 Block F, BATCH_PROCESS): reine Funktion, NICHT verdrahtet.
+BATCH_SETUP_MODES = ("order", "batch")      # Rüsten je Auftrag / je Charge(ndurchgang)
+BATCH_PARTIAL_MODES = ("full", "prorata")   # Teilcharge: volle Dauer / anteilig
 
-    Laufzeit in Stunden = ceil(Menge / Chargengröße) × Prozessdauer je Charge
-    (Formel laut Issue #47; Einheit Stunden wie die übrigen Planungsdauern).
-    Menge 0 ergibt 0.0 Stunden. Teilchargen zählen als volle Charge.
 
-    Bewusst NICHT enthalten (fachlich offen, siehe Issue #47):
-    - parallele vs. sequenzielle Chargen (hier: strikt sequenziell)
-    - Reinigung zwischen Chargen/Produkten
-    - Rüst-/Anfahrzeit
-    Kein Scheduler-, UI- oder Datenmodell-Bezug.
+def batch_hours(qty, batch_size, process_hours, *, parallel=1, clean_hours=0.0, setup_hours=0.0, partial="full"):
+    """Chargenberechnung (#47 Block F, BATCH_PROCESS). Reine Funktion; Spiegel: index.html batchHours().
+
+    Laufzeit in Stunden:
+      Chargen   = ceil(Menge / Chargengröße)
+      Durchgänge = ceil(Chargen / parallel)          (parallel = Chargen gleichzeitig, 1 = nacheinander)
+      Lauf      = Durchgänge × Prozessdauer           (partial="full": Teilcharge zählt voll)
+                  bzw. (Durchgänge-1) × Prozessdauer + letzter Durchgang anteilig
+                  (partial="prorata": Anteil = Restmenge / (parallel × Chargengröße), auf ganze Minuten aufgerundet)
+      Ergebnis  = Lauf + (Durchgänge-1) × (clean_hours + setup_hours)
+    clean_hours = Reinigung zwischen zwei Durchgängen (nicht nach dem letzten),
+    setup_hours = zusätzliches Rüsten je weiterem Durchgang (Rüsten "je Charge"; das erste Rüsten
+    plant der Scheduler wie bisher als Umrüstzeit des FA).
+    Mit den Standardwerten identisch zur ursprünglichen Formel ceil(Menge/Chargengröße) × Prozessdauer.
+    Menge 0 ergibt 0.0 Stunden.
     """
     import math
     vals = []
-    for name, v in (("Menge", qty), ("Chargengröße", batch_size), ("Prozessdauer", process_hours)):
+    for name, v in (("Menge", qty), ("Chargengröße", batch_size), ("Prozessdauer", process_hours),
+                    ("Reinigung zwischen Chargen", clean_hours), ("Rüstzeit je Charge", setup_hours)):
         if isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v):
             raise ValueError(f"{name} muss eine endliche Zahl sein.")
         vals.append(v)
-    qty, batch_size, process_hours = vals
+    qty, batch_size, process_hours, clean_hours, setup_hours = vals
     if qty < 0:
         raise ValueError("Menge darf nicht negativ sein.")
     if batch_size <= 0:
         raise ValueError("Chargengröße muss größer als 0 sein.")
     if process_hours < 0:
         raise ValueError("Prozessdauer darf nicht negativ sein.")
+    if clean_hours < 0 or setup_hours < 0:
+        raise ValueError("Reinigung/Rüstzeit zwischen Chargen darf nicht negativ sein.")
+    if isinstance(parallel, bool) or not isinstance(parallel, int) or parallel < 1:
+        raise ValueError("Chargen gleichzeitig muss eine ganze Zahl ab 1 sein.")
+    if partial not in BATCH_PARTIAL_MODES:
+        raise ValueError("Teilcharge muss 'full' oder 'prorata' sein.")
     if qty == 0:
         return 0.0
-    return float(math.ceil(qty / batch_size) * process_hours)
+    batches = math.ceil(qty / batch_size)
+    rounds = math.ceil(batches / parallel)
+    if partial == "prorata":
+        cap = parallel * batch_size
+        frac = (qty - (rounds - 1) * cap) / cap
+        last = process_hours if frac >= 1 else math.ceil(process_hours * 60 * frac - 1e-9) / 60
+        run = (rounds - 1) * process_hours + last
+    else:
+        run = rounds * process_hours
+    return float(run + (rounds - 1) * (clean_hours + setup_hours))
+
+
+def batch_config_error(cfg):
+    """Prüft die Chargen-Einstellung einer Maschine (Feld machine["batch"]); None = gültig oder aus."""
+    import math
+    if cfg is None:
+        return None
+    if not isinstance(cfg, dict):
+        return "Charge muss ein Objekt sein."
+    unknown = set(cfg) - {"size", "minutes", "parallel", "cleanMinutes", "setup", "partial"}
+    if unknown:
+        return "Charge enthält unbekannte Felder: " + ", ".join(sorted(map(str, unknown))) + "."
+
+    def num(v):
+        return None if isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v) else float(v)
+    size = num(cfg.get("size"))
+    if size is None or not 0 < size <= 1e9:
+        return "Chargengröße muss größer 0 sein (Stück je Charge)."
+    mins = num(cfg.get("minutes"))
+    if mins is None or not mins.is_integer() or not 1 <= mins <= 14400:
+        return "Dauer je Charge muss zwischen 0:01 und 240:00 liegen (ganze Minuten)."
+    par = num(cfg.get("parallel", 1))
+    if par is None or not par.is_integer() or not 1 <= par <= 99:
+        return "Chargen gleichzeitig muss eine ganze Zahl von 1 bis 99 sein."
+    clean = num(cfg.get("cleanMinutes", 0))
+    if clean is None or not clean.is_integer() or not 0 <= clean <= 1440:
+        return "Reinigung zwischen Chargen muss zwischen 0:00 und 24:00 liegen (ganze Minuten)."
+    if cfg.get("setup", "order") not in BATCH_SETUP_MODES:
+        return "Rüsten muss 'je Auftrag' (order) oder 'je Charge' (batch) sein."
+    if cfg.get("partial", "full") not in BATCH_PARTIAL_MODES:
+        return "Teilcharge muss 'volle Dauer' (full) oder 'anteilig' (prorata) sein."
+    return None
+
+
+def normalize_batch(cfg):
+    """Gültige Chargen-Einstellung mit Standardwerten, sonst None (= Charge aus)."""
+    if cfg is None or batch_config_error(cfg):
+        return None
+    return {"size": float(cfg["size"]), "minutes": int(cfg["minutes"]), "parallel": int(cfg.get("parallel", 1)),
+            "cleanMinutes": int(cfg.get("cleanMinutes", 0)), "setup": cfg.get("setup", "order"),
+            "partial": cfg.get("partial", "full")}
+
+
+def batch_plan(cfg, qty, setup_minutes=0):
+    """Planstunden eines FA auf einer Maschine mit Charge (ohne die erste Umrüstzeit, die der
+    Scheduler wie bisher je FA plant). None, wenn Charge aus ist oder keine Menge > 0 vorliegt.
+    Spiegel: index.html batchPlanFor()."""
+    import math
+    c = normalize_batch(cfg)
+    if c is None or isinstance(qty, bool) or not isinstance(qty, (int, float)) or not math.isfinite(qty) or qty <= 0:
+        return None
+    setup_h = max(0.0, float(setup_minutes or 0)) / 60 if c["setup"] == "batch" else 0.0
+    batches = math.ceil(qty / c["size"])
+    rounds = math.ceil(batches / c["parallel"])
+    hours = batch_hours(qty, c["size"], c["minutes"] / 60, parallel=c["parallel"], clean_hours=c["cleanMinutes"] / 60,
+                        setup_hours=setup_h, partial=c["partial"])
+    return {"hours": hours, "batches": batches, "rounds": rounds, "cfg": c}

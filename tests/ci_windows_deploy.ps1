@@ -256,6 +256,18 @@ Check ($jobState.stage -eq 'failed' -and $jobState.rolledBack) 'Rollback-Healthc
 Check (Py fingerprint --url $Url --seed (Join-Path $Work 'seed.json') --out (Join-Path $Work 'after_rollback.json')) 'Fingerabdruck nach Rollback'
 Check (Py same --a (Join-Path $Work 'before_rollback.json') --b (Join-Path $Work 'after_rollback.json')) 'Migrationsfehler verliert keine Daten/Revision/History/Config'
 
+# ---------------- 7b. Umzug, Teil 1: Export auf dem "alten Geraet" (nur Szenario ci; Import in 8d) ----------------
+$umzugDir = Join-Path $Work 'umzug'
+$umzugZip = $null
+if ($Scenario -eq 'ci') {
+    $code = Run-PS (Join-Path $Base 'Umzug_Exportieren.ps1') @('-Ziel', $umzugDir) (Join-Path $Work 'umzug_export.log')
+    $umzugZip = Get-ChildItem -LiteralPath $umzugDir -Filter 'Umzug_*.zip' -ErrorAction SilentlyContinue | Select-Object -First 1
+    Check ($code -eq 0 -and $umzugZip) "Umzug_Exportieren.ps1 erstellt eine Umzugsdatei (Exitcode $code)"
+    Check (Test-Path -LiteralPath (Join-Path $Base 'updates\installing')) 'nach dem Export ist das alte Geraet schreibgesperrt'
+    Check ((Health $Url) -eq $beforeFailure) 'Server laeuft nach dem Export weiter (nur Lesen)'
+    Check (Py fingerprint --url $Url --seed (Join-Path $Work 'seed.json') --out (Join-Path $Work 'umzug_export.json')) 'Fingerabdruck beim Export'
+}
+
 # ---------------- 8. #52: Neuinstallation mit dem aktuellen Setup_Windows.ps1 (HTTPS als Standard) ----------------
 # Unabhaengig vom alten Stand, daher nur im Szenario ci (spart Laufzeit). Der Bestand aus 1-7 wird dafuer entfernt.
 function Remove-Live([string]$tag) {
@@ -307,7 +319,29 @@ if ($Scenario -eq 'ci') {
     # Ohne -SkipCertificateCheck: das Zertifikat muss ueber die eben vertraute Firmen-CA gueltig sein.
     Check ((Health $UrlTls) -eq $newVer) "Neuinstallation: Server antwortet per HTTPS ($UrlTls, V$newVer)"
     Check (-not (Health $Url)) 'Neuinstallation: kein unverschluesseltes HTTP mehr'
+
+    # 8d. Umzug, Teil 2: Import auf ein "neues Geraet" ohne Installation (kein Setup), aus einem Paket >= Exportversion.
+    if ($umzugZip) {
+        $code = Run-PS (Join-Path $new 'Umzug_Importieren.ps1') @('-Datei', $umzugZip.FullName) (Join-Path $Work 'umzug_alt.log')
+        $txt = Get-Content -LiteralPath (Join-Path $Work 'umzug_alt.log') -Raw
+        Check ($code -ne 0 -and $txt -match 'MP-UMZ-004') 'Umzug: aelteres Programm als der Export wird abgewiesen (MP-UMZ-004)'
+        Check ((Health $UrlTls) -eq $newVer) 'Umzug abgewiesen: bestehender Server laeuft unveraendert'
+        Remove-Live 'umzug'
+        Check (Remove-Folder $Base) 'Live-Ordner fuer den Umzug entfernt (neues Geraet ohne Installation)'
+        $target = Join-Path $Work 'future_2'
+        $targetVer = Get-MPPackageVersion $target
+        $code = Run-PS (Join-Path $target 'Umzug_Importieren.ps1') @('-Datei', $umzugZip.FullName) (Join-Path $Work 'umzug_import.log')
+        Check ($code -eq 0) "Umzug_Importieren.ps1 auf leerem Geraet (Exitcode $code)"
+        Check ((Health $Url) -eq $targetVer) "Umzug: Server antwortet (V$targetVer)"
+        Check (-not (Test-Path -LiteralPath (Join-Path $Base 'updates\installing'))) 'Umzug: keine Schreibsperre auf dem neuen Geraet'
+        Check (Py fingerprint --url $Url --seed (Join-Path $Work 'seed.json') --out (Join-Path $Work 'umzug_import.json')) 'Fingerabdruck nach dem Import'
+        Check (Py same --a (Join-Path $Work 'umzug_export.json') --b (Join-Path $Work 'umzug_import.json')) 'Umzug: Daten, Logins und Firmenprofil wie beim Export'
+        $code = Run-PS (Join-Path $target 'Umzug_Importieren.ps1') @('-Datei', $umzugZip.FullName) (Join-Path $Work 'umzug_nochmal.log')
+        $txt = Get-Content -LiteralPath (Join-Path $Work 'umzug_nochmal.log') -Raw
+        Check ($code -ne 0 -and $txt -match 'MP-UMZ-005' -and (Health $Url) -eq $targetVer) 'Umzug: zweiter Import ohne -Ueberschreiben abgewiesen, Server laeuft weiter'
+    }
 }
 
 if ($Fail -gt 0) { Write-Host "$Fail Pruefung(en) fehlgeschlagen" -ForegroundColor Red; exit 1 }
 Write-Host 'Alle Pruefungen bestanden' -ForegroundColor Green
+exit 0

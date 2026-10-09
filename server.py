@@ -36,7 +36,7 @@ BASE = Path(__file__).resolve().parent
 if str(BASE) not in sys.path:
     # Anhängen statt voranstellen: Standardbibliothek hat immer Vorrang vor Dateien im Programmordner.
     sys.path.append(str(BASE))
-from release_gates import machine_lanes, validate_release_feasibility, local_dt, work_intervals, personnel_assignment, can_staff, is_absent, LOCAL_TZ, make_segments, hits_machine_block, overlaps, clock_minutes
+from release_gates import machine_lanes, validate_release_feasibility, local_dt, work_intervals, personnel_assignment, can_staff, is_absent, LOCAL_TZ, make_segments, hits_machine_block, overlaps, clock_minutes, batch_plan, batch_config_error, normalize_batch
 from app_updates import UpdateManager
 import mp_license   # V12.27.0 (#52) Lizenzschlüssel
 
@@ -1880,7 +1880,23 @@ def _validate_baseline(o: dict, midset: set[str]) -> tuple[bool, str]:
     frozen_crew = _finite_float(b.get("crew", 1))
     if frozen_crew is None or frozen_crew < 1 or not frozen_crew.is_integer() or frozen_crew > 99:
         return False, "Freigabeplan enthält eine ungültige eingefrorene Besetzung."
-    if b.get("effort") is True:
+    if b.get("batch") is not None:
+        # #47 Block F: Charge eingefroren. Dauer = Chargenformel (Wandzeit, keine Teilung durch Besetzung) + Umrüstzeit.
+        bb = b.get("batch")
+        if not isinstance(bb, dict) or b.get("effort") is True:
+            return False, "Freigabeplan enthält eine ungültige Chargen-Angabe."
+        cfg = {k: v for k, v in bb.items() if k not in {"qty", "hours"}}
+        qty = bb.get("qty")
+        if batch_config_error(cfg) or isinstance(qty, bool) or not isinstance(qty, int) or qty < 1:
+            return False, "Freigabeplan enthält eine ungültige Chargen-Angabe."
+        bp = batch_plan(cfg, qty, frozen_setup)
+        frozen_hours = _finite_float(bb.get("hours"))
+        if bp is None or frozen_hours is None or abs(frozen_hours - bp["hours"]) > 1e-6:
+            return False, "Freigabeplan: Chargen-Stunden passen nicht zur eingefrorenen Chargen-Einstellung."
+        expected_total = bp["hours"] + frozen_setup / 60.0
+        if planned_hours is None or abs(planned_hours - expected_total) > 0.01:
+            return False, "Freigabeplan-Dauer stimmt nicht mit Chargen-Stunden plus eingefrorener Umrüstzeit überein."
+    elif b.get("effort") is True:
         # V12.18.0 Dauer nach Besetzung: Sollstunden = Personenstunden = Summe(Dauer x Besetzung des Segments); Umruestsegmente tragen setup=true.
         work_eff = setup_wall = 0.0
         for seg in b.get("segments") or []:
@@ -2496,6 +2512,13 @@ def validate_state(old: dict, new: dict) -> tuple[bool, str, str]:
         cleanup = _finite_float(m.get("cleanupMinutes", 0))
         if cleanup is None or cleanup < 0 or cleanup > 1440 or not cleanup.is_integer():
             return False, "MP-MACH-018", f"Reinigungszeit von Maschine '{m.get('name') or mid}' ist ungültig (0–24 h)."
+        if m.get("batch") is not None:
+            # #47 Block F: Charge je Maschine (optional; Feld fehlt/null = aus, Bestand unverändert)
+            reason = batch_config_error(m.get("batch"))
+            if reason:
+                return False, "MP-MACH-020", f"Charge von '{m.get('name') or mid}': {reason}"
+            if m.get("effortScaling") is True:
+                return False, "MP-MACH-021", f"'{m.get('name') or mid}': Charge und 'Dauer nach Besetzung' schließen sich aus."
         ok, reason = _validate_machine_format_fields(m)
         if not ok:
             return False, "MP-MACH-014", f"Maschine '{m.get('name') or mid}': {reason}"
@@ -2858,6 +2881,15 @@ def validate_state(old: dict, new: dict) -> tuple[bool, str, str]:
                     return False, "MP-PLAN-055", f"Auftrag '{o.get('order') or oid}': Freigabe muss die aktuell gültige Umrüstzeit der Einsatzmaschine einfrieren."
                 frozen_crew = _finite_float(baseline.get("crew", 1))
                 current_crew = _finite_float((machine_map.get(bmid) or {}).get("crew", 1))
+                cur_bp = batch_plan((machine_map.get(bmid) or {}).get("batch"), _finite_float(o.get("targetQty") or 0) or 0, current_setup or 0)
+                fb = baseline.get("batch")
+                if cur_bp is None:
+                    batch_ok = fb is None
+                else:
+                    batch_ok = (isinstance(fb, dict) and normalize_batch({k: v for k, v in fb.items() if k not in {"qty", "hours"}}) == cur_bp["cfg"]
+                                and fb.get("qty") == int(_finite_float(o.get("targetQty") or 0) or 0))
+                if not batch_ok:
+                    return False, "MP-PLAN-072", f"Auftrag '{o.get('order') or oid}': Freigabe muss die aktuell gültige Chargen-Einstellung der Einsatzmaschine einfrieren."
                 if baseline.get("effort") is not True and (frozen_crew is None or current_crew is None or abs(frozen_crew - current_crew) > 1e-9):
                     return False, "MP-PLAN-061", f"Auftrag '{o.get('order') or oid}': Freigabe muss die aktuell gültige Besetzung der Linie einfrieren."
 
@@ -3813,7 +3845,11 @@ def production_replan(state, order, stamp, crew):
         setup_left -= take
     effort = bool((order.get("baselinePlan") or {}).get("effort")) or order.get("planningType") == "LABOR_HOURS"
     target = float(order.get("hours") or order.get("requiredHours") or 1)
-    if not effort:
+    frozen_batch = (order.get("baselinePlan") or {}).get("batch")
+    if isinstance(frozen_batch, dict) and _finite_float(frozen_batch.get("hours")):
+        # #47 Block F: Charge = Wandzeit aus der eingefrorenen Chargenformel (wie Client effHours)
+        effort, target = False, float(frozen_batch["hours"])
+    elif not effort:
         target /= float((order.get("baselinePlan") or {}).get("crew") or 1)
     remaining = max(0.01, target-max(0, person-setup_person if effort else wall-setup))
     locked = production_segments(state, order, stamp, remaining, effort, setup_left, crew)
@@ -4701,6 +4737,10 @@ def template_apply(user: dict, body: dict) -> tuple[int, dict]:
     return 200, {"ok": True, "summary": summary, "revision": revision}
 
 
+class RequestTooLarge(ValueError):
+    """Body über dem Limit: Antwort 413 (MP-DATA-014) statt 400."""
+
+
 class Handler(BaseHTTPRequestHandler):
     server_version = f"ProduktionsplanungV{APP_VERSION}/1.0"
     # V12.10.2: Socket-Timeout gegen langsame bzw. hängende Verbindungen (Slowloris).
@@ -4762,6 +4802,8 @@ class Handler(BaseHTTPRequestHandler):
         if n <= 0 or n > limit:
             # Body bleibt ungelesen -> Verbindung nach der Antwort schließen.
             self.close_connection = True
+            if n > limit:
+                raise RequestTooLarge(f"Anfrage zu groß (max. {limit // 1024} KB).")
             raise ValueError("Ungültige oder zu große Anfrage")
         raw = self.rfile.read(n)
         def reject_constant(value):
@@ -4822,6 +4864,8 @@ class Handler(BaseHTTPRequestHandler):
         try:
             body = self.read_json()
             profile = validate_role_profile(body, rid)
+        except RequestTooLarge as e:
+            return self.json_response(413, mp_error("MP-DATA-014", str(e)))
         except ValueError as e:
             return self.json_response(400, mp_error("MP-ROLE-006", str(e)))
         with DB_LOCK, db_session() as con:
@@ -4964,8 +5008,16 @@ class Handler(BaseHTTPRequestHandler):
         return user
 
     def require_current_client(self) -> bool:
-        if (BASE / "updates" / "installing").exists():
-            self.json_response(503, mp_error("MP-UPD-003", "Update läuft. Änderungen sind bis zum Healthcheck gesperrt."))
+        lock = BASE / "updates" / "installing"
+        if lock.exists():
+            # Wartungssperre (UPDATE_LIVE.ps1 bis zum Healthcheck, Umzug_Exportieren.ps1 bis zum Umzug): nur Lesen.
+            try:
+                moving = lock.read_text(encoding="utf-8", errors="replace").startswith("UMZUG")
+            except OSError:
+                moving = False
+            text = ("Umzug auf ein neues Gerät: Änderungen sind hier gesperrt (nur Lesen)." if moving
+                    else "Update läuft. Änderungen sind bis zum Healthcheck gesperrt.")
+            self.json_response(503, mp_error("MP-UPD-003", text))
             return False
         client_version = str(self.headers.get("X-MP-Client-Version", "")).strip()
         if client_version != APP_VERSION:
@@ -5174,6 +5226,8 @@ class Handler(BaseHTTPRequestHandler):
             return
         try:
             body = self.read_json(64 * 1024)
+        except RequestTooLarge as e:
+            return self.json_response(413, mp_error("MP-DATA-014", str(e)))
         except Exception as e:
             return self.json_response(400, mp_error("MP-DATA-013", str(e)))
         return self.config_write(user, body)
@@ -5240,6 +5294,8 @@ class Handler(BaseHTTPRequestHandler):
             limit = MAX_BODY
         try:
             body = self.read_json(limit)
+        except RequestTooLarge as e:
+            return self.json_response(413, mp_error("MP-DATA-014", str(e)))
         except Exception as e:
             return self.json_response(400, mp_error("MP-DATA-013", str(e)))
         if path == "/api/updates/install":
@@ -5597,6 +5653,8 @@ class Handler(BaseHTTPRequestHandler):
         try:
             uid = int(path.rsplit("/", 1)[1])
             body = self.read_json()
+        except RequestTooLarge as e:
+            return self.json_response(413, mp_error("MP-DATA-014", str(e)))
         except Exception:
             return self.json_response(400, mp_error("MP-REQ-002", "Ungültige Anfrage."))
         with DB_LOCK, db_session() as con:
@@ -5659,6 +5717,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self.json_response(403, module_error("notifications"))
             try:
                 body = self.read_json(MAX_AUTH_BODY)
+            except RequestTooLarge as e:
+                return self.json_response(413, mp_error("MP-DATA-014", str(e)))
             except Exception as e:
                 return self.json_response(400, mp_error("MP-DATA-013", str(e)))
             with DB_LOCK, db_session() as con:
@@ -5684,6 +5744,8 @@ class Handler(BaseHTTPRequestHandler):
                 raise ValueError("Datenobjekt fehlt")
             if len(canonical(incoming).encode("utf-8")) > MAX_BODY:
                 raise ValueError("Datenstand zu groß")
+        except RequestTooLarge as e:
+            return self.json_response(413, mp_error("MP-DATA-014", str(e)))
         except Exception as e:
             return self.json_response(400, mp_error("MP-DATA-013", str(e)))
         action = str(body.get("action", "Gespeichert"))[:160]

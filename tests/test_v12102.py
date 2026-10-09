@@ -109,7 +109,7 @@ server.LOGIN_FAILS.clear()
 
 # --- B-M1 / N6: Body-Limit und Client-Header beim Login -------------------------------------------------
 st, b, _ = req("POST", "/api/login", raw=b"{" + b" " * (server.MAX_AUTH_BODY + 10) + b"}")
-check(st == 400, f"Login-Body über {server.MAX_AUTH_BODY} Byte abgelehnt ({st})")
+check(st == 413, f"Login-Body über {server.MAX_AUTH_BODY} Byte abgelehnt ({st})")
 st, b, _ = req("POST", "/api/login", {"username": "viewer", "password": PW}, {"X-MP-Client-Version": None})
 check(st == 403 and b.get("errorCode") == "MP-REQ-403", "Login ohne X-MP-Client-Version abgelehnt (Login-CSRF)")
 st, b, _ = req("POST", "/api/chat/messages", raw=b"{}" , headers={"Cookie": None})

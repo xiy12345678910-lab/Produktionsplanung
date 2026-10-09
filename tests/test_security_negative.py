@@ -170,13 +170,13 @@ class SecurityNegative(unittest.TestCase):
         s.close()
         head = b''.join(chunks).decode('latin-1')
         status = int(head.split(' ', 2)[1])
-        self.assertIn(status, (400, 413), head)
-        self.assertIn('MP-DATA-013', head)
+        self.assertEqual(status, 413, head)  # Entscheidung Jonas 09.10.: Übergröße = 413
+        self.assertIn('MP-DATA-014', head)
         self.assertEqual(self.req('GET', '/api/health')[0], 200)
 
     def test_oversized_login_body_and_bad_content_length(self):
         st, body, _ = self.req('POST', '/api/login', raw=b'{' + b' ' * (server.MAX_AUTH_BODY + 5) + b'}')
-        self.assertEqual((st, body.get('errorCode')), (400, 'MP-DATA-013'))
+        self.assertEqual((st, body.get('errorCode')), (413, 'MP-DATA-014'))
         for cl in ('abc', '-1', '0'):
             s = socket.create_connection(('127.0.0.1', self.port), timeout=10)
             s.sendall((f'POST /api/login HTTP/1.1\r\nHost: 127.0.0.1:{self.port}\r\nX-MP-Client-Version: {server.APP_VERSION}\r\n'

@@ -3,12 +3,27 @@
 #
 # Ablauf: Online-Backup -> Stopp -> finales Backup -> Code sichern -> neue Dateien ->
 #         Ordner sperren -> Tasks registrieren -> Start -> Health/Version -> HTTP-Check.
-# Bei jedem Fehler: alter Code UND Datenbank aus dem finalen Backup werden zurueckgespielt.
-param([string]$UpdateJobPath)
+# Bei einem Fehler: alter Code wird zurueckgespielt. Die Datenbank wird NUR dann durch das finale Backup ersetzt,
+# wenn die neue Version bereits gestartet war (Migration moeglich). Von Schritt 3 bis zum bestandenen Health- und
+# Sicherheitscheck ist die Wartungssperre (updates\installing) aktiv: der Server nimmt keine Aenderungen an
+# (MP-UPD-003), es gibt also keine Benutzerdaten, die dabei verloren gehen koennten (docs/ROLLBACK.md).
+#
+# Rueckkehr zu einer AELTEREN Version (nur Programmcode, Daten bleiben): aus dem installierten (neueren) Updater
+#   UPDATE_LIVE.ps1 -Paket <entpackter alter Paketordner> -Rueckstufen     (Update_von_GitHub.ps1 -Tag vALT -Rueckstufen)
+param([string]$UpdateJobPath, [string]$Paket, [switch]$Rueckstufen)
 $ErrorActionPreference = 'Stop'
-$NewSource = Split-Path -Parent $MyInvocation.MyCommand.Path
-. (Join-Path $NewSource 'MP_Common.ps1')
+$ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+. (Join-Path $ScriptDir 'MP_Common.ps1')
 Assert-MPAdmin 'UPDATE_LIVE.ps1'
+$NewSource = $ScriptDir
+if ($Paket) {
+    # Rueckstufung: Ablauf und Sicherungen dieses (neueren) Skripts, Programmdateien aus dem aelteren Paket.
+    if (-not $Rueckstufen -or $UpdateJobPath) { throw 'MP-UPD-007: -Paket nur zusammen mit -Rueckstufen (manuelle Rueckkehr zu einer aelteren Version).' }
+    $NewSource = (Resolve-Path -LiteralPath $Paket).Path
+    $pkgFiles = @(Get-MPAppFileList $NewSource)
+    if ($pkgFiles.Count -eq 0) { throw "MP-UPD-007: Dateiliste (MP_Common.ps1) im Paket $NewSource nicht lesbar." }
+    $MP_AppFiles = $pkgFiles
+}
 
 $NewVersion = Get-MPPackageVersion $NewSource
 if (-not $NewVersion) { throw 'server.py im Updatepaket fehlt oder enthaelt keine APP_VERSION.' }
@@ -48,11 +63,18 @@ function Set-MPUpdateStage([string]$Stage, [string]$ErrorText = '', [bool]$Rolle
 }
 
 # --- Downgrade-Schutz -----------------------------------------------------------------
+# Massgeblich ist die hoehere von laufender und installierter Version (auch bei gestopptem Server).
 $running = Get-MPHealth $OldBase
-if ($running -and $running.Health -and $running.Health.version) {
-    if ([version]([string]$running.Health.version) -gt [version]$NewVersion) {
-        throw "Abbruch: Live laeuft V$($running.Health.version), Paket ist aelter (V$NewVersion). Downgrades zerstoeren neuere Datenstaende."
-    }
+$liveVersion = Get-MPPackageVersion $OldBase
+if ($running -and $running.Health -and $running.Health.version -and (-not $liveVersion -or [version]([string]$running.Health.version) -gt [version]$liveVersion)) {
+    $liveVersion = [string]$running.Health.version
+}
+$IsDowngrade = [bool]($liveVersion -and [version]$liveVersion -gt [version]$NewVersion)
+if ($IsDowngrade -and -not $Rueckstufen) {
+    throw "Abbruch: Live ist V$liveVersion, Paket ist aelter (V$NewVersion). Zurueck zu einer aelteren Version nur bewusst mit -Rueckstufen (nur Programmcode, Daten bleiben; docs/ROLLBACK.md)."
+}
+if ($IsDowngrade) {
+    Write-Warning "RUECKSTUFUNG V$liveVersion -> V${NewVersion}: nur der Programmcode wird ersetzt. Die Datenbank bleibt (keine alte Sicherung wird eingespielt); der Vorabtest prueft, ob V$NewVersion mit den aktuellen Daten startet."
 }
 
 Write-Host "Updatepaket: V$NewVersion ($NewSource)" -ForegroundColor Cyan
@@ -63,6 +85,8 @@ if (-not (Test-MPPythonLocationSafe $PythonExe)) { Write-Warning 'Python-Ordner 
 $FinalBackup = $null
 $RollbackCode = $null
 $LiveTouched = $false
+$NewStarted = $false   # ab hier kann die neue Version die Datenbank migriert haben
+$Committed = $false    # Health- und Sicherheitscheck bestanden: ab hier nie mehr zurueckrollen
 $Maintenance = Join-Path $TargetBase 'updates\installing'
 $UpdateMutex = New-Object Threading.Mutex($false, 'Global\MaschinenplanungUpdate')
 $HaveMutex = $false
@@ -71,8 +95,8 @@ try {
     if (-not $HaveMutex) { throw 'MP-UPD-002: Ein anderes Update laeuft bereits.' }
     Set-MPUpdateStage 'backup'
     Write-Host '1/9 Online-Datenbankbackup ...'
-    # Use this package's backup code: legacy installations may not yet back up firma.json.
-    & $PythonExe -I (Join-Path $NewSource 'Backup_Datenbank.py') --base $OldBase
+    # Backup code of this updater (never the older one): legacy installations may not yet back up firma.json.
+    & $PythonExe -I (Join-Path $ScriptDir 'Backup_Datenbank.py') --base $OldBase
     if ($LASTEXITCODE -notin @(0, 2)) { throw 'Online-Datenbankbackup fehlgeschlagen.' }
 
     Write-Host '2/9 Vorabtest: neue Version mit einer Datenkopie starten (Live bleibt unberuehrt) ...'
@@ -105,7 +129,7 @@ try {
     Stop-MPServer $OldBase
 
     Write-Host '4/9 Finales Backup nach Stopp ...'
-    & $PythonExe -I (Join-Path $NewSource 'Backup_Datenbank.py') --base $OldBase
+    & $PythonExe -I (Join-Path $ScriptDir 'Backup_Datenbank.py') --base $OldBase
     if ($LASTEXITCODE -notin @(0, 2)) { throw 'Finales Datenbankbackup fehlgeschlagen.' }
     $FinalBackup = Get-ChildItem (Join-Path $OldBase 'backups') -File -Filter 'maschinenplanung_*.sqlite3' |
         Sort-Object LastWriteTime -Descending | Select-Object -First 1
@@ -163,6 +187,7 @@ try {
     Register-MPServerTask $TargetBase $PythonExe
     Register-MPBackupTask $TargetBase $PythonExe
     Set-MPUpdateStage 'migration'
+    $NewStarted = $true
     Start-ScheduledTask -TaskName $MP_TaskName
     Set-MPUpdateStage 'restart'
 
@@ -180,6 +205,9 @@ try {
     Write-Host '9/9 Sicherheitscheck private Dateien ...'
     Assert-MPPrivatePaths $health.Config $health.Url
     Write-Host '    PASS: Programm-, Daten- und Backupdateien sind nicht per HTTP abrufbar.' -ForegroundColor Green
+    # Ab hier ist das Update gueltig. Die Wartungssperre faellt erst danach; spaetere Fehler (Aufraeumen, Statusdatei)
+    # loesen keinen Rollback mehr aus - sonst koennte ein Rollback Daten verwerfen, die nach dem Entsperren entstanden sind.
+    $Committed = $true
 
     # V12.10.2: nur die letzten 5 Update-Sicherungen behalten (enthalten je eine volle Datenbankkopie).
     Get-ChildItem -LiteralPath (Join-Path $TargetBase 'update_backups') -Directory -Filter 'pre_V*' -ErrorAction SilentlyContinue |
@@ -197,6 +225,12 @@ try {
 }
 catch {
     $err = $_
+    if ($Committed) {
+        Remove-Item -LiteralPath $Maintenance -Force -ErrorAction SilentlyContinue
+        Write-Warning "Update auf V$NewVersion ist installiert und geprueft; nur ein Abschlussschritt meldete einen Fehler: $($err.Exception.Message)"
+        try { Set-MPUpdateStage 'complete' } catch { Write-Warning "Updatestatus nicht geschrieben: $($_.Exception.Message)" }
+        return
+    }
     Write-Host ''
     Write-Host "UPDATE FEHLGESCHLAGEN: $($err.Exception.Message)" -ForegroundColor Red
     if (-not $HaveMutex) { throw $err }
@@ -234,8 +268,17 @@ catch {
                 if ($name.Contains('/') -and (Test-Path -LiteralPath $parent) -and -not (Get-ChildItem -LiteralPath $parent -Force)) { Remove-Item -LiteralPath $parent -Force -ErrorAction SilentlyContinue }
             }
         }
-        if ($FinalBackup) {
-            # Eine evtl. bereits migrierte Datenbank durch den Stand vor dem Update ersetzen.
+        if ($FinalBackup -and $NewStarted) {
+            # Die neue Version war gestartet und kann die Datenbank migriert haben, die der alte Code evtl. nicht liest:
+            # durch den Stand vor dem Update ersetzen. Kein Datenverlust: seit Schritt 3 gilt die Wartungssperre
+            # (MP-UPD-003), Benutzer konnten nichts aendern. Der ersetzte Stand bleibt zur Kontrolle erhalten
+            # (eigener Ordner neben pre_V*, nie im Rollback-Ordner: dessen Unterordner gelten als Programmdateien).
+            $failedDb = Join-Path $TargetBase "update_backups\fehlversuch_V$($NewVersion)_$Stamp"
+            New-Item -ItemType Directory -Path $failedDb -Force | Out-Null
+            foreach ($ext in @('', '-wal', '-shm')) {
+                $f = Join-Path $TargetBase "data\maschinenplanung.sqlite3$ext"
+                if (Test-Path -LiteralPath $f) { Copy-Item -LiteralPath $f -Destination $failedDb -Force -ErrorAction SilentlyContinue }
+            }
             Remove-Item (Join-Path $TargetBase 'data\maschinenplanung.sqlite3-wal'), (Join-Path $TargetBase 'data\maschinenplanung.sqlite3-shm') -Force -ErrorAction SilentlyContinue
             Copy-Item -LiteralPath (Join-Path $RollbackCode 'maschinenplanung_vor_update.sqlite3') -Destination (Join-Path $TargetBase 'data\maschinenplanung.sqlite3') -Force
         }

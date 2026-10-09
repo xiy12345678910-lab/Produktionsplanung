@@ -21,6 +21,8 @@ MASCHINENPLANUNG V12.27.0 - WINDOWS-SERVER (LAN ONLY)
      C:\ProgramData\Maschinenplanung_Update\ - nur SYSTEM/Administratoren duerfen dort schreiben.
    - Branch-Stand nur zum Testen: -Branch <name> -UnsicherBranch
    - Nur herunterladen (ohne Installation): -NurHerunterladen
+   - Zurueck zu einer AELTEREN Version (nur Programmcode, die Daten bleiben): -Tag v12.26.0 -Rueckstufen
+     Ohne -Rueckstufen bricht der Updater bei aelteren Paketen ab. Details: docs/ROLLBACK.md
    ERSTES Update auf V12.10.2 (alter Updater kennt noch keine Releases):
         $B = '<Branch>'
         irm "https://raw.githubusercontent.com/<GitHub-Konto>/<Repo>/$B/Update_von_GitHub.ps1" -OutFile "$env:USERPROFILE\Downloads\Update_von_GitHub.ps1"
@@ -76,6 +78,7 @@ MASCHINENPLANUNG V12.27.0 - WINDOWS-SERVER (LAN ONLY)
      Diagnosepaket, Anmeldung, eigenes Passwort, Lizenz-Upload und Updates bleiben moeglich.
    - Solange die Lizenzpruefung im Programm nicht aktiv ist, zeigt System > Lizenz "nicht aktiv" (keine Einschraenkung).
    - Die Datei wird mit config\ gesichert (firma_<zeit>.zip) und von Updates nicht angefasst.
+   - Neues Geraet: Die Lizenz gilt fuer die Firma (tenantId), nicht fuer die Hardware. Sie zieht mit um (Abschnitt 9).
 
 3. ERSTINSTALLATION (neuer PC)
    PowerShell als Administrator:
@@ -102,6 +105,7 @@ MASCHINENPLANUNG V12.27.0 - WINDOWS-SERVER (LAN ONLY)
    .\Restore_Datenbank.ps1      Sicherung zurueckspielen (siehe 6.)
    .\CHECK_LAN_SICHERHEIT.ps1   Sicherheits- und Betriebscheck
    .\Deinstallieren.ps1         Tasks + Firewall entfernen (Daten bleiben)
+   .\Umzug_Exportieren.ps1      Umzug auf ein neues Geraet vorbereiten (siehe 9.)
 
    WICHTIG: Die Datenbank laeuft im WAL-Modus. Nie nur data\maschinenplanung.sqlite3 kopieren -
    der juengste Stand kann in der -wal-Datei liegen. Immer Backup_Datenbank.ps1 verwenden.
@@ -113,6 +117,8 @@ MASCHINENPLANUNG V12.27.0 - WINDOWS-SERVER (LAN ONLY)
    zurueck (inkl. -wal/-shm), startet und prueft den Server. Startet er nicht, wird der Stand vor
    dem Restore automatisch zurueckgespielt.
    update_backups\ behaelt die letzten 5 Update-Staende.
+   Ein fehlgeschlagenes Update rollt nur den Programmcode zurueck. Neuere Daten werden nie verworfen
+   (docs/ROLLBACK.md).
 
 7. ROLLEN
    Admin                   alles, inkl. Benutzerverwaltung und Backup-Import
@@ -141,6 +147,25 @@ MASCHINENPLANUNG V12.27.0 - WINDOWS-SERVER (LAN ONLY)
    - Transport ist HTTP (unverschluesselt). Nur im vertrauenswuerdigen LAN betreiben,
      keine Portweiterleitung/UPnP. HTTPS ist fuer eine spaetere Version vorgesehen.
    - Live-Ordner ist gesperrt: Aenderungen an Programmdateien nur mit Administratorrechten.
+
+9. UMZUG AUF EIN NEUES GERAET (ab V12.27.0)
+   Daten, Firmenprofil, Logo, Lizenz und HTTPS-Zertifikate ziehen in EINER Datei um.
+   1. Altes Geraet, PowerShell als Administrator im Live-Ordner:
+        .\Umzug_Exportieren.ps1            (oder -Ziel E:\ fuer einen USB-Stick)
+      Danach ist das alte Geraet nur noch lesbar. Die Ausgabe nennt Datei und SHA256.
+      Umzug abbrechen: .\Umzug_Exportieren.ps1 -Entsperren
+   2. Neues Geraet: Python 3 fuer alle Benutzer installieren (Abschnitt 1). Das Programmpaket in gleicher
+      oder neuerer Version entpacken und die Umzugsdatei dazukopieren. Setup_Windows.ps1 ist NICHT noetig.
+   3. Neues Geraet, PowerShell als Administrator im entpackten Paketordner:
+        .\Umzug_Importieren.ps1 -Datei <Pfad>\Umzug_<Firma>_<Datum>.zip -Sha256 <Hash aus Schritt 1>
+      Das Skript prueft das Paket, installiert, spielt Daten und config\ ein, startet den Server und zeigt die
+      neue Adresse. Gibt es dort schon Daten, ist -Ueberschreiben noetig; der vorhandene Stand wird vorher gesichert.
+   4. Benutzer verwenden die neue Adresse. Die Firmen-CA bleibt gleich, die Arbeitsplaetze brauchen keinen
+      neuen Zertifikatsimport. Das Serverzertifikat fuer die neue IP erneuert der Server selbst.
+   5. Altes Geraet: .\Deinstallieren.ps1 (Daten bleiben dort als Reserve). Die Umzugsdatei danach loeschen,
+      denn sie enthaelt alle Daten und private Schluessel.
+   BACKUP_ZIEL.txt zieht mit um. Ist das Zweitziel vom neuen Geraet nicht erreichbar, warnt der Import.
+   Fehlercodes MP-UMZ-001 bis -009: FEHLERCODES.txt.
 
 ALLGEMEINE ADMIN-UPDATES AB V12.19.0 (BLOCK I 7a)
 - Fuer zukuenftige Softwareversionen: serverseitige Releasepruefung, Admin-Hinweis nur bei neuer

@@ -71,6 +71,7 @@ MP-DATA-010  Datenstand ist kein Objekt.
 MP-DATA-011  Mindestens eine Maschine ist erforderlich.
 MP-DATA-012  Auftragsliste fehlt.
 MP-DATA-013  Kontextbezogener Fehler; Klartext wird direkt in der Anwendung angezeigt.
+MP-DATA-014  Anfrage zu groß (HTTP 413): Datenmenge über dem Limit; Änderung kleiner aufteilen oder Admin informieren.
 MP-DATA-014  Feld 'meta'/'ui' muss ein Objekt, 'planVersions' eine Liste von Objekten sein.
 
 [MACH - Maschinenstammdaten]
@@ -491,6 +492,8 @@ MP-UPD-003   Update-Wartungssperre: Aenderungen bis Healthcheck blockiert.
 MP-UPD-004   Vorabtest/Backup unvollstaendig oder ungueltig; Live-Eingriff wird abgebrochen.
 MP-UPD-005   Rollback-Healthcheck fehlgeschlagen; Wartungssperre bleibt bestehen, Wiederherstellung durch IT erforderlich.
 MP-UPD-006   Ungueltiger Programmdateiname im Paket (nur Name oder eine Ordnerebene mit /, kein .., kein Laufwerk); nichts wird kopiert.
+MP-UPD-007   UPDATE_LIVE.ps1 -Paket nur zusammen mit -Rueckstufen bzw. Dateiliste des aelteren Pakets nicht lesbar. Nichts veraendert.
+             Rueckkehr zu einer aelteren Version: Update_von_GitHub.ps1 -Tag vALT -Rueckstufen (docs/ROLLBACK.md).
 
 V12.27.0 NEU (Lizenzschluessel, #52)
 MP-LIC-001   Lizenz abgelaufen/fehlt - nur Lesen (403). Nach 30 Tagen Kulanz ohne gueltige Lizenz lehnt der Server jede
@@ -501,3 +504,30 @@ MP-LIC-003   Lizenzdatei unlesbar: kein JSON, Felder fehlen/ungueltig (id, licen
 MP-LIC-004   Lizenzdatei gilt fuer eine andere Firma: tenantId der Lizenz passt nicht zu config\firma.json.
 MP-LIC-005   Lizenzdatei abgelehnt: Ablaufdatum ueberschritten. Neue Lizenz beim Lizenzgeber anfordern.
 MP-LIC-006   Lizenz entfernen: keine Lizenzdatei vorhanden.
+
+V12.27.0 NEU (Umzug auf ein neues Geraet: Umzug_Exportieren.ps1 / Umzug_Importieren.ps1, README_Windows.txt 9)
+MP-UMZ-001   Installation/Programm fehlt: Export ohne Datenbank im Live-Ordner, Import ohne vollstaendiges Programm im
+             Paketordner bzw. ohne aktives LAN (Profil Privat/Domaene). Nichts veraendert.
+MP-UMZ-002   Umzugsdatei nicht gefunden, keine ZIP-Datei oder umzug.json fehlt/ist ungueltig. Nichts veraendert.
+MP-UMZ-003   Umzugsdatei beschaedigt oder veraendert: SHA256 (ganze Datei oder einzelne Datei) stimmt nicht, unerwartete
+             Datei/Pfad im Paket oder Datenbank im Paket ungueltig. Nichts veraendert; Datei neu kopieren bzw. neu exportieren.
+MP-UMZ-004   Programmversion auf dem neuen Geraet ist aelter als die exportierte. Programmpaket in gleicher oder neuerer
+             Version verwenden. Nichts veraendert.
+MP-UMZ-005   Neues Geraet hat bereits eine Datenbank. Import nur mit -Ueberschreiben; der aktuelle Stand wird dann vorher
+             gesichert (backups\maschinenplanung_*_vor_umzug.sqlite3 + firma_*.zip, config in backups\umzug_*\vorher).
+MP-UMZ-006   Sicherung des aktuellen Stands vor dem Import fehlgeschlagen. Nichts ueberschrieben, Server laeuft weiter.
+MP-UMZ-007   Ein Update laeuft (updates\installing). Umzug erst nach dem Update. Umzug_Exportieren.ps1 -Entsperren hebt
+             nur die eigene Umzugssperre auf, nie die eines Updates.
+MP-UMZ-008   Server antwortet nach dem Import nicht (Health-Check). Log steht in der Ausgabe; vorheriger Stand ggf. mit
+             Restore_Datenbank.ps1 -Datei <..._vor_umzug.sqlite3> -MitConfig. Das Umzugspaket bleibt unveraendert.
+MP-UMZ-009   Unerwarteter Fehler beim Export/Import (Meldung nennt die Ursache, z. B. Datentraeger voll). Beim Import wird
+             ein halb eingespielter Stand automatisch zurueckgenommen.
+
+V12.27.0 NEU (Chargen je Maschine, #47 Block F)
+MP-MACH-020  Charge einer Maschine (Feld batch) ist ungueltig: Chargengroesse > 0, Dauer je Charge 0:01-240:00 (ganze
+             Minuten), Chargen gleichzeitig ganze Zahl 1-99, Reinigung zwischen Chargen 0:00-24:00, Ruesten
+             "je Auftrag"/"je Charge", Teilcharge "volle Dauer"/"anteilig", keine weiteren Felder. Feld fehlt = Charge aus.
+MP-MACH-021  Charge und "Dauer nach Besetzung" (effortScaling) schliessen sich an derselben Maschine aus.
+MP-PLAN-072  Freigabe muss die aktuell gueltige Chargen-Einstellung der Einsatzmaschine und die Menge einfrieren
+             (Freigabeplan.batch). Abhilfe: Seite neu laden und erneut freigeben.
+MP-PLAN-047  (erweitert) Freigabeplan mit Charge: Dauer = Chargen-Stunden aus der eingefrorenen Einstellung + Umruestzeit.
