@@ -344,3 +344,4 @@ if ($Scenario -eq 'ci') {
 
 if ($Fail -gt 0) { Write-Host "$Fail Pruefung(en) fehlgeschlagen" -ForegroundColor Red; exit 1 }
 Write-Host 'Alle Pruefungen bestanden' -ForegroundColor Green
+exit 0
