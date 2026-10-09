@@ -522,3 +522,12 @@ MP-UMZ-008   Server antwortet nach dem Import nicht (Health-Check). Log steht in
              Restore_Datenbank.ps1 -Datei <..._vor_umzug.sqlite3> -MitConfig. Das Umzugspaket bleibt unveraendert.
 MP-UMZ-009   Unerwarteter Fehler beim Export/Import (Meldung nennt die Ursache, z. B. Datentraeger voll). Beim Import wird
              ein halb eingespielter Stand automatisch zurueckgenommen.
+
+V12.27.0 NEU (Chargen je Maschine, #47 Block F)
+MP-MACH-020  Charge einer Maschine (Feld batch) ist ungueltig: Chargengroesse > 0, Dauer je Charge 0:01-240:00 (ganze
+             Minuten), Chargen gleichzeitig ganze Zahl 1-99, Reinigung zwischen Chargen 0:00-24:00, Ruesten
+             "je Auftrag"/"je Charge", Teilcharge "volle Dauer"/"anteilig", keine weiteren Felder. Feld fehlt = Charge aus.
+MP-MACH-021  Charge und "Dauer nach Besetzung" (effortScaling) schliessen sich an derselben Maschine aus.
+MP-PLAN-072  Freigabe muss die aktuell gueltige Chargen-Einstellung der Einsatzmaschine und die Menge einfrieren
+             (Freigabeplan.batch). Abhilfe: Seite neu laden und erneut freigeben.
+MP-PLAN-047  (erweitert) Freigabeplan mit Charge: Dauer = Chargen-Stunden aus der eingefrorenen Einstellung + Umruestzeit.
