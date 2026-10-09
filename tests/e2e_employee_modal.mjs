@@ -101,6 +101,9 @@ try {
   await page.locator('#personnelBody [data-emp-open="e_pop"]').first().click(); await page.waitForTimeout(200);
   check(await page.locator('#empModal.show').count() === 1 && await page.locator('#personnelBody [data-emp-hours="e_pop"]').count() === 1, 'Wochenplan: Name öffnet das Popup, Arbeitszeit-Knopf bleibt');
   await page.click('#empModalClose');
+  // #84 UI: "Platz" nur bei mehreren Plätzen, Gate-Schalter in der Kachel, Reiter neben der KW-Wahl
+  const ui = await ev(() => ({ lanes: document.querySelectorAll('#personnelBody [data-person-lane]').length, single: data.machines.every(m => machineLanes(m.id) <= 1), gateInCard: !!document.getElementById('personnelGate')?.closest('.card'), tabsRow: !!document.querySelector('.pHeadRow .tabBar') && !!document.querySelector('.pHeadRow .weekbar') }));
+  check(ui.single && ui.lanes === 0 && ui.gateInCard && ui.tabsRow, `Personal: kein „Platz“ bei Einzelplätzen, Gate in der Kachel, Reiter neben KW (${JSON.stringify(ui)})`);
   check(!(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1)), 'Kein seitlicher Seiten-Scroll');
 } catch (e) {
   check(false, 'Unerwarteter Fehler: ' + (e.stack || e.message));
