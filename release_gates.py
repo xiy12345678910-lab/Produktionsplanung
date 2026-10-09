@@ -91,8 +91,15 @@ def dept_shared(state,did):
     return any(isinstance(d,dict) and str(d.get("id"))==did and d.get("sharedOperators") is True
                for d in state.get("departments") or [])
 
+def day_rule(state,mid,day):
+    key=day.strftime("%Y-%m-%d")
+    return next((x for x in state.get("dayRules") or [] if isinstance(x,dict) and str(x.get("machineId"))==mid and str(x.get("date"))==key),None)
+
 def mode_for_day(state,mid,day):
     key=day.strftime("%Y-%m-%d")
+    dr=day_rule(state,mid,day)
+    if dr and str(dr.get("mode") if dr.get("mode") is not None else "") in {"0","1","2"}:
+        return str(dr.get("mode"))
     for x in state.get("exceptions") or []:
         if isinstance(x,dict) and str(x.get("date"))==key:
             return str(x.get("mode","0"))
@@ -138,11 +145,20 @@ def work_intervals(state,mid,day):
         return []
     if mode=="1":
         key="fridaySingle" if day.weekday()==4 else "single"
-        return template_intervals(day,t.get(key) or {},"single")
-    if mode=="2":
-        return sorted(template_intervals(day,t.get("early") or {},"early")
-                      +template_intervals(day,t.get("late") or {},"late"))
-    return []
+        out=template_intervals(day,t.get(key) or {},"single")
+    elif mode=="2":
+        out=sorted(template_intervals(day,t.get("early") or {},"early")
+                   +template_intervals(day,t.get("late") or {},"late"))
+    else:
+        return []
+    # #84: Ueberstunden verlaengern das Tagesende (wie Client workIntervalsForDateRaw), hoechstens bis 23:59.
+    dr=day_rule(state,mid,day)
+    extra=max(0,min(240,int((dr or {}).get("extraMinutes") or 0)))
+    if extra and out:
+        a,z,s=out[-1]
+        day_end=on_day(day,"23:59")
+        out[-1]=(a,min(z+timedelta(minutes=extra),day_end) if day_end else z+timedelta(minutes=extra),s)
+    return out
 
 def make_segments(raw,mid,oid):
     out=[]
@@ -285,6 +301,10 @@ def daily_hours(e,day,templates=None):
 def limit_assignment(e,a,day,templates=None):
     if not a:
         return None
+    if a.get("overtime") is True:
+        # #84: Ueberstunden/freier Tag ausdruecklich geplant -> nicht auf die Vertragsstunden kuerzen.
+        start,end=clock_minutes(a.get("start")),clock_minutes(a.get("end"))
+        return dict(a) if start is not None and end is not None and end>start else None
     limit=round(daily_hours(e,day,templates)*60)
     start,end=clock_minutes(a.get("start")),clock_minutes(a.get("end"))
     if limit<=0 or start is None or end is None:

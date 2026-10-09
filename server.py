@@ -691,7 +691,7 @@ def init_db(seed: str = "neutral") -> None:
                 "machines": [],
                 "projects": [],
                 "workSteps": [],
-                "yearRules": [], "weekRules": [], "exceptions": [],
+                "yearRules": [], "weekRules": [], "dayRules": [], "exceptions": [],
                 "operatorCapacity": {"single": 3, "early": 3, "late": 3},
                 "employees": [], "personnelAssignments": [], "personnelAbsences": [], "weeklyEmployeeDeployments": [], "departmentStaffNeeds": [], "personnelGate": False,
                 "history": [], "audit": [], "planVersions": [],
@@ -2689,6 +2689,21 @@ def validate_state(old: dict, new: dict) -> tuple[bool, str, str]:
             return False, "MP-CAL-013", "Wochenregel enthält ungültige/duplizierte Maschine, Jahr-, KW- oder Schichtdaten."
         wr_keys.add(key)
 
+    # #84: Sonderschichten je Maschine und Tag (Sa/So, Überstunden). mode "" = Betrieb wie geplant.
+    day_rules = new.get("dayRules") or []
+    if not isinstance(day_rules, list):
+        return False, "MP-CAL-015", "Sonderschichten sind ungültig."
+    dr_keys = set()
+    for r in day_rules:
+        if not isinstance(r, dict):
+            return False, "MP-CAL-015", "Sonderschicht ist ungültig."
+        key = (str(r.get("machineId", "")), str(r.get("date", "")))
+        mode, extra = str(r.get("mode") if r.get("mode") is not None else ""), r.get("extraMinutes", 0)
+        if (key[0] not in midset or not _valid_date_key(key[1]) or mode not in {"", "0", "1", "2"} or isinstance(extra, bool)
+                or not isinstance(extra, int) or not 0 <= extra <= 240 or (mode == "" and not extra) or key in dr_keys):
+            return False, "MP-CAL-015", "Sonderschicht enthält ungültige/duplizierte Maschine, Datum, Betrieb oder Überstunden (0–240 Min.)."
+        dr_keys.add(key)
+
     exceptions = new.get("exceptions") or []
     if not isinstance(exceptions, list):
         return False, "MP-CAL-014", "Kalender-Ausnahmen sind ungültig."
@@ -2800,10 +2815,14 @@ def validate_state(old: dict, new: dict) -> tuple[bool, str, str]:
         ok, code, reason = _personnel_assignment_valid(a)
         if not ok:
             return False, code, reason
+        if "overtime" in a and not isinstance(a.get("overtime"), bool):
+            return False, "MP-PERS-001", "Personalzuordnung: 'overtime' muss true oder false sein."
 
     # Explicit hours cannot exceed the contractual weekly capacity (breaks excluded).
     weekly_assigned = {}
     for a in assignments:
+        if a.get("overtime") is True:
+            continue  # #84: ausdrueckliche Ueberstunden zaehlen nicht gegen die Vertragsstunden
         key = (str(a["employeeId"]), _week_start_key(a["date"]))
         minutes = _clock_minutes(a["end"]) - _clock_minutes(a["start"])
         minutes -= sum((_clock_minutes(b.get("end")) or 0) - (_clock_minutes(b.get("start")) or 0) for b in a.get("breaks") or [] if b.get("start") and b.get("end"))
@@ -3555,7 +3574,7 @@ def department_change_allowed(old: dict, new: dict, department_id: str) -> tuple
     if not department_id:
         return False, "Kein Bereich am Benutzer hinterlegt."
     globally_allowed = {"audit", "meta", "ui", "planVersions", "departmentStaffNeeds"}
-    scoped = {"workSteps", "machines", "machineBlocks", "employees", "personnelAssignments", "personnelAbsences", "history", "yearRules", "weekRules", "projects", "formats", "baseFormats"}
+    scoped = {"workSteps", "machines", "machineBlocks", "employees", "personnelAssignments", "personnelAbsences", "history", "yearRules", "weekRules", "dayRules", "projects", "formats", "baseFormats"}
     # Sprechende Meldungen für häufige Fälle, danach die allgemeine Regel.
     if canonical(old.get("exceptions")) != canonical(new.get("exceptions")):
         return False, "Globale Betriebsferien/Kalender-Ausnahmen dürfen nur GF/Admin ändern."
@@ -3664,6 +3683,9 @@ def department_change_allowed(old: dict, new: dict, department_id: str) -> tuple
     for rec in changed_keyed("weekRules", lambda x: f"{x.get('machineId')}|{x.get('year')}|{x.get('week')}"):
         if machine_dept.get(str(rec.get("machineId")), "") != department_id:
             return False, "KW-Schichtregel gehört nicht zum eigenen Bereich."
+    for rec in changed_keyed("dayRules", lambda x: f"{x.get('machineId')}|{x.get('date')}"):
+        if machine_dept.get(str(rec.get("machineId")), "") != department_id:
+            return False, "Sonderschicht gehört nicht zum eigenen Bereich."
     for rec in changed_records("employees"):
         if str(rec.get("departmentId") or "") != department_id:
             return False, "Mitarbeiter gehört nicht zum eigenen Bereich."
@@ -3847,7 +3869,7 @@ def production_capacity(state, order):
     mid, did = order.get("machineId"), order.get("departmentId")
     employees = [dict(e) for e in state.get("employees") or [] if mid in e.get("skills", []) and (e.get("departmentId") == did or any(x.get("employeeId") == e.get("id") and x.get("departmentId") == did for x in state.get("weeklyEmployeeDeployments") or []))]
     eids = {e["id"] for e in employees}
-    return {"personnelGate": state.get("personnelGate", False), "machines": [dict(m) for m in state.get("machines") or [] if m.get("id") == mid], "employees": employees, "personnelAssignments": [dict(x) for x in state.get("personnelAssignments") or [] if x.get("employeeId") in eids], "personnelAbsences": [{"employeeId": x.get("employeeId"), "date": x.get("date")} for x in state.get("personnelAbsences") or [] if x.get("employeeId") in eids], "weeklyEmployeeDeployments": [dict(x) for x in state.get("weeklyEmployeeDeployments") or [] if x.get("employeeId") in eids], "shiftTemplates": json.loads(json.dumps(state.get("shiftTemplates") or {})), "exceptions": state.get("exceptions") or [], "yearRules": [dict(x) for x in state.get("yearRules") or [] if x.get("machineId") == mid], "weekRules": [dict(x) for x in state.get("weekRules") or [] if x.get("machineId") == mid], "machineBlocks": [dict(x) for x in state.get("machineBlocks") or [] if x.get("machineId") == mid]}
+    return {"personnelGate": state.get("personnelGate", False), "machines": [dict(m) for m in state.get("machines") or [] if m.get("id") == mid], "employees": employees, "personnelAssignments": [dict(x) for x in state.get("personnelAssignments") or [] if x.get("employeeId") in eids], "personnelAbsences": [{"employeeId": x.get("employeeId"), "date": x.get("date")} for x in state.get("personnelAbsences") or [] if x.get("employeeId") in eids], "weeklyEmployeeDeployments": [dict(x) for x in state.get("weeklyEmployeeDeployments") or [] if x.get("employeeId") in eids], "shiftTemplates": json.loads(json.dumps(state.get("shiftTemplates") or {})), "exceptions": state.get("exceptions") or [], "yearRules": [dict(x) for x in state.get("yearRules") or [] if x.get("machineId") == mid], "weekRules": [dict(x) for x in state.get("weekRules") or [] if x.get("machineId") == mid], "dayRules": [dict(x) for x in state.get("dayRules") or [] if x.get("machineId") == mid], "machineBlocks": [dict(x) for x in state.get("machineBlocks") or [] if x.get("machineId") == mid]}
 
 
 def production_windows(state, order, day, fallback_crew=1):
@@ -4396,7 +4418,7 @@ def demand_book_completion(state, order, finished):
         finished["reservedForCallOff"] = _reserve_call_off(state, c)
 
 
-SCOPE_COLLECTIONS = {"productionEvents", "palletLabels", "inventory", "frameOrders", "callOffs", "machines", "workSteps", "history", "formats", "baseFormats", "machineBlocks", "yearRules", "weekRules", "employees", "personnelAssignments", "personnelAbsences", "weeklyEmployeeDeployments", "departmentStaffNeeds", "projects", "audit", "planVersions"}
+SCOPE_COLLECTIONS = {"productionEvents", "palletLabels", "inventory", "frameOrders", "callOffs", "machines", "workSteps", "history", "formats", "baseFormats", "machineBlocks", "yearRules", "weekRules", "dayRules", "employees", "personnelAssignments", "personnelAbsences", "weeklyEmployeeDeployments", "departmentStaffNeeds", "projects", "audit", "planVersions"}
 
 
 def record_key(name, x):
@@ -4408,6 +4430,8 @@ def record_key(name, x):
         return str(x.get("employeeId")) + "|" + str(x.get("weekStart"))
     if name == "departmentStaffNeeds":
         return str(x.get("departmentId")) + "|" + str(x.get("weekStart"))
+    if name == "dayRules":
+        return str(x.get("machineId")) + "|" + str(x.get("date"))
     return canonical({k: x.get(k) for k in ("machineId", "year", "week")})
 
 

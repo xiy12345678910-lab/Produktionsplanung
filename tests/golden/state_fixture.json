@@ -2,6 +2,7 @@
  "audit": [],
  "baseFormats": [],
  "callOffs": [],
+ "dayRules": [],
  "departmentStaffNeeds": [],
  "departments": [
   {
