@@ -102,6 +102,8 @@ try {
       check(visible.sort().join() === [...navs].sort().join(), `${user}@${w}: Navigation ${visible.join(',')} (erwartet ${navs.join(',')})`);
       if (user === 'gf') {
         await page.click('#navPlan'); await page.waitForTimeout(300);
+        // Am Freitag liegt der Plan je nach Uhrzeit in der Folgewoche: dann eine Woche weiter blättern
+        if (!(await page.locator('#overview .jobchip').count())) { await page.click('#nextWeek'); await page.waitForTimeout(300); }
         const ro = await page.evaluate(() => ({ view: document.querySelector('.view.active')?.id, add: !!document.getElementById('quickAdd')?.offsetParent, drag: document.querySelectorAll('#overview [draggable="true"]').length, chips: document.querySelectorAll('#overview .jobchip').length }));
         check(ro.view === 'overview' && ro.chips > 0, `gf@${w}: Wochenplan sichtbar (${ro.chips} Aufträge)`);
         check(!ro.add && ro.drag === 0, `gf@${w}: Wochenplan nur lesen (kein + Auftrag, nicht verschiebbar)`);
