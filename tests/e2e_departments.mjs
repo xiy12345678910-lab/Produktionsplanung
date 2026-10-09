@@ -78,6 +78,7 @@ try {
   check(await gf.evaluate(() => document.querySelector('.view.active')?.id) === 'gf', 'GF startet in der GF-Ansicht');
   await gf.evaluate(() => { document.getElementById('gfDeptPanel').open = true; });
   check(await gf.locator('#gfDeptAdmin .depRow').count() === 6, 'GF: 6 vorhandene Bereiche gelistet');
+  check(await gf.evaluate(() => [...document.querySelectorAll('#gfDeptAdmin .depNew .field')].every(f => { const fr = f.getBoundingClientRect(); return [...f.querySelectorAll('input,select')].every(x => { const r = x.getBoundingClientRect(); return r.left >= fr.left - 1 && r.right <= fr.right + 1; }); })), 'Neuer Bereich: Eingabefelder bleiben in ihrer Spalte (keine Überlappung)');
 
   await gf.fill('#depNewName', 'Lackierung');
   await gf.selectOption('#depNewRes', 'line');
@@ -121,6 +122,16 @@ try {
   st = await serverState(gf);
   const dev2 = st.departments.find(d => d.id === dev.id);
   check(dev2.name === 'Musterbau & Entwicklung' && dev2.active === false, 'GF benennt um und deaktiviert');
+
+  // Umbenennen auf einen vorhandenen Namen (Groß-/Kleinschreibung egal) wird abgewiesen
+  await gf.evaluate(() => { document.getElementById('gfDeptPanel').open = true; });
+  const nm2 = gf.locator(`[data-dep="${dev.id}"][data-k="name"]`);
+  await nm2.fill('cnc');
+  await nm2.press('Tab');
+  await gf.waitForTimeout(500);
+  check((await errText(gf)).includes('MP-DEPT-005') && (await serverState(gf)).departments.find(d => d.id === dev.id).name === 'Musterbau & Entwicklung', 'Umbenennen auf vorhandenen Namen "cnc" abgewiesen (MP-DEPT-005), Name unverändert');
+  await gf.keyboard.press('Escape');
+  check((await putState(gf, d => { d.departments.find(x => x.id === dev.id).name = 'CNC'; }))[1] === 'MP-DEPT-005', 'Server: doppelter Bereichsname per API abgewiesen (MP-DEPT-005)');
 
   // Art ändern bei Bereich mit Maschinen gesperrt
   await gf.evaluate(() => { document.getElementById('gfDeptPanel').open = true; });

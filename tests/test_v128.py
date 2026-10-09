@@ -86,6 +86,10 @@ bad = copy.deepcopy(s); bad["departments"][-1]["kind"] = "foo"
 check(server.validate_state(BASE, bad)[1] == "MP-DEPT-004", "Bereiche: unbekannte Art → MP-DEPT-004")
 bad = copy.deepcopy(s); bad["departments"].append({"id": "sales", "name": "X", "planningType": "MACHINE"})
 check(server.validate_state(BASE, bad)[1] == "MP-DEPT-005", "Bereiche: reservierte ID 'sales' → MP-DEPT-005")
+bad = copy.deepcopy(s); bad["departments"][-1]["name"] = " " + bad["departments"][0]["name"].upper()
+check(server.validate_state(BASE, bad)[1] == "MP-DEPT-005", "Bereiche: Umbenennen auf vorhandenen Namen (Groß-/Kleinschreibung egal) → MP-DEPT-005")
+dup_old = copy.deepcopy(bad); dup_new = copy.deepcopy(bad); dup_new["departments"][-1]["kind"] = "sales"
+check(server.validate_state(dup_old, dup_new)[0], "Bereiche: bereits vorhandenes Namensduplikat blockiert das Speichern nicht")
 ok, why = server.gf_change_allowed(BASE, s)
 check(ok, f"Bereiche: GF legt Entwicklungsbereich an {why}")
 p = state()

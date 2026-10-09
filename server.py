@@ -2321,6 +2321,20 @@ def validate_state(old: dict, new: dict) -> tuple[bool, str, str]:
         dept_kinds[did] = kind
         dept_labels[did] = name
 
+    # Doppelte Bereichsnamen (Groß-/Kleinschreibung egal, wie businessKey im Client) nur neu verhindern:
+    # ein bereits vorhandenes Duplikat blockiert das Speichern nicht.
+    def _dup_names(deps) -> set:
+        seen, dups = set(), set()
+        for d in deps if isinstance(deps, list) else []:
+            key = str(d.get("name") or "").strip().lower() if isinstance(d, dict) else ""
+            if key:
+                (dups if key in seen else seen).add(key)
+        return dups
+    new_dups = _dup_names(departments) - _dup_names((old or {}).get("departments"))
+    if new_dups:
+        dup = next(lbl for lbl in dept_labels.values() if lbl.lower() in new_dups)
+        return False, "MP-DEPT-005", f"Ein Bereich mit dem Namen '{dup}' existiert bereits."
+
     # V12.8.2: Vertrieb/Entwicklung bearbeiten nur Projektaufgaben – keine Maschinen, Aufträge, Formate.
     for name, what in (("machines", "Maschine/Linie"), ("workSteps", "Auftrag"), ("formats", "Format"), ("baseFormats", "Grundformat")):
         for rec in new.get(name) or []:
