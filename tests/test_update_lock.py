@@ -4,7 +4,7 @@ darf keine Benutzerdaten verwerfen.
 
 Beweis in zwei Teilen:
   1. Server: Solange updates\\installing existiert (UPDATE_LIVE.ps1 ab Schritt 3 bis zum bestandenen Health- und
-     Sicherheitscheck), lehnt JEDE schreibende Route mit 503/MP-UPD-003 ab.
+     Sicherheitscheck, Umzug_Exportieren.ps1 bis zum Umzug), lehnt JEDE schreibende Route mit 503/MP-UPD-003 ab.
      Die Routenliste wird aus server.py gelesen: eine neue schreibende Route ohne Sperre faellt hier auf.
      Der Datenbankinhalt (alle Tabellen ausser sessions) bleibt dabei byte-gleich; Lesen bleibt moeglich.
   2. UPDATE_LIVE.ps1 (statisch): Sperre vor dem Stopp, DB-Rueckspielen nur nach dem Start der neuen Version,
@@ -140,6 +140,12 @@ st, payload, _ = req("POST", "/api/login", {"username": "admin", "password": PAS
 check(st == 200, "Anmelden bleibt moeglich (schreibt nur sessions)")
 st, payload, _ = req("PUT", "/api/state", {"revision": 1, "data": {}}, cookie)
 check("Update" in payload.get("error", ""), "Meldung waehrend eines Updates nennt das Update")
+
+# ---------- 1c. Sperre durch Umzug_Exportieren.ps1 ----------
+LOCK.write_text("UMZUG V12.27.0 2026-10-09 12:00:00")
+st, payload, _ = req("PUT", "/api/state", {"revision": 1, "data": {}}, cookie)
+check(st == 503 and payload.get("errorCode") == "MP-UPD-003" and "Umzug" in payload.get("error", ""), "Umzugssperre: 503/MP-UPD-003 mit Hinweis auf den Umzug")
+check(db_fingerprint() == before, "Datenbank auch unter der Umzugssperre unveraendert")
 
 # ---------- 1d. Ohne Sperre wird wieder geschrieben (Gegenprobe) ----------
 LOCK.unlink()

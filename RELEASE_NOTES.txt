@@ -2,6 +2,11 @@ MASCHINENPLANUNG V12.27.0 - RELEASE NOTES
 =========================================
 Datum: 08.10.2026 · Basis: V12.26.0 · Update gemäß README_Windows.txt 2b, Daten bleiben erhalten
 
+UMZUG AUF EIN NEUES GERAET
+- Umzug_Exportieren.ps1 (altes Geraet) erstellt eine einzige Datei Umzug_<Firma>_<Datum>.zip. Sie enthaelt ein frisches, geprueftes Datenbankbackup, config\ (firma.json, Logo, lizenz.key, tls\ inkl. Firmen-CA) und BACKUP_ZIEL.txt, dazu ein Manifest mit Version und SHA256 jeder Datei. Danach ist das alte Geraet nur noch lesbar (Wartungssperre, -Entsperren hebt sie auf).
+- Umzug_Importieren.ps1 -Datei <zip> (neues Geraet, aus dem entpackten Paket) prueft Manifest, Hashes und Version (Ziel >= Export). Ohne Installation installiert es selbst (kein Setup_Windows.ps1, kein neuer Admin); vorhandene Daten ersetzt es nur mit -Ueberschreiben und sichert sie vorher. Danach spielt es Datenbank und config\ ein, setzt die Ordnerrechte, vertraut der Firmen-CA, registriert die Tasks, startet den Server, macht den Health-Check und zeigt die neue Adresse.
+- Lizenz und Kulanzzaehler ziehen mit um (Bindung an die tenantId, nicht an die Hardware). Die Arbeitsplaetze brauchen keinen neuen CA-Import; das Serverzertifikat fuer die neue IP erneuert der Server beim Start. Logik in Umzug.py (Python, wie Backup_Datenbank.py). Neue Fehlercodes MP-UMZ-001 bis -009, Anleitung in README_Windows.txt Abschnitt 9.
+
 ROLLBACK = NUR PROGRAMMCODE
 - Ein fehlgeschlagenes Update spielt die Datenbank nur noch zurueck, wenn die neue Version schon gestartet war (moegliche Migration). Benutzerdaten gehen dabei nicht verloren: Die Wartungssperre (MP-UPD-003) blockiert alle schreibenden Anfragen, bis Health- und Sicherheitscheck bestanden sind; ein neuer Test prueft jede schreibende Route. Der ersetzte Stand bleibt in update_backups\fehlversuch_V*.
 - Nach bestandenem Check gibt es keinen Rollback mehr, auch wenn danach ein Aufraeumschritt scheitert. Vorher konnte ein solcher Fehler Aenderungen verwerfen, die nach dem Entsperren entstanden waren.

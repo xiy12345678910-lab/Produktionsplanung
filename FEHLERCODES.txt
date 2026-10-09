@@ -504,3 +504,21 @@ MP-LIC-003   Lizenzdatei unlesbar: kein JSON, Felder fehlen/ungueltig (id, licen
 MP-LIC-004   Lizenzdatei gilt fuer eine andere Firma: tenantId der Lizenz passt nicht zu config\firma.json.
 MP-LIC-005   Lizenzdatei abgelehnt: Ablaufdatum ueberschritten. Neue Lizenz beim Lizenzgeber anfordern.
 MP-LIC-006   Lizenz entfernen: keine Lizenzdatei vorhanden.
+
+V12.27.0 NEU (Umzug auf ein neues Geraet: Umzug_Exportieren.ps1 / Umzug_Importieren.ps1, README_Windows.txt 9)
+MP-UMZ-001   Installation/Programm fehlt: Export ohne Datenbank im Live-Ordner, Import ohne vollstaendiges Programm im
+             Paketordner bzw. ohne aktives LAN (Profil Privat/Domaene). Nichts veraendert.
+MP-UMZ-002   Umzugsdatei nicht gefunden, keine ZIP-Datei oder umzug.json fehlt/ist ungueltig. Nichts veraendert.
+MP-UMZ-003   Umzugsdatei beschaedigt oder veraendert: SHA256 (ganze Datei oder einzelne Datei) stimmt nicht, unerwartete
+             Datei/Pfad im Paket oder Datenbank im Paket ungueltig. Nichts veraendert; Datei neu kopieren bzw. neu exportieren.
+MP-UMZ-004   Programmversion auf dem neuen Geraet ist aelter als die exportierte. Programmpaket in gleicher oder neuerer
+             Version verwenden. Nichts veraendert.
+MP-UMZ-005   Neues Geraet hat bereits eine Datenbank. Import nur mit -Ueberschreiben; der aktuelle Stand wird dann vorher
+             gesichert (backups\maschinenplanung_*_vor_umzug.sqlite3 + firma_*.zip, config in backups\umzug_*\vorher).
+MP-UMZ-006   Sicherung des aktuellen Stands vor dem Import fehlgeschlagen. Nichts ueberschrieben, Server laeuft weiter.
+MP-UMZ-007   Ein Update laeuft (updates\installing). Umzug erst nach dem Update. Umzug_Exportieren.ps1 -Entsperren hebt
+             nur die eigene Umzugssperre auf, nie die eines Updates.
+MP-UMZ-008   Server antwortet nach dem Import nicht (Health-Check). Log steht in der Ausgabe; vorheriger Stand ggf. mit
+             Restore_Datenbank.ps1 -Datei <..._vor_umzug.sqlite3> -MitConfig. Das Umzugspaket bleibt unveraendert.
+MP-UMZ-009   Unerwarteter Fehler beim Export/Import (Meldung nennt die Ursache, z. B. Datentraeger voll). Beim Import wird
+             ein halb eingespielter Stand automatisch zurueckgenommen.

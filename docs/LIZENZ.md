@@ -93,7 +93,20 @@ sofort wieder alles bearbeitbar.
 - Achtung: Stand die Serveruhr versehentlich weit in der Zukunft, bleibt diese Zeit als „zuletzt gesehen“
   gespeichert. Dann hilft eine gültige (unbefristete oder passend befristete) Lizenz.
 
-## 7. Grenzen
+## 7. Lizenz auf ein neues Gerät umziehen
+
+Die Lizenz ist an den Mandanten gebunden (`tenantId` in `config\firma.json`), nicht an die Hardware. Beim Umzug
+ist deshalb keine neue Lizenzdatei nötig:
+
+1. Altes Gerät: `Umzug_Exportieren.ps1`. Das Paket enthält `config\` mit `firma.json` und `lizenz.key`.
+2. Neues Gerät: `Umzug_Importieren.ps1 -Datei <Umzug_….zip>` (README_Windows.txt, Abschnitt 9).
+3. Altes Gerät danach: `Deinstallieren.ps1`. Es stoppt den Server dort; die Daten bleiben als Reserve liegen.
+
+Die Kulanzzähler (Kulanzbeginn, zuletzt gesehene Zeit) liegen in der Datenbank (Tabelle `app_meta`). Sie ziehen
+mit der Datenbank um. Ein Umzug startet also keine neue Kulanz und setzt keine zurück. Nur wenn eine andere
+Firma (andere `tenantId`) eingerichtet wird, braucht es eine neue Lizenzdatei.
+
+## 8. Grenzen
 
 Das Programm wird als Python-Quelltext ausgeliefert. Wer die Dateien gezielt verändert, kann die Prüfung
 umgehen; der Schlüssel schützt gegen versehentliche oder beiläufige Nutzung ohne Lizenz, nicht gegen

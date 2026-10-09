@@ -32,6 +32,7 @@ $MP_AppFiles = @(
     'Server_Status.ps1', 'CHECK_LAN_SICHERHEIT.ps1', 'Deinstallieren.ps1',
     'README_Windows.txt', 'BENUTZER_KURZANLEITUNG.txt', 'FEHLERCODES.txt', 'RELEASE_NOTES.txt',
     'Update_von_GitHub.ps1', 'Restore_Datenbank.ps1', 'Firma_Einrichten.ps1', 'HTTPS_Einrichten.ps1', 'requirements.txt',
+    'Umzug.py', 'Umzug_Exportieren.ps1', 'Umzug_Importieren.ps1',
     'vorlage_werbetechnik.json', 'vorlage_metall_cnc.json', 'vorlage_leer.json', 'vorlage_demo.json'
 )
 
@@ -376,7 +377,14 @@ function Install-MPTls([string]$Base, [string]$PythonExe, [string]$HostIp, [stri
     }
     if ($code -ne 0) { throw "MP-TLS-002: HTTPS-Einrichtung fehlgeschlagen (server.py --tls-einrichten, Exitcode $code)." }
     Set-MPFolderAcl $tls $false
-    $caFile = Join-Path $tls 'firmen-ca.crt'
+    $pub = Publish-MPCa $Base
+    return [PSCustomObject]@{ Thumbprint = $pub.Thumbprint; PublicCa = $pub.PublicCa; Folder = $tls }
+}
+
+function Publish-MPCa([string]$Base) {
+    # Vertraut der Firmen-CA aus config\tls auf diesem Rechner (LocalMachine\Root) und legt Firmen-CA.crt zum
+    # Verteilen in den Live-Ordner. Genutzt von Install-MPTls und Umzug_Importieren.ps1 (gleiche CA auf neuem Geraet).
+    $caFile = Join-Path (Get-MPTlsDir $Base) 'firmen-ca.crt'
     try {
         $ca = New-Object Security.Cryptography.X509Certificates.X509Certificate2($caFile)
         $store = New-Object Security.Cryptography.X509Certificates.X509Store('Root', 'LocalMachine')
@@ -387,7 +395,7 @@ function Install-MPTls([string]$Base, [string]$PythonExe, [string]$HostIp, [stri
     } catch {
         throw "MP-TLS-002: Firmen-CA konnte nicht vertraut/bereitgestellt werden: $($_.Exception.Message)"
     }
-    return [PSCustomObject]@{ Thumbprint = [string]$ca.Thumbprint; PublicCa = $public; Folder = $tls }
+    return [PSCustomObject]@{ Thumbprint = [string]$ca.Thumbprint; PublicCa = $public }
 }
 
 function Remove-MPTls([string]$Base) {

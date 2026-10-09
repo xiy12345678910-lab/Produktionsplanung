@@ -4972,8 +4972,16 @@ class Handler(BaseHTTPRequestHandler):
         return user
 
     def require_current_client(self) -> bool:
-        if (BASE / "updates" / "installing").exists():
-            self.json_response(503, mp_error("MP-UPD-003", "Update läuft. Änderungen sind bis zum Healthcheck gesperrt."))
+        lock = BASE / "updates" / "installing"
+        if lock.exists():
+            # Wartungssperre (UPDATE_LIVE.ps1 bis zum Healthcheck, Umzug_Exportieren.ps1 bis zum Umzug): nur Lesen.
+            try:
+                moving = lock.read_text(encoding="utf-8", errors="replace").startswith("UMZUG")
+            except OSError:
+                moving = False
+            text = ("Umzug auf ein neues Gerät: Änderungen sind hier gesperrt (nur Lesen)." if moving
+                    else "Update läuft. Änderungen sind bis zum Healthcheck gesperrt.")
+            self.json_response(503, mp_error("MP-UPD-003", text))
             return False
         client_version = str(self.headers.get("X-MP-Client-Version", "")).strip()
         if client_version != APP_VERSION:
