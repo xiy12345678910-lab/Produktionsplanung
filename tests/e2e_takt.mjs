@@ -106,6 +106,19 @@ try {
   check(q.qty === 'none' && q.calc === 'none' && q.label.endsWith('*') && q.ph !== 'optional', `FA-Dialog ohne Mengenmeldung: Menge und Takt-Rechner aus, Titel Pflicht (${JSON.stringify(q)})`);
   const rowAligned = await page.evaluate(() => { const a = document.getElementById('qDue'), b = document.getElementById('qAltMachine'); return b.closest('.field').style.display === 'none' || Math.abs(a.getBoundingClientRect().height - b.getBoundingClientRect().height) < 4; });
   check(rowAligned, 'FA-Dialog: Alternative Maschine so hoch wie AV-Termin (nicht gestreckt)');
+  // Ohne Mengenmeldung: FA optional, Titel und Stunden Pflicht; ohne FA trägt der Titel den Auftrag
+  check((await page.textContent('#qFALabel')).includes('optional'), 'FA-Dialog ohne Mengenmeldung: FA als optional beschriftet');
+  // frischer Serverstand (vorherige Prüfungen ändern Aufträge nur lokal)
+  await page.reload(); await page.waitForFunction(() => typeof window.__t === 'function'); await page.waitForTimeout(600);
+  await ev(id => { departmentById(id).noQuantity = true; openOrderDialog({ departmentId: id }); }, nqDep);
+  await page.fill('#qFA', ''); await page.fill('#qDesc', 'Form Messedisplay'); await page.fill('#qHours', '0');
+  await page.click('#createOrder'); await page.waitForTimeout(300);
+  check((await page.evaluate(() => document.getElementById('errorModal').innerText)).includes('MP-PLAN-034'), 'Ohne Stunden → MP-PLAN-034');
+  await page.click('#closeError'); await page.waitForTimeout(150);
+  await page.fill('#qHours', '8'); await page.click('#createOrder'); await page.waitForTimeout(700);
+  const noFa = await page.evaluate(async () => (await (await fetch('/api/state', { cache: 'no-store' })).json()).data.workSteps.find(w => w.description === 'Form Messedisplay'));
+  check(noFa && ['', 'Form Messedisplay'].includes(noFa.fa) && noFa.order === 'Form Messedisplay' && noFa.hours === 8, `Auftrag ohne FA-Nummer gespeichert, Titel als Bezeichnung (${JSON.stringify(noFa && [noFa.fa, noFa.order, noFa.hours])})`);
+  await ev(id => { openOrderDialog({ departmentId: id }); }, nqDep);
   await ev(id => { delete departmentById(id).noQuantity; document.getElementById('orderModal').classList.remove('show'); openOrderDialog({ departmentId: id }); }, nqDep);
   q = await qState();
   check(q.qty === '' && q.label === 'Artikel / Beschreibung' && q.ph === 'optional', `Gegenprobe: normaler Bereich zeigt Menge, Titel optional (${JSON.stringify(q)})`);
