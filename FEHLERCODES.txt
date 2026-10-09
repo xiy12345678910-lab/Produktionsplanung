@@ -473,6 +473,7 @@ V12.19.0 (Bloecke A-D und I ausschliesslich 7a)
 MP-FA-001    FA-Quelle oder FA-Nummernzuordnung ungueltig; Projekt/Rahmen/Bestandsreferenz pruefen.
 MP-PERS-034  Parallelplatz oder Besetzung ungueltig; nur freie Plaetze/ganze Mitarbeiterzahlen.
 MP-PERS-035  Arbeitstage/Tagesstunden ungueltig, Summe ueber Wochenstunden oder dauerhafte Mitarbeiterzeiten/Pausen ungueltig.
+MP-PERS-036  Mitarbeiter-Auswertung: Zeitraum ungueltig (von <= bis angeben).
 MP-PROD-040  FA nicht gefunden.
 MP-PROD-041  Keine Produktionsrechte fuer den Bereich.
 MP-PROD-042  Start/Fortsetzen ausserhalb Arbeitszeit oder vor dem freigegebenen Start.
