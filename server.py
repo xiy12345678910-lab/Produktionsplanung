@@ -120,8 +120,95 @@ sys.modules[__name__].__class__ = _ServerModule
 DIAG_WARN_NO_TLS = "HTTPS nicht eingerichtet – empfohlen, siehe README_Windows 2c (HTTPS_Einrichten.ps1)"
 
 
+# ---------------------------------------------------------------------------------------------
+# #84: Fehlerprotokoll fuer die Fehlersuche. Jede Fehlerantwort (Code ab 400), jeder Serverfehler (500)
+# und vom Browser gemeldete Fehler landen in data/fehlerprotokoll.jsonl. Eigene Datei mit eigener Sperre,
+# weil Fehlerantworten oft innerhalb der DB-Sperre entstehen. Gilt bis zum naechsten Update: beim Start
+# einer neuen Version werden Eintraege anderer Versionen entfernt. Ohne Benutzernamen, nur die Rolle.
+# ---------------------------------------------------------------------------------------------
+ERROR_LOG_LOCK = threading.Lock()
+ERROR_LOG_MAX = 1000
+ERROR_LOG_SKIP = {"MP-AUTH-001"}  # "Nicht angemeldet" kommt bei jedem Abfragen nach Sitzungsende
+CLIENT_LOG_RATE: dict = {}
+
+
+def error_log_path() -> Path:
+    return DATA_DIR / "fehlerprotokoll.jsonl"
+
+
+def error_log_record(entry: dict) -> None:
+    if entry.get("code") in ERROR_LOG_SKIP:
+        return
+    row = {"ts": now_iso(), "version": APP_VERSION, **{k: (str(v)[:1500] if isinstance(v, str) else v) for k, v in entry.items()}}
+    try:
+        with ERROR_LOG_LOCK:
+            path = error_log_path()
+            path.parent.mkdir(parents=True, exist_ok=True)
+            with path.open("a", encoding="utf-8") as f:
+                f.write(json.dumps(row, ensure_ascii=False) + "\n")
+            if path.stat().st_size > 900_000:
+                lines = path.read_text(encoding="utf-8", errors="replace").splitlines()[-ERROR_LOG_MAX:]
+                path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    except OSError:
+        pass
+
+
+def error_log_read() -> list:
+    try:
+        with ERROR_LOG_LOCK:
+            lines = error_log_path().read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return []
+    out = []
+    for line in lines[-ERROR_LOG_MAX:]:
+        try:
+            x = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(x, dict) and x.get("version") == APP_VERSION:
+            out.append(x)
+    return out
+
+
+def error_log_reset_on_update() -> None:
+    """Beim Start: Eintraege frueherer Versionen entfernen (Protokoll gilt bis zum naechsten Update)."""
+    keep = error_log_read()
+    try:
+        with ERROR_LOG_LOCK:
+            path = error_log_path()
+            if path.exists():
+                path.write_text("".join(json.dumps(x, ensure_ascii=False) + "\n" for x in keep), encoding="utf-8")
+    except OSError:
+        pass
+
+
+def _log_tail(folder: Path, pattern: str, lines: int) -> dict | None:
+    try:
+        files = sorted(folder.glob(pattern), key=lambda f: f.stat().st_mtime, reverse=True) if folder.is_dir() else []
+        if not files:
+            return None
+        text = files[0].read_text(encoding="utf-8", errors="replace").splitlines()
+        return {"file": files[0].name, "lines": text[-lines:]}
+    except OSError:
+        return None
+
+
+def error_log_summary(limit: int = 100) -> dict:
+    entries = error_log_read()
+    by = {}
+    for x in entries:
+        k = str(x.get("code") or "?")
+        cur = by.setdefault(k, {"code": k, "count": 0, "last": "", "message": "", "source": x.get("source", "")})
+        cur["count"] += 1
+        cur["last"], cur["message"] = x.get("ts", ""), str(x.get("message") or "")[:200]
+    return {"version": APP_VERSION, "count": len(entries),
+            "byCode": sorted(by.values(), key=lambda r: (-r["count"], r["code"]))[:25],
+            "recent": list(reversed(entries[-limit:]))}
+
+
 def build_diagnostics(tls_on: bool = False) -> dict:
-    """#52 K6: Systemstatus fuer den Admin. Nur technische Werte und Zaehler, nie Auftrags-, Chat-, Personal- oder Zugangsdaten."""
+    """#52 K6: Systemstatus fuer den Admin. Technische Werte und Zaehler, keine Zugangsdaten. #84: Fehlerprotokoll (Fehlermeldungen
+    koennen Auftrags- oder Mitarbeiternamen enthalten, keine Benutzernamen) und Logende von Server und Update."""
     import platform
     now = time.time()
     warnings: list[str] = []
@@ -203,6 +290,8 @@ def build_diagnostics(tls_on: bool = False) -> dict:
     out["modules"] = modules_effective(cfg)
     out["config"] = {"companyName": (cfg.get("company") or {}).get("name", ""), "template": cfg.get("template", ""),
                      "tenantId": cfg.get("tenantId", ""), "timezone": (cfg.get("locale") or {}).get("timezone", ""), "tls": bool(tls_on)}
+    out["errorLog"] = error_log_summary()
+    out["logTail"] = {"server": _log_tail(BASE / "logs", "server_*.log", 80), "update": _log_tail(BASE / "updates", "install-*.log", 60)}
     out["warnings"] = warnings
     return out
 
@@ -212,7 +301,7 @@ def build_diagnostics(tls_on: bool = False) -> dict:
 # 30 Tage Kulanz, danach nur Lesen: der Server lehnt jeden Schreibzugriff ab (MP-LIC-001), außer den
 # Pfaden in LICENSE_RO_ALLOWED. Daten werden nie gelöscht; Lesen, Backup und Diagnose bleiben möglich.
 # ---------------------------------------------------------------------------------------------
-LICENSE_RO_ALLOWED = {("POST", "/api/login"), ("POST", "/api/logout"), ("POST", "/api/password"),
+LICENSE_RO_ALLOWED = {("POST", "/api/login"), ("POST", "/api/logout"), ("POST", "/api/password"), ("POST", "/api/client-log"),
                       ("POST", "/api/license"), ("DELETE", "/api/license"), ("POST", "/api/updates/install")}
 LICENSE_RO_TEXT = "Lizenz abgelaufen/fehlt – nur Lesen. Daten bleiben erhalten; bitte den Admin bzw. den Lizenzgeber ansprechen."
 
@@ -4802,6 +4891,10 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
 
     def json_response(self, code: int, body: dict, cookie: str | None = None):
+        if code >= 400 and isinstance(body, dict) and body.get("errorCode"):
+            error_log_record({"source": "server", "status": code, "code": body.get("errorCode"), "message": body.get("error", ""),
+                              "method": self.command, "path": urlparse(self.path).path, "role": getattr(self, "_log_role", ""),
+                              **({"detail": self._log_detail} if getattr(self, "_log_detail", "") else {})})
         raw = json.dumps(body, ensure_ascii=False).encode("utf-8")
         self.send_response(code)
         self._security_headers()
@@ -4959,6 +5052,7 @@ class Handler(BaseHTTPRequestHandler):
         return False
 
     def _guarded(self, fn, write: bool):
+        self._log_role, self._log_detail = "", ""  # Keep-Alive: Angaben der vorigen Anfrage nicht mitschleppen
         if not self.request_origin_ok(write):
             return
         try:
@@ -4977,6 +5071,8 @@ class Handler(BaseHTTPRequestHandler):
             msg = " ".join(str(e).split())  # eine Logzeile, auch bei mehrzeiligen Windows-Meldungen
             sys.stderr.write(f"MP-SRV-500 {self.command} {urlparse(self.path).path}: {type(e).__name__}: {msg}\n")
             self.close_connection = True
+            import traceback
+            self._log_detail = f"{type(e).__name__}: {msg}\n" + "".join(traceback.format_exc().splitlines(True)[-12:])
             try:
                 self.json_response(500, mp_error("MP-SRV-500", "Serverfehler. Bitte erneut versuchen."))
             except Exception:
@@ -5021,6 +5117,7 @@ class Handler(BaseHTTPRequestHandler):
         if not user:
             self.json_response(401, mp_error("MP-AUTH-001", "Nicht angemeldet."))
             return None
+        self._log_role = user["role"]
         if roles and user["role"] not in roles:
             self.json_response(403, mp_error("MP-AUTH-002", "Keine Berechtigung."))
             return None
@@ -5317,6 +5414,24 @@ class Handler(BaseHTTPRequestHandler):
             return self.json_response(413, mp_error("MP-DATA-014", str(e)))
         except Exception as e:
             return self.json_response(400, mp_error("MP-DATA-013", str(e)))
+        if path == "/api/client-log":
+            # #84: Fehler aus dem Browser (Fehlerdialog, JavaScript-Fehler) fuer das Fehlerprotokoll.
+            user = self.require_user()
+            if not user or not self.require_current_client():
+                return
+            now = time.time()
+            window = [t for t in CLIENT_LOG_RATE.get(user["id"], []) if now - t < 60]
+            if len(window) >= 30:
+                CLIENT_LOG_RATE[user["id"]] = window
+                return self.json_response(200, {"ok": True, "dropped": True})
+            CLIENT_LOG_RATE[user["id"]] = window + [now]
+            code = str(body.get("code") or "")
+            if not re.fullmatch(r"(MP-[A-Z]{2,6}-\d{3}|JS|NET)", code):
+                code = "JS"
+            error_log_record({"source": "client", "code": code, "message": str(body.get("message") or "")[:500],
+                              "where": str(body.get("where") or "")[:120], "role": user["role"],
+                              "clientVersion": str(self.headers.get("X-MP-Client-Version", ""))[:20]})
+            return self.json_response(200, {"ok": True})
         if path == "/api/updates/install":
             user = self.require_user(["admin"])
             if not user or not self.require_current_client():
@@ -5937,6 +6052,7 @@ def main() -> None:
             print(f"FEHLER: {e.message}", file=sys.stderr)
             raise SystemExit(3)
     init_db()
+    error_log_reset_on_update()
     if not args.init_admin:
         try:
             _cfg, cfg_warn = load_config()

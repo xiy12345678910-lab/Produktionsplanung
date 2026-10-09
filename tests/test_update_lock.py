@@ -120,6 +120,7 @@ COVERED = {
     "/api/config": [("PATCH", "/api/config", {"company": {"name": "Gesperrt GmbH"}}), ("PUT", "/api/config", {"company": {"name": "Gesperrt GmbH"}})],
     "/api/notifications/prefs": [("PUT", "/api/notifications/prefs", {"mute": True})],
     "/api/state": [("PUT", "/api/state", {"revision": 1, "data": {}})],
+    "/api/client-log": [("POST", "/api/client-log", {"code": "MP-UI-001", "message": "x"})],
 }
 missing = sorted(routes - AUTH - set(COVERED))
 check(len(routes) >= 15 and not missing, f"{len(routes)} schreibende Routen in server.py gefunden, alle im Test abgedeckt" + (f" (fehlen: {missing})" if missing else ""))

@@ -53,6 +53,10 @@ try{
   check((await page.evaluate(()=>document.getElementById('errorModal').innerText)).includes('MP-AUTH-024'),'abweichende Wiederholung wird abgewiesen');await page.click('#closeError');
   await page.click(`#userAdminList [data-user-password="${scopedBtn}"]`);await page.waitForSelector('#askModal.show');
   await page.fill('#askInput','NeuPasswort-2026');await page.click('#askOk');await page.waitForTimeout(150);await page.fill('#askInput','NeuPasswort-2026');await page.click('#askOk');await page.waitForTimeout(700);
+  // #84: Fehlerdialog landet im Fehlerprotokoll; Systemstatus zeigt "Fehler seit Update" mit Code.
+  await page.click('#navPlan');await page.waitForTimeout(300);await page.click('#navSystem');await page.waitForTimeout(300);
+  await page.waitForSelector('#adminStatusPanel #errLogCodes',{timeout:8000}).catch(()=>{});
+  check((await page.locator('#adminStatusPanel').innerText().catch(()=>'')).includes('MP-AUTH-024'),'Systemstatus: Fehler seit Update zeigt MP-AUTH-024 aus dem Fehlerdialog');
   {const ctx=await browser.newContext();const v=(await (await ctx.request.get(BASE+'api/health')).json()).version;const r=await ctx.request.post(BASE+'api/login',{headers:{'X-MP-Client-Version':v,'Origin':BASE.slice(0,-1)},data:{username:'ScopedOps',password:'NeuPasswort-2026'}});check(r.status()===200,`Login mit neu gesetztem Passwort (${r.status()} ${await r.text()})`);await ctx.close()}
   await page.click('[data-systab="functions"]');await page.waitForTimeout(250);check(await page.locator('[data-admin-mod="palletLabels"]').isVisible(),'module control is in own admin tab');
   check(!(await page.locator('[data-admin-mod="palletLabels"]').isChecked()),'pallet labels default off');

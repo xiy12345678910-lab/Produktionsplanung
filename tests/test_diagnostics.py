@@ -129,6 +129,50 @@ class Diagnostics(unittest.TestCase):
         self.assertTrue(cd.startswith('attachment; filename="diagnose-%s-' % server.APP_VERSION) and cd.endswith('.json"'), cd)
         self.assertEqual(json.loads(raw)['product']['version'], server.APP_VERSION)
 
+    def test_error_log(self):
+        # #84: Fehlerantworten und Browser-Fehler landen im Fehlerprotokoll (ohne Benutzernamen), bis zum naechsten Update.
+        viewer = self.login('viewer1')
+        self.assertEqual(self.req('GET', '/api/diagnostics', None, viewer)[0], 403)
+        self.assertEqual(self.req('GET', '/api/diagnostics')[0], 401)  # "Nicht angemeldet" wird nicht protokolliert
+        st, raw, _ = self.req('POST', '/api/client-log', {'code': 'MP-UI-001', 'message': 'Testfehler im Browser', 'where': 'overview'}, viewer)
+        self.assertEqual((st, json.loads(raw).get('ok')), (200, True))
+        self.req('POST', '/api/client-log', {'code': '<script>', 'message': 'x'}, viewer)
+        self.assertEqual(self.req('POST', '/api/client-log', {'code': 'MP-UI-001', 'message': 'ohne Sitzung'})[0], 401)
+        d = json.loads(self.req('GET', '/api/diagnostics', None, self.admin)[1])
+        log = d['errorLog']
+        self.assertEqual(log['version'], server.APP_VERSION)
+        codes = {x['code']: x for x in log['byCode']}
+        self.assertIn('MP-AUTH-002', codes)
+        self.assertNotIn('MP-AUTH-001', codes)
+        self.assertEqual(codes['MP-UI-001']['source'], 'client')
+        self.assertIn('JS', codes)
+        srv = next(x for x in log['recent'] if x['code'] == 'MP-AUTH-002')
+        self.assertEqual((srv['role'], srv['path'], srv['status']), ('viewer', '/api/diagnostics', 403))
+        self.assertNotIn('viewer1', json.dumps(log))
+        self.assertIn('logTail', d)
+        # Rate-Limit: hoechstens 30 Browser-Meldungen pro Minute und Benutzer
+        for i in range(35):
+            self.req('POST', '/api/client-log', {'code': 'MP-UI-002', 'message': f'flut {i}'}, viewer)
+        flood = [x for x in server.error_log_read() if x.get('code') == 'MP-UI-002']
+        self.assertLessEqual(len(flood), 30)
+        # Serverfehler (500) mit Ausloeser und Stack-Ende
+        orig = server.build_diagnostics
+        server.build_diagnostics = lambda *a: 1 / 0
+        try:
+            self.assertEqual(self.req('GET', '/api/diagnostics', None, self.admin)[0], 500)
+        finally:
+            server.build_diagnostics = orig
+        crash = next(x for x in reversed(server.error_log_read()) if x.get('code') == 'MP-SRV-500')
+        self.assertIn('ZeroDivisionError', crash.get('detail', ''))
+        self.assertEqual(crash['role'], 'admin')
+        # Bis zum naechsten Update: Eintraege anderer Versionen fallen beim Start weg
+        with server.error_log_path().open('a', encoding='utf-8') as f:
+            f.write(json.dumps({'ts': 'x', 'version': '0.0.1', 'code': 'MP-OLD-001'}) + '\n')
+        server.error_log_reset_on_update()
+        text = server.error_log_path().read_text(encoding='utf-8')
+        self.assertNotIn('MP-OLD-001', text)
+        self.assertIn('MP-AUTH-002', text)
+
 
 if __name__ == '__main__':
     unittest.main()
