@@ -2,6 +2,11 @@ MASCHINENPLANUNG V12.27.0 - RELEASE NOTES
 =========================================
 Datum: 08.10.2026 · Basis: V12.26.0 · Update gemäß README_Windows.txt 2b, Daten bleiben erhalten
 
+ROLLBACK = NUR PROGRAMMCODE
+- Ein fehlgeschlagenes Update spielt die Datenbank nur noch zurueck, wenn die neue Version schon gestartet war (moegliche Migration). Benutzerdaten gehen dabei nicht verloren: Die Wartungssperre (MP-UPD-003) blockiert alle schreibenden Anfragen, bis Health- und Sicherheitscheck bestanden sind; ein neuer Test prueft jede schreibende Route. Der ersetzte Stand bleibt in update_backups\fehlversuch_V*.
+- Nach bestandenem Check gibt es keinen Rollback mehr, auch wenn danach ein Aufraeumschritt scheitert. Vorher konnte ein solcher Fehler Aenderungen verwerfen, die nach dem Entsperren entstanden waren.
+- Zurueck zu einer aelteren Version (nur Code, die Daten bleiben): Update_von_GitHub.ps1 -Tag vALT -Rueckstufen bzw. UPDATE_LIVE.ps1 -Paket <Ordner> -Rueckstufen. Ein Vorabtest mit einer Kopie der aktuellen Daten laeuft vorher. Ohne den Schalter bleibt der Downgrade-Schutz; er prueft jetzt auch die installierte Version bei gestopptem Server (MP-UPD-007). Doku: docs/ROLLBACK.md.
+
 ZU GROSSE ANFRAGEN: HTTP 413
 - Anfragen ueber dem Groessenlimit werden mit 413 und MP-DATA-014 abgewiesen (bisher 400/MP-DATA-013). Kaputte Anfragen bleiben 400.
 

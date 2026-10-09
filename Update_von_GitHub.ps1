@@ -11,6 +11,8 @@
 #   powershell -ExecutionPolicy Bypass -File .\Update_von_GitHub.ps1 -Tag v12.10.2
 #   powershell -ExecutionPolicy Bypass -File .\Update_von_GitHub.ps1 -Commit <40-stelliger Hash> [-Sha256 <hash>]
 #   powershell -ExecutionPolicy Bypass -File .\Update_von_GitHub.ps1 -NurHerunterladen
+#   powershell -ExecutionPolicy Bypass -File .\Update_von_GitHub.ps1 -Tag v12.26.0 -Rueckstufen   # zurueck zu aelterer Version
+#     (nur Programmcode; die Datenbank bleibt. Der INSTALLIERTE UPDATE_LIVE.ps1 installiert das alte Paket. docs/ROLLBACK.md)
 #   Nur zum Testen (ungeprueft): -Branch <name> -UnsicherBranch
 param(
     [string]$Tag,
@@ -20,7 +22,8 @@ param(
     [switch]$UnsicherBranch,
     [string]$Repo,
     [string]$Ziel = (Join-Path $env:USERPROFILE 'Downloads\Maschinenplanung_Update'),
-    [switch]$NurHerunterladen
+    [switch]$NurHerunterladen,
+    [switch]$Rueckstufen
 )
 $ErrorActionPreference = 'Stop'
 # V12.15.0: Quelle aus LAN_CONFIG.json (Feld UpdateRepo, "konto/repo") im Live-Ordner bzw. neben dem Skript.
@@ -143,7 +146,12 @@ try {
     `$pkg = Get-MPUpdatePackage -Repo '$Repo' -Sha '$sha' -Sha256 '$shaArg' -Dir `$dir -Protect `$true
     Write-Host "Paket: `$pkg" -ForegroundColor Green
     Set-Location -LiteralPath `$pkg
-    & '.\UPDATE_LIVE.ps1'
+    if (`$$([bool]$Rueckstufen)) {
+        # Aelteres Paket mit dem Ablauf des INSTALLIERTEN (neueren) Updaters: nur Code, Daten bleiben.
+        & (Join-Path `$env:ProgramData 'Maschinenplanung\UPDATE_LIVE.ps1') -Paket `$pkg -Rueckstufen
+    } else {
+        & '.\UPDATE_LIVE.ps1'
+    }
 } catch { Write-Host `$_ -ForegroundColor Red }
 Write-Host ''
 Read-Host 'Fertig - Enter schliesst dieses Fenster'

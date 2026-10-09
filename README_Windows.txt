@@ -21,6 +21,8 @@ MASCHINENPLANUNG V12.27.0 - WINDOWS-SERVER (LAN ONLY)
      C:\ProgramData\Maschinenplanung_Update\ - nur SYSTEM/Administratoren duerfen dort schreiben.
    - Branch-Stand nur zum Testen: -Branch <name> -UnsicherBranch
    - Nur herunterladen (ohne Installation): -NurHerunterladen
+   - Zurueck zu einer AELTEREN Version (nur Programmcode, die Daten bleiben): -Tag v12.26.0 -Rueckstufen
+     Ohne -Rueckstufen bricht der Updater bei aelteren Paketen ab. Details: docs/ROLLBACK.md
    ERSTES Update auf V12.10.2 (alter Updater kennt noch keine Releases):
         $B = '<Branch>'
         irm "https://raw.githubusercontent.com/<GitHub-Konto>/<Repo>/$B/Update_von_GitHub.ps1" -OutFile "$env:USERPROFILE\Downloads\Update_von_GitHub.ps1"
@@ -113,6 +115,8 @@ MASCHINENPLANUNG V12.27.0 - WINDOWS-SERVER (LAN ONLY)
    zurueck (inkl. -wal/-shm), startet und prueft den Server. Startet er nicht, wird der Stand vor
    dem Restore automatisch zurueckgespielt.
    update_backups\ behaelt die letzten 5 Update-Staende.
+   Ein fehlgeschlagenes Update rollt nur den Programmcode zurueck. Neuere Daten werden nie verworfen
+   (docs/ROLLBACK.md).
 
 7. ROLLEN
    Admin                   alles, inkl. Benutzerverwaltung und Backup-Import
