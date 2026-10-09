@@ -71,6 +71,7 @@ MP-DATA-010  Datenstand ist kein Objekt.
 MP-DATA-011  Mindestens eine Maschine ist erforderlich.
 MP-DATA-012  Auftragsliste fehlt.
 MP-DATA-013  Kontextbezogener Fehler; Klartext wird direkt in der Anwendung angezeigt.
+MP-DATA-014  Anfrage zu groß (HTTP 413): Datenmenge über dem Limit; Änderung kleiner aufteilen oder Admin informieren.
 MP-DATA-014  Feld 'meta'/'ui' muss ein Objekt, 'planVersions' eine Liste von Objekten sein.
 
 [MACH - Maschinenstammdaten]

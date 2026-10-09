@@ -4701,6 +4701,10 @@ def template_apply(user: dict, body: dict) -> tuple[int, dict]:
     return 200, {"ok": True, "summary": summary, "revision": revision}
 
 
+class RequestTooLarge(ValueError):
+    """Body über dem Limit: Antwort 413 (MP-DATA-014) statt 400."""
+
+
 class Handler(BaseHTTPRequestHandler):
     server_version = f"ProduktionsplanungV{APP_VERSION}/1.0"
     # V12.10.2: Socket-Timeout gegen langsame bzw. hängende Verbindungen (Slowloris).
@@ -4762,6 +4766,8 @@ class Handler(BaseHTTPRequestHandler):
         if n <= 0 or n > limit:
             # Body bleibt ungelesen -> Verbindung nach der Antwort schließen.
             self.close_connection = True
+            if n > limit:
+                raise RequestTooLarge(f"Anfrage zu groß (max. {limit // 1024} KB).")
             raise ValueError("Ungültige oder zu große Anfrage")
         raw = self.rfile.read(n)
         def reject_constant(value):
@@ -4822,6 +4828,8 @@ class Handler(BaseHTTPRequestHandler):
         try:
             body = self.read_json()
             profile = validate_role_profile(body, rid)
+        except RequestTooLarge as e:
+            return self.json_response(413, mp_error("MP-DATA-014", str(e)))
         except ValueError as e:
             return self.json_response(400, mp_error("MP-ROLE-006", str(e)))
         with DB_LOCK, db_session() as con:
@@ -5174,6 +5182,8 @@ class Handler(BaseHTTPRequestHandler):
             return
         try:
             body = self.read_json(64 * 1024)
+        except RequestTooLarge as e:
+            return self.json_response(413, mp_error("MP-DATA-014", str(e)))
         except Exception as e:
             return self.json_response(400, mp_error("MP-DATA-013", str(e)))
         return self.config_write(user, body)
@@ -5240,6 +5250,8 @@ class Handler(BaseHTTPRequestHandler):
             limit = MAX_BODY
         try:
             body = self.read_json(limit)
+        except RequestTooLarge as e:
+            return self.json_response(413, mp_error("MP-DATA-014", str(e)))
         except Exception as e:
             return self.json_response(400, mp_error("MP-DATA-013", str(e)))
         if path == "/api/updates/install":
@@ -5597,6 +5609,8 @@ class Handler(BaseHTTPRequestHandler):
         try:
             uid = int(path.rsplit("/", 1)[1])
             body = self.read_json()
+        except RequestTooLarge as e:
+            return self.json_response(413, mp_error("MP-DATA-014", str(e)))
         except Exception:
             return self.json_response(400, mp_error("MP-REQ-002", "Ungültige Anfrage."))
         with DB_LOCK, db_session() as con:
@@ -5659,6 +5673,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self.json_response(403, module_error("notifications"))
             try:
                 body = self.read_json(MAX_AUTH_BODY)
+            except RequestTooLarge as e:
+                return self.json_response(413, mp_error("MP-DATA-014", str(e)))
             except Exception as e:
                 return self.json_response(400, mp_error("MP-DATA-013", str(e)))
             with DB_LOCK, db_session() as con:
@@ -5684,6 +5700,8 @@ class Handler(BaseHTTPRequestHandler):
                 raise ValueError("Datenobjekt fehlt")
             if len(canonical(incoming).encode("utf-8")) > MAX_BODY:
                 raise ValueError("Datenstand zu groß")
+        except RequestTooLarge as e:
+            return self.json_response(413, mp_error("MP-DATA-014", str(e)))
         except Exception as e:
             return self.json_response(400, mp_error("MP-DATA-013", str(e)))
         action = str(body.get("action", "Gespeichert"))[:160]
