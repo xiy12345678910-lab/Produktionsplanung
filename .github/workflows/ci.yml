@@ -63,6 +63,7 @@ jobs:
           python tests/test_security_negative.py
           python tests/test_batch_calc.py
           python tests/test_batch_server.py
+          python tests/test_day_rules.py
       - name: Backup/Restore
         run: |
           python tests/test_backup.py

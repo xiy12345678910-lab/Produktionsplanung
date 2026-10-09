@@ -120,8 +120,95 @@ sys.modules[__name__].__class__ = _ServerModule
 DIAG_WARN_NO_TLS = "HTTPS nicht eingerichtet – empfohlen, siehe README_Windows 2c (HTTPS_Einrichten.ps1)"
 
 
+# ---------------------------------------------------------------------------------------------
+# #84: Fehlerprotokoll fuer die Fehlersuche. Jede Fehlerantwort (Code ab 400), jeder Serverfehler (500)
+# und vom Browser gemeldete Fehler landen in data/fehlerprotokoll.jsonl. Eigene Datei mit eigener Sperre,
+# weil Fehlerantworten oft innerhalb der DB-Sperre entstehen. Gilt bis zum naechsten Update: beim Start
+# einer neuen Version werden Eintraege anderer Versionen entfernt. Ohne Benutzernamen, nur die Rolle.
+# ---------------------------------------------------------------------------------------------
+ERROR_LOG_LOCK = threading.Lock()
+ERROR_LOG_MAX = 1000
+ERROR_LOG_SKIP = {"MP-AUTH-001"}  # "Nicht angemeldet" kommt bei jedem Abfragen nach Sitzungsende
+CLIENT_LOG_RATE: dict = {}
+
+
+def error_log_path() -> Path:
+    return DATA_DIR / "fehlerprotokoll.jsonl"
+
+
+def error_log_record(entry: dict) -> None:
+    if entry.get("code") in ERROR_LOG_SKIP:
+        return
+    row = {"ts": now_iso(), "version": APP_VERSION, **{k: (str(v)[:1500] if isinstance(v, str) else v) for k, v in entry.items()}}
+    try:
+        with ERROR_LOG_LOCK:
+            path = error_log_path()
+            path.parent.mkdir(parents=True, exist_ok=True)
+            with path.open("a", encoding="utf-8") as f:
+                f.write(json.dumps(row, ensure_ascii=False) + "\n")
+            if path.stat().st_size > 900_000:
+                lines = path.read_text(encoding="utf-8", errors="replace").splitlines()[-ERROR_LOG_MAX:]
+                path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    except OSError:
+        pass
+
+
+def error_log_read() -> list:
+    try:
+        with ERROR_LOG_LOCK:
+            lines = error_log_path().read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return []
+    out = []
+    for line in lines[-ERROR_LOG_MAX:]:
+        try:
+            x = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(x, dict) and x.get("version") == APP_VERSION:
+            out.append(x)
+    return out
+
+
+def error_log_reset_on_update() -> None:
+    """Beim Start: Eintraege frueherer Versionen entfernen (Protokoll gilt bis zum naechsten Update)."""
+    keep = error_log_read()
+    try:
+        with ERROR_LOG_LOCK:
+            path = error_log_path()
+            if path.exists():
+                path.write_text("".join(json.dumps(x, ensure_ascii=False) + "\n" for x in keep), encoding="utf-8")
+    except OSError:
+        pass
+
+
+def _log_tail(folder: Path, pattern: str, lines: int) -> dict | None:
+    try:
+        files = sorted(folder.glob(pattern), key=lambda f: f.stat().st_mtime, reverse=True) if folder.is_dir() else []
+        if not files:
+            return None
+        text = files[0].read_text(encoding="utf-8", errors="replace").splitlines()
+        return {"file": files[0].name, "lines": text[-lines:]}
+    except OSError:
+        return None
+
+
+def error_log_summary(limit: int = 100) -> dict:
+    entries = error_log_read()
+    by = {}
+    for x in entries:
+        k = str(x.get("code") or "?")
+        cur = by.setdefault(k, {"code": k, "count": 0, "last": "", "message": "", "source": x.get("source", "")})
+        cur["count"] += 1
+        cur["last"], cur["message"] = x.get("ts", ""), str(x.get("message") or "")[:200]
+    return {"version": APP_VERSION, "count": len(entries),
+            "byCode": sorted(by.values(), key=lambda r: (-r["count"], r["code"]))[:25],
+            "recent": list(reversed(entries[-limit:]))}
+
+
 def build_diagnostics(tls_on: bool = False) -> dict:
-    """#52 K6: Systemstatus fuer den Admin. Nur technische Werte und Zaehler, nie Auftrags-, Chat-, Personal- oder Zugangsdaten."""
+    """#52 K6: Systemstatus fuer den Admin. Technische Werte und Zaehler, keine Zugangsdaten. #84: Fehlerprotokoll (Fehlermeldungen
+    koennen Auftrags- oder Mitarbeiternamen enthalten, keine Benutzernamen) und Logende von Server und Update."""
     import platform
     now = time.time()
     warnings: list[str] = []
@@ -203,6 +290,8 @@ def build_diagnostics(tls_on: bool = False) -> dict:
     out["modules"] = modules_effective(cfg)
     out["config"] = {"companyName": (cfg.get("company") or {}).get("name", ""), "template": cfg.get("template", ""),
                      "tenantId": cfg.get("tenantId", ""), "timezone": (cfg.get("locale") or {}).get("timezone", ""), "tls": bool(tls_on)}
+    out["errorLog"] = error_log_summary()
+    out["logTail"] = {"server": _log_tail(BASE / "logs", "server_*.log", 80), "update": _log_tail(BASE / "updates", "install-*.log", 60)}
     out["warnings"] = warnings
     return out
 
@@ -212,7 +301,7 @@ def build_diagnostics(tls_on: bool = False) -> dict:
 # 30 Tage Kulanz, danach nur Lesen: der Server lehnt jeden Schreibzugriff ab (MP-LIC-001), außer den
 # Pfaden in LICENSE_RO_ALLOWED. Daten werden nie gelöscht; Lesen, Backup und Diagnose bleiben möglich.
 # ---------------------------------------------------------------------------------------------
-LICENSE_RO_ALLOWED = {("POST", "/api/login"), ("POST", "/api/logout"), ("POST", "/api/password"),
+LICENSE_RO_ALLOWED = {("POST", "/api/login"), ("POST", "/api/logout"), ("POST", "/api/password"), ("POST", "/api/client-log"),
                       ("POST", "/api/license"), ("DELETE", "/api/license"), ("POST", "/api/updates/install")}
 LICENSE_RO_TEXT = "Lizenz abgelaufen/fehlt – nur Lesen. Daten bleiben erhalten; bitte den Admin bzw. den Lizenzgeber ansprechen."
 
@@ -602,7 +691,7 @@ def init_db(seed: str = "neutral") -> None:
                 "machines": [],
                 "projects": [],
                 "workSteps": [],
-                "yearRules": [], "weekRules": [], "exceptions": [],
+                "yearRules": [], "weekRules": [], "dayRules": [], "exceptions": [],
                 "operatorCapacity": {"single": 3, "early": 3, "late": 3},
                 "employees": [], "personnelAssignments": [], "personnelAbsences": [], "weeklyEmployeeDeployments": [], "departmentStaffNeeds": [], "personnelGate": False,
                 "history": [], "audit": [], "planVersions": [],
@@ -2268,6 +2357,10 @@ def templates_change_allowed(old: dict, new: dict, role: str) -> tuple[bool, str
     return True, ""
 
 
+def _fa_key(step: dict) -> str:
+    return str(step.get("fa") or step.get("order") or "").strip()
+
+
 def validate_state(old: dict, new: dict) -> tuple[bool, str, str]:
     """Server-side invariants. Browser checks are convenience only."""
     if not isinstance(new, dict):
@@ -2320,6 +2413,20 @@ def validate_state(old: dict, new: dict) -> tuple[bool, str, str]:
         dept_types[did] = ptype
         dept_kinds[did] = kind
         dept_labels[did] = name
+
+    # Doppelte Bereichsnamen (Groß-/Kleinschreibung egal, wie businessKey im Client) nur neu verhindern:
+    # ein bereits vorhandenes Duplikat blockiert das Speichern nicht.
+    def _dup_names(deps) -> set:
+        seen, dups = set(), set()
+        for d in deps if isinstance(deps, list) else []:
+            key = str(d.get("name") or "").strip().lower() if isinstance(d, dict) else ""
+            if key:
+                (dups if key in seen else seen).add(key)
+        return dups
+    new_dups = _dup_names(departments) - _dup_names((old or {}).get("departments"))
+    if new_dups:
+        dup = next(lbl for lbl in dept_labels.values() if lbl.lower() in new_dups)
+        return False, "MP-DEPT-005", f"Ein Bereich mit dem Namen '{dup}' existiert bereits."
 
     # V12.8.2: Vertrieb/Entwicklung bearbeiten nur Projektaufgaben – keine Maschinen, Aufträge, Formate.
     for name, what in (("machines", "Maschine/Linie"), ("workSteps", "Auftrag"), ("formats", "Format"), ("baseFormats", "Grundformat")):
@@ -2417,8 +2524,6 @@ def validate_state(old: dict, new: dict) -> tuple[bool, str, str]:
             return False, "MP-STEP-007", f"Arbeitsgang '{sid}' hat ungültige Vorgänger."
         if sid in {str(x) for x in predecessors}:
             return False, "MP-STEP-007", f"Arbeitsgang '{sid}' darf nicht sein eigener Vorgänger sein."
-        if predecessors and not pid:
-            return False, "MP-STEP-007", f"Arbeitsgang '{sid}': Vorgänger sind nur innerhalb eines AB-Auftrags zulässig."
 
         if str(step.get("status")) in {"released", "running"}:
             completed = {str(h.get("originalOrderId")) for h in new.get("history") or [] if h.get("recordType", "done") == "done"}
@@ -2457,8 +2562,11 @@ def validate_state(old: dict, new: dict) -> tuple[bool, str, str]:
     for step in work_steps:
         for predecessor_id in (step.get("predecessorIds") or []):
             predecessor = by_id.get(str(predecessor_id))
-            if not predecessor or str(predecessor.get("projectId")) != str(step.get("projectId")):
+            if not predecessor or str(predecessor.get("projectId") or "") != str(step.get("projectId") or ""):
                 return False, "MP-STEP-007", f"Arbeitsgang '{step.get('id')}' verweist auf einen ungültigen Vorgänger."
+            # #84: Ohne Projekt/AB nur innerhalb derselben FA (AV übergibt eine FA an mehrere Bereiche).
+            if not str(step.get("projectId") or "") and (not _fa_key(step) or _fa_key(predecessor) != _fa_key(step)):
+                return False, "MP-STEP-007", f"Arbeitsgang '{step.get('id')}': Vorgänger ohne AB-Auftrag nur innerhalb derselben FA."
 
     graph = {sid: [str(x) for x in (step.get("predecessorIds") or [])] for sid, step in by_id.items() if sid in step_ids}
     visiting, visited = set(), set()
@@ -2581,6 +2689,21 @@ def validate_state(old: dict, new: dict) -> tuple[bool, str, str]:
             return False, "MP-CAL-013", "Wochenregel enthält ungültige/duplizierte Maschine, Jahr-, KW- oder Schichtdaten."
         wr_keys.add(key)
 
+    # #84: Sonderschichten je Maschine und Tag (Sa/So, Überstunden). mode "" = Betrieb wie geplant.
+    day_rules = new.get("dayRules") or []
+    if not isinstance(day_rules, list):
+        return False, "MP-CAL-015", "Sonderschichten sind ungültig."
+    dr_keys = set()
+    for r in day_rules:
+        if not isinstance(r, dict):
+            return False, "MP-CAL-015", "Sonderschicht ist ungültig."
+        key = (str(r.get("machineId", "")), str(r.get("date", "")))
+        mode, extra = str(r.get("mode") if r.get("mode") is not None else ""), r.get("extraMinutes", 0)
+        if (key[0] not in midset or not _valid_date_key(key[1]) or mode not in {"", "0", "1", "2"} or isinstance(extra, bool)
+                or not isinstance(extra, int) or not 0 <= extra <= 240 or (mode == "" and not extra) or key in dr_keys):
+            return False, "MP-CAL-015", "Sonderschicht enthält ungültige/duplizierte Maschine, Datum, Betrieb oder Überstunden (0–240 Min.)."
+        dr_keys.add(key)
+
     exceptions = new.get("exceptions") or []
     if not isinstance(exceptions, list):
         return False, "MP-CAL-014", "Kalender-Ausnahmen sind ungültig."
@@ -2692,10 +2815,14 @@ def validate_state(old: dict, new: dict) -> tuple[bool, str, str]:
         ok, code, reason = _personnel_assignment_valid(a)
         if not ok:
             return False, code, reason
+        if "overtime" in a and not isinstance(a.get("overtime"), bool):
+            return False, "MP-PERS-001", "Personalzuordnung: 'overtime' muss true oder false sein."
 
     # Explicit hours cannot exceed the contractual weekly capacity (breaks excluded).
     weekly_assigned = {}
     for a in assignments:
+        if a.get("overtime") is True:
+            continue  # #84: ausdrueckliche Ueberstunden zaehlen nicht gegen die Vertragsstunden
         key = (str(a["employeeId"]), _week_start_key(a["date"]))
         minutes = _clock_minutes(a["end"]) - _clock_minutes(a["start"])
         minutes -= sum((_clock_minutes(b.get("end")) or 0) - (_clock_minutes(b.get("start")) or 0) for b in a.get("breaks") or [] if b.get("start") and b.get("end"))
@@ -3447,7 +3574,7 @@ def department_change_allowed(old: dict, new: dict, department_id: str) -> tuple
     if not department_id:
         return False, "Kein Bereich am Benutzer hinterlegt."
     globally_allowed = {"audit", "meta", "ui", "planVersions", "departmentStaffNeeds"}
-    scoped = {"workSteps", "machines", "machineBlocks", "employees", "personnelAssignments", "personnelAbsences", "history", "yearRules", "weekRules", "projects", "formats", "baseFormats"}
+    scoped = {"workSteps", "machines", "machineBlocks", "employees", "personnelAssignments", "personnelAbsences", "history", "yearRules", "weekRules", "dayRules", "projects", "formats", "baseFormats"}
     # Sprechende Meldungen für häufige Fälle, danach die allgemeine Regel.
     if canonical(old.get("exceptions")) != canonical(new.get("exceptions")):
         return False, "Globale Betriebsferien/Kalender-Ausnahmen dürfen nur GF/Admin ändern."
@@ -3556,6 +3683,9 @@ def department_change_allowed(old: dict, new: dict, department_id: str) -> tuple
     for rec in changed_keyed("weekRules", lambda x: f"{x.get('machineId')}|{x.get('year')}|{x.get('week')}"):
         if machine_dept.get(str(rec.get("machineId")), "") != department_id:
             return False, "KW-Schichtregel gehört nicht zum eigenen Bereich."
+    for rec in changed_keyed("dayRules", lambda x: f"{x.get('machineId')}|{x.get('date')}"):
+        if machine_dept.get(str(rec.get("machineId")), "") != department_id:
+            return False, "Sonderschicht gehört nicht zum eigenen Bereich."
     for rec in changed_records("employees"):
         if str(rec.get("departmentId") or "") != department_id:
             return False, "Mitarbeiter gehört nicht zum eigenen Bereich."
@@ -3739,7 +3869,7 @@ def production_capacity(state, order):
     mid, did = order.get("machineId"), order.get("departmentId")
     employees = [dict(e) for e in state.get("employees") or [] if mid in e.get("skills", []) and (e.get("departmentId") == did or any(x.get("employeeId") == e.get("id") and x.get("departmentId") == did for x in state.get("weeklyEmployeeDeployments") or []))]
     eids = {e["id"] for e in employees}
-    return {"personnelGate": state.get("personnelGate", False), "machines": [dict(m) for m in state.get("machines") or [] if m.get("id") == mid], "employees": employees, "personnelAssignments": [dict(x) for x in state.get("personnelAssignments") or [] if x.get("employeeId") in eids], "personnelAbsences": [{"employeeId": x.get("employeeId"), "date": x.get("date")} for x in state.get("personnelAbsences") or [] if x.get("employeeId") in eids], "weeklyEmployeeDeployments": [dict(x) for x in state.get("weeklyEmployeeDeployments") or [] if x.get("employeeId") in eids], "shiftTemplates": json.loads(json.dumps(state.get("shiftTemplates") or {})), "exceptions": state.get("exceptions") or [], "yearRules": [dict(x) for x in state.get("yearRules") or [] if x.get("machineId") == mid], "weekRules": [dict(x) for x in state.get("weekRules") or [] if x.get("machineId") == mid], "machineBlocks": [dict(x) for x in state.get("machineBlocks") or [] if x.get("machineId") == mid]}
+    return {"personnelGate": state.get("personnelGate", False), "machines": [dict(m) for m in state.get("machines") or [] if m.get("id") == mid], "employees": employees, "personnelAssignments": [dict(x) for x in state.get("personnelAssignments") or [] if x.get("employeeId") in eids], "personnelAbsences": [{"employeeId": x.get("employeeId"), "date": x.get("date")} for x in state.get("personnelAbsences") or [] if x.get("employeeId") in eids], "weeklyEmployeeDeployments": [dict(x) for x in state.get("weeklyEmployeeDeployments") or [] if x.get("employeeId") in eids], "shiftTemplates": json.loads(json.dumps(state.get("shiftTemplates") or {})), "exceptions": state.get("exceptions") or [], "yearRules": [dict(x) for x in state.get("yearRules") or [] if x.get("machineId") == mid], "weekRules": [dict(x) for x in state.get("weekRules") or [] if x.get("machineId") == mid], "dayRules": [dict(x) for x in state.get("dayRules") or [] if x.get("machineId") == mid], "machineBlocks": [dict(x) for x in state.get("machineBlocks") or [] if x.get("machineId") == mid]}
 
 
 def production_windows(state, order, day, fallback_crew=1):
@@ -4288,7 +4418,7 @@ def demand_book_completion(state, order, finished):
         finished["reservedForCallOff"] = _reserve_call_off(state, c)
 
 
-SCOPE_COLLECTIONS = {"productionEvents", "palletLabels", "inventory", "frameOrders", "callOffs", "machines", "workSteps", "history", "formats", "baseFormats", "machineBlocks", "yearRules", "weekRules", "employees", "personnelAssignments", "personnelAbsences", "weeklyEmployeeDeployments", "departmentStaffNeeds", "projects", "audit", "planVersions"}
+SCOPE_COLLECTIONS = {"productionEvents", "palletLabels", "inventory", "frameOrders", "callOffs", "machines", "workSteps", "history", "formats", "baseFormats", "machineBlocks", "yearRules", "weekRules", "dayRules", "employees", "personnelAssignments", "personnelAbsences", "weeklyEmployeeDeployments", "departmentStaffNeeds", "projects", "audit", "planVersions"}
 
 
 def record_key(name, x):
@@ -4300,6 +4430,8 @@ def record_key(name, x):
         return str(x.get("employeeId")) + "|" + str(x.get("weekStart"))
     if name == "departmentStaffNeeds":
         return str(x.get("departmentId")) + "|" + str(x.get("weekStart"))
+    if name == "dayRules":
+        return str(x.get("machineId")) + "|" + str(x.get("date"))
     return canonical({k: x.get(k) for k in ("machineId", "year", "week")})
 
 
@@ -4783,6 +4915,10 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
 
     def json_response(self, code: int, body: dict, cookie: str | None = None):
+        if code >= 400 and isinstance(body, dict) and body.get("errorCode"):
+            error_log_record({"source": "server", "status": code, "code": body.get("errorCode"), "message": body.get("error", ""),
+                              "method": self.command, "path": urlparse(self.path).path, "role": getattr(self, "_log_role", ""),
+                              **({"detail": self._log_detail} if getattr(self, "_log_detail", "") else {})})
         raw = json.dumps(body, ensure_ascii=False).encode("utf-8")
         self.send_response(code)
         self._security_headers()
@@ -4940,6 +5076,7 @@ class Handler(BaseHTTPRequestHandler):
         return False
 
     def _guarded(self, fn, write: bool):
+        self._log_role, self._log_detail = "", ""  # Keep-Alive: Angaben der vorigen Anfrage nicht mitschleppen
         if not self.request_origin_ok(write):
             return
         try:
@@ -4958,6 +5095,8 @@ class Handler(BaseHTTPRequestHandler):
             msg = " ".join(str(e).split())  # eine Logzeile, auch bei mehrzeiligen Windows-Meldungen
             sys.stderr.write(f"MP-SRV-500 {self.command} {urlparse(self.path).path}: {type(e).__name__}: {msg}\n")
             self.close_connection = True
+            import traceback
+            self._log_detail = f"{type(e).__name__}: {msg}\n" + "".join(traceback.format_exc().splitlines(True)[-12:])
             try:
                 self.json_response(500, mp_error("MP-SRV-500", "Serverfehler. Bitte erneut versuchen."))
             except Exception:
@@ -5002,6 +5141,7 @@ class Handler(BaseHTTPRequestHandler):
         if not user:
             self.json_response(401, mp_error("MP-AUTH-001", "Nicht angemeldet."))
             return None
+        self._log_role = user["role"]
         if roles and user["role"] not in roles:
             self.json_response(403, mp_error("MP-AUTH-002", "Keine Berechtigung."))
             return None
@@ -5298,6 +5438,24 @@ class Handler(BaseHTTPRequestHandler):
             return self.json_response(413, mp_error("MP-DATA-014", str(e)))
         except Exception as e:
             return self.json_response(400, mp_error("MP-DATA-013", str(e)))
+        if path == "/api/client-log":
+            # #84: Fehler aus dem Browser (Fehlerdialog, JavaScript-Fehler) fuer das Fehlerprotokoll.
+            user = self.require_user()
+            if not user or not self.require_current_client():
+                return
+            now = time.time()
+            window = [t for t in CLIENT_LOG_RATE.get(user["id"], []) if now - t < 60]
+            if len(window) >= 30:
+                CLIENT_LOG_RATE[user["id"]] = window
+                return self.json_response(200, {"ok": True, "dropped": True})
+            CLIENT_LOG_RATE[user["id"]] = window + [now]
+            code = str(body.get("code") or "")
+            if not re.fullmatch(r"(MP-[A-Z]{2,6}-\d{3}|JS|NET)", code):
+                code = "JS"
+            error_log_record({"source": "client", "code": code, "message": str(body.get("message") or "")[:500],
+                              "where": str(body.get("where") or "")[:120], "role": user["role"],
+                              "clientVersion": str(self.headers.get("X-MP-Client-Version", ""))[:20]})
+            return self.json_response(200, {"ok": True})
         if path == "/api/updates/install":
             user = self.require_user(["admin"])
             if not user or not self.require_current_client():
@@ -5918,6 +6076,7 @@ def main() -> None:
             print(f"FEHLER: {e.message}", file=sys.stderr)
             raise SystemExit(3)
     init_db()
+    error_log_reset_on_update()
     if not args.init_admin:
         try:
             _cfg, cfg_warn = load_config()

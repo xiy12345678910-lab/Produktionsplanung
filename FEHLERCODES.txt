@@ -201,6 +201,7 @@ MP-PROD-017  Entfernter laufender/pausierter Auftrag benoetigt genau eine passen
 MP-CAL-012  Jahresregel enthaelt ungueltige/duplizierte Maschine, Jahr- oder Schichtdaten.
 MP-CAL-013  Wochenregel enthaelt ungueltige/duplizierte Maschine, Jahr-, KW- oder Schichtdaten.
 MP-CAL-014  Kalender-Ausnahme enthaelt ungueltiges/dupliziertes Datum oder Schichtmodus.
+MP-CAL-015  Sonderschicht (Tage) ungueltig: Ziel, Zeitraum (hoechstens 93 Tage), Betrieb oder Ueberstunden (0:00-4:00 je Tag).
 MP-HIST-005  Eine aktive Auftrag-ID existiert bereits als abgeschlossener/stornierter Auftrag in der Ist-Historie.
 MP-HIST-006  Neuer Historieneintrag enthaelt ungueltige Ist-Zeiten, Mengen, Segmente oder Abbruchdaten.
 MP-HIST-007  Fertig-/Abbruch-/Stornohistorie stimmt nicht mit den unveraenderlichen Identitaetsdaten des entfernten Auftrags ueberein.
@@ -473,6 +474,7 @@ V12.19.0 (Bloecke A-D und I ausschliesslich 7a)
 MP-FA-001    FA-Quelle oder FA-Nummernzuordnung ungueltig; Projekt/Rahmen/Bestandsreferenz pruefen.
 MP-PERS-034  Parallelplatz oder Besetzung ungueltig; nur freie Plaetze/ganze Mitarbeiterzahlen.
 MP-PERS-035  Arbeitstage/Tagesstunden ungueltig, Summe ueber Wochenstunden oder dauerhafte Mitarbeiterzeiten/Pausen ungueltig.
+MP-PERS-036  Mitarbeiter-Auswertung: Zeitraum ungueltig (von <= bis angeben).
 MP-PROD-040  FA nicht gefunden.
 MP-PROD-041  Keine Produktionsrechte fuer den Bereich.
 MP-PROD-042  Start/Fortsetzen ausserhalb Arbeitszeit oder vor dem freigegebenen Start.

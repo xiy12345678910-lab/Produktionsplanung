@@ -158,6 +158,9 @@ try {
  await page.route('**/api/updates',r=>r.fulfill({json:updateBody}));await ev(page,()=>refreshAdminUpdates(true));
  check(await page.locator('#installUpdate').count()===0,'Kein Updateknopf im Normalzustand');
  updateBody={...updateBody,available:true,version:'12.20.0',notes:'Allgemeines Folge-Release'};await ev(page,()=>refreshAdminUpdates(true));
+ check(await page.locator('#sysTabs [data-systab="company"] .tabBadge').count()===1,'Reiter „Firma & System“ zeigt das verfügbare Update an');
+ // #84: Softwareupdate, Status und Lizenz stehen im Reiter „Firma & System“.
+ await page.click('#sysTabs [data-systab="company"]');await page.waitForTimeout(300);
  check(await page.locator('#installUpdate').isVisible()&&(await page.textContent('#adminUpdatePanel')).includes('12.20.0'),'Admin sieht Versionen, Release Notes und Installationsknopf');
  await av.route('**/api/updates',r=>r.fulfill({json:updateBody}));await ev(av,()=>refreshAdminUpdates(true));
  check(await av.locator('#adminUpdatePanel').count()===0,'AV erhält keinen Updatehinweis');

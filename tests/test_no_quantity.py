@@ -112,6 +112,18 @@ class NoQuantity(unittest.TestCase):
         self.assertEqual(self.act('fa_std', 'start')[0], 200)
         self.assertEqual(self.act('fa_std', 'partial', {'goodQty': 2})[0], 200)
 
+    def test_order_without_fa_uses_title(self):
+        # #84: Bereiche ohne Mengenmeldung legen eigene Auftraege an; FA/AB/WT optional, der Titel traegt den Auftrag.
+        s = copy.deepcopy(BASE)
+        for d in s['departments']:
+            if d['id'] == DEP:
+                d['noQuantity'] = True
+        o = self.order('fa_title'); o.update(fa='', faNumber='', order='Form A', status='planned', baselinePlan=None)
+        s['workSteps'].append(o)
+        self.assertTrue(server.validate_state(BASE, s)[0], server.validate_state(BASE, s))
+        o['order'] = ''
+        self.assertEqual(server.validate_state(BASE, s)[1], 'MP-STEP-014')
+
 
 if __name__ == '__main__':
     unittest.main()

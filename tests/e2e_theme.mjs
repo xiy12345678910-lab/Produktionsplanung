@@ -157,6 +157,8 @@ try {
     check(!overflow.length, `${theme}: nichts ragt seitlich aus dem Bild (${overflow.length}) ${overflow.slice(0, 6).join(' | ')}`);
     if (theme === 'hall') {
       await page.click('#navPlan'); await page.waitForTimeout(300);
+      // Am Freitag liegt der Plan je nach Uhrzeit in der Folgewoche: dann eine Woche weiter blättern
+      if (!(await page.locator('.jobchip').count())) { await page.click('#nextWeek'); await page.waitForTimeout(300); }
       const sym = await page.evaluate(() => { const c = document.querySelector('.jobchip'); if (!c) return 'kein Chip'; c.classList.add('released'); const v = getComputedStyle(c, '::after').content; c.classList.remove('released'); return v; });
       check(sym.includes('✓'), `hall: Status zusätzlich als Symbol (freigegeben → ${sym})`);
       const u = [...new Set(small)];

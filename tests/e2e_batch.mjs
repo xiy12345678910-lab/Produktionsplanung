@@ -91,7 +91,8 @@ try {
   check(await hIn.isDisabled() && Number(await hIn.inputValue()) === 6.5, `FA-Liste: Sollstunden 6,5 berechnet und gesperrt (${await hIn.inputValue()})`);
   const chip = (await row.locator('[data-batch-chip]').innerText()).trim();
   check(chip === '3 Chargen × 2:00 + Reinigung 2 × 0:15 = 6:30 h', `FA-Liste: Erklärungs-Chip „${chip}“`);
-  await ev(() => { switchView('overview'); renderAll(); }); await page.waitForTimeout(300);
+  // Plantafel auf die Woche des Auftrags stellen (Start kann je nach Uhrzeit in der Folgewoche liegen)
+  await ev(() => { const r = calcSchedule().ws_bat; if (r?.start) data.ui.week = dateKey(monday(r.start)); switchView('overview'); renderAll(); }); await page.waitForTimeout(300);
   const boardTxt = await page.locator('[data-board-order="ws_bat"]').first().innerText().catch(() => '');
   check(boardTxt.includes('6,5 h · 3 Ch.'), `Plantafel zeigt Charge-Stunden („${boardTxt.replace(/\s+/g, ' ').slice(0, 120)}“)`);
 
