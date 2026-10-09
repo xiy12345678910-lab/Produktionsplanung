@@ -2268,6 +2268,10 @@ def templates_change_allowed(old: dict, new: dict, role: str) -> tuple[bool, str
     return True, ""
 
 
+def _fa_key(step: dict) -> str:
+    return str(step.get("fa") or step.get("order") or "").strip()
+
+
 def validate_state(old: dict, new: dict) -> tuple[bool, str, str]:
     """Server-side invariants. Browser checks are convenience only."""
     if not isinstance(new, dict):
@@ -2431,8 +2435,6 @@ def validate_state(old: dict, new: dict) -> tuple[bool, str, str]:
             return False, "MP-STEP-007", f"Arbeitsgang '{sid}' hat ungültige Vorgänger."
         if sid in {str(x) for x in predecessors}:
             return False, "MP-STEP-007", f"Arbeitsgang '{sid}' darf nicht sein eigener Vorgänger sein."
-        if predecessors and not pid:
-            return False, "MP-STEP-007", f"Arbeitsgang '{sid}': Vorgänger sind nur innerhalb eines AB-Auftrags zulässig."
 
         if str(step.get("status")) in {"released", "running"}:
             completed = {str(h.get("originalOrderId")) for h in new.get("history") or [] if h.get("recordType", "done") == "done"}
@@ -2471,8 +2473,11 @@ def validate_state(old: dict, new: dict) -> tuple[bool, str, str]:
     for step in work_steps:
         for predecessor_id in (step.get("predecessorIds") or []):
             predecessor = by_id.get(str(predecessor_id))
-            if not predecessor or str(predecessor.get("projectId")) != str(step.get("projectId")):
+            if not predecessor or str(predecessor.get("projectId") or "") != str(step.get("projectId") or ""):
                 return False, "MP-STEP-007", f"Arbeitsgang '{step.get('id')}' verweist auf einen ungültigen Vorgänger."
+            # #84: Ohne Projekt/AB nur innerhalb derselben FA (AV übergibt eine FA an mehrere Bereiche).
+            if not str(step.get("projectId") or "") and (not _fa_key(step) or _fa_key(predecessor) != _fa_key(step)):
+                return False, "MP-STEP-007", f"Arbeitsgang '{step.get('id')}': Vorgänger ohne AB-Auftrag nur innerhalb derselben FA."
 
     graph = {sid: [str(x) for x in (step.get("predecessorIds") or [])] for sid, step in by_id.items() if sid in step_ids}
     visiting, visited = set(), set()
