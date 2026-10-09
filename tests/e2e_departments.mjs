@@ -110,6 +110,15 @@ try {
   check(await gf.evaluate(id => ![...document.getElementById('departmentScopeSelect').options].some(o => o.value === id), dev.id), 'Bereichsauswahl ohne Entwicklungsbereich');
   check(await gf.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), 'GF-Ansicht: kein seitlicher Seiten-Scroll');
 
+  // KW im Mitarbeitereinsatz wählbar (‹ › Heute), gleiche KW wie der Wochenplan
+  const kw0 = await gf.textContent('#gfDeployKW');
+  await gf.click('#gfNextWeek'); await gf.waitForTimeout(300);
+  const kw1 = await gf.textContent('#gfDeployKW');
+  await gf.click('#gfPrevWeek'); await gf.waitForTimeout(300);
+  const kw2 = await gf.textContent('#gfDeployKW');
+  await gf.click('#gfNextWeek'); await gf.waitForTimeout(300); await gf.click('#gfTodayWeek'); await gf.waitForTimeout(300);
+  check(kw1 !== kw0 && kw2 === kw0 && await gf.textContent('#gfDeployKW') === kw0 && (await gf.textContent('#gfWeekLabel')) === kw0, `GF: KW im Mitarbeitereinsatz wählbar (${kw0} → ${kw1} → ${kw2})`);
+
   // Umbenennen + Deaktivieren
   await gf.evaluate(() => { document.getElementById('gfDeptPanel').open = true; });
   const nm = gf.locator(`[data-dep="${dev.id}"][data-k="name"]`);
