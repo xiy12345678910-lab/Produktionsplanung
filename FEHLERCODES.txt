@@ -279,6 +279,8 @@ MP-PLAN-063  Hinweis: Auftrag wird erst nach dem AV-Termin fertig (Karte rot).
 MP-PLAN-064  Takt-Rechner: Menge und Takt eintragen.
 MP-PLAN-070  Fixer Start liegt in der Trocknungszeit des Vorgaengers. Spaeter starten oder Trocknung pruefen.
 MP-PLAN-071  Titel (Artikel/Beschreibung) ist Pflicht (nur Bereiche ohne Mengenmeldung, z. B. Formbau).
+MP-PLAN-073  Bereich hat keine aktive Maschine/Linie: Auftrag sichtbar, aber nicht planbar. Abhilfe: unter
+             System -> Maschinen & Schichtkalender eine Maschine oder Linie fuer den Bereich anlegen.
 MP-PLAN-065  Bereichsuebergabe ungueltig: unzugeordneter FA darf keine Ressource, Freigabe oder operative Planung enthalten.
 
 [PM - Projektmanagement / AB-Aufträge]
