@@ -432,7 +432,9 @@ def run_case(label: str, commit: str, scenario: str, keep: bool, ip: str):
         if ok:
             bad = []
             for u in [{"username": ADMIN, "password": ADMIN_PW, "active": True}] + rec["users"]:
-                if L.Api(srv.url).login(u["username"], u["password"]) != (200 if u["active"] else 401):
+                code = L.Api(srv.url).login(u["username"], u["password"])
+                # Abgewiesen = 401 (bis V12.27) bzw. 403 MP-AUTH-025 (ab V12.28, gesperrt + richtiges Passwort).
+                if (code != 200) if u["active"] else (code not in (401, 403)):
                     bad.append(u["username"])
             ok_all &= check(not bad, f"[{tag}] Rollback: Logins funktionieren", ", ".join(bad))
             s, d = (lambda x: (x.login(ADMIN, ADMIN_PW), x.call("GET", "/api/state")))(L.Api(srv.url))[1]

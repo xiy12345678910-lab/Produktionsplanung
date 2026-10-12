@@ -94,6 +94,68 @@ class TestSourceRules(unittest.TestCase):
         self.assertIn('"Updatequelle und Paket werden ausschließlich vom Server gewählt."', text)
 
 
+class WorkerTask(unittest.TestCase):
+    """V12.28.1: Der Button startet den Worker als eigenen SYSTEM-Task, nicht als Kindprozess des Servers."""
+
+    def launch(self, env_api=None):
+        calls = []
+        saved = (updates.os, getattr(sys, "getwindowsversion", None), updates.subprocess.run, os.environ.get(updates.TEST_API_ENV))
+        # Nur im Updater-Modul Windows vortaeuschen (pathlib braucht das echte os.name).
+        fake_os = type("FakeOs", (), {"name": "nt", "__getattr__": lambda self, k: getattr(os, k)})()
+        try:
+            updates.os = fake_os
+            sys.getwindowsversion = lambda: type("V", (), {"build": 20348})()
+            updates.subprocess.run = lambda cmd, **kw: calls.append((cmd, kw)) or type("R", (), {"returncode": 0, "stdout": "", "stderr": ""})()
+            if env_api is None:
+                os.environ.pop(updates.TEST_API_ENV, None)
+            else:
+                os.environ[updates.TEST_API_ENV] = env_api
+            updates.UpdateManager(Path("C:/ProgramData/Maschinenplanung"), "12.28.0", lambda: {}).launch_worker("a" * 24)
+        finally:
+            updates.os, updates.subprocess.run = saved[0], saved[2]
+            if saved[1] is None:
+                del sys.getwindowsversion
+            else:
+                sys.getwindowsversion = saved[1]
+            if saved[3] is None:
+                os.environ.pop(updates.TEST_API_ENV, None)
+            else:
+                os.environ[updates.TEST_API_ENV] = saved[3]
+        self.assertEqual(len(calls), 1)
+        return calls[0]
+
+    def test_registers_and_starts_system_task(self):
+        cmd, kw = self.launch()
+        self.assertEqual(cmd[0], "powershell.exe")
+        script = cmd[-1]
+        for part in ("Register-ScheduledTask", "Start-ScheduledTask", "-UserId 'SYSTEM'", "$env:MP_UPD_ARGS", "$env:MP_UPD_PY"):
+            self.assertIn(part, script)
+        # Werte nur ueber die Umgebung, nie im Befehlstext.
+        self.assertNotIn("a" * 24, script)
+        env = kw["env"]
+        self.assertEqual(env["MP_UPD_TASK"], "Maschinenplanung Update")
+        self.assertEqual(env["MP_UPD_PY"], sys.executable)
+        self.assertIn("--run-job " + "a" * 24, env["MP_UPD_ARGS"])
+        self.assertNotIn("--test-api", env["MP_UPD_ARGS"])
+
+    def test_test_source_is_passed_only_if_valid(self):
+        _, kw = self.launch("http://127.0.0.1:8123/repos/")
+        self.assertIn("--test-api http://127.0.0.1:8123/repos/", kw["env"]["MP_UPD_ARGS"])
+        _, kw = self.launch("https://evil.example/repos/")
+        self.assertNotIn("--test-api", kw["env"]["MP_UPD_ARGS"])
+
+    def test_worker_rejects_foreign_test_source(self):
+        r = subprocess.run([sys.executable, "-I", str(ROOT / "app_updates.py"), "--run-job", "a" * 24, "--base", str(ROOT), "--test-api", "https://evil.example/repos/"],
+                           capture_output=True, text=True, timeout=60)
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("Test-Updatequelle", r.stderr)
+
+    def test_uninstall_removes_worker_task(self):
+        common = (ROOT / "MP_Common.ps1").read_text(encoding="utf-8-sig")
+        self.assertIn("$MP_UpdateTaskName = '%s'" % updates.WORKER_TASK, common)
+        self.assertIn("$MP_UpdateTaskName", (ROOT / "Deinstallieren.ps1").read_text(encoding="utf-8-sig"))
+
+
 @unittest.skipIf(not L.find_lan_ip(), "keine LAN-IPv4-Adresse")
 # Unter Windows wuerde der Button einen echten Worker samt UPDATE_LIVE.ps1 starten: dort nur per CI-Skript.
 @unittest.skipIf(os.name == "nt", "Windows: tests/ci_windows_update_button.ps1")

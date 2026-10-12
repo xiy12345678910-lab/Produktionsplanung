@@ -5,6 +5,8 @@ $MP_InstallBase    = Join-Path $env:ProgramData 'Maschinenplanung'
 $MP_Port           = 8765
 $MP_TaskName       = 'Maschinenplanung Server'
 $MP_BackupTaskName = 'Maschinenplanung Backup'
+# V12.28.1: Hintergrund-Installation des Update-Buttons (app_updates.WORKER_TASK), ohne Trigger.
+$MP_UpdateTaskName = 'Maschinenplanung Update'
 # Fruehere Tasknamen; werden bei Setup/Update entfernt.
 $MP_LegacyTaskNames = @('Maschinenplanung V11 Server')
 
