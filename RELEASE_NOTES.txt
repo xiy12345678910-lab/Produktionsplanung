@@ -1,3 +1,39 @@
+MASCHINENPLANUNG V12.28.0 - RELEASE NOTES
+=========================================
+Datum: 12.10.2026 · Basis: V12.27.0 · Update gemäß README_Windows.txt 2b, Daten bleiben erhalten
+
+SONDERSCHICHTEN UND UEBERSTUNDEN (#84)
+- System > Maschinen & Schichtkalender > Abweichungen: neue Art "Gilt fuer: Tage" mit Von/Bis, Betrieb (wie geplant / 1-schichtig / 2-schichtig / frei) und Ueberstunden je Tag (0:00-4:00). Ziel ist eine Maschine oder ein ganzer Bereich; auch KW- und Jahresregeln koennen jetzt fuer einen ganzen Bereich gesetzt werden.
+- Damit lassen sich Samstags-/Sonntagsschichten planen. Der speziellere Eintrag gewinnt (Tag vor Wochenende, Betriebsferien, KW- und Jahresregel). Ueberstunden verlaengern das Tagesende. Planung im Browser und Freigabepruefung am Server rechnen gleich; eine Freigabe am Samstag wird akzeptiert.
+- Personal: Sa/So erscheinen im Wochenplan, sobald dort gearbeitet wird. Einteilung an freien Tagen oder ueber die Vertragsstunden hinaus zaehlt als Ueberstunden (farblich markiert, nicht gekuerzt, nicht gegen die Wochenstunden).
+- Abteilungsleitung nur fuer Maschinen des eigenen Bereichs. Neuer Fehlercode MP-CAL-015.
+
+MITARBEITER-POPUP (#84)
+- Klick auf einen Mitarbeiter (Liste oder Wochenplan) oeffnet ein Popup mit Verwaltung (Stammzeiten, Wochenstunden/Arbeitstage, Stammmaschine, Schicht, Qualifikationen, Leiharbeiter-Zeitraum, aktiv/inaktiv, loeschen) und Auswertung fuer KW, Monat, Jahr oder von-bis: Stunden Soll/geplant/Ist, Abwesenheiten, Auftraege und Maschinen, Einsatz je Bereich.
+- Die Mitarbeiterliste ist kompakt (Name, Funktion, Bereich, Stunden, Schicht, Stammmaschine, heute). Ohne Recht "Personal" ist die Verwaltung im Popup gesperrt, die Auswertung lesbar. Neuer Fehlercode MP-PERS-036.
+
+FEHLERPROTOKOLL IM SYSTEMSTATUS (#84)
+- Der Server protokolliert jede Fehlerantwort und jeden Serverfehler in data\fehlerprotokoll.jsonl (hoechstens 1000 Eintraege, ohne Benutzernamen, nur Rolle). Der Browser meldet Fehlerdialoge und JavaScript-Fehler dazu.
+- System > Firma & System > Systemstatus zeigt "Fehler seit Update" je Code und die letzten 20 Eintraege. Das Diagnosepaket enthaelt das Protokoll und das Logende von Server und Update.
+- Beim Start einer neuen Version fallen Eintraege frueherer Versionen weg: das Protokoll zeigt immer nur Fehler seit dem letzten Update.
+
+AV, BEREICHE OHNE MENGENMELDUNG, PASSWORT (#84)
+- AV kann mehrere Bereiche ohne Projekt/AB anlegen (Projekt-Pflicht entfaellt). Vorgaenger ohne AB-Auftrag nur innerhalb derselben FA.
+- Bereiche ohne Mengenmeldung (z. B. Formbau) legen eigene Auftraege an: FA, AB und WT optional, Titel und Stunden Pflicht. Ohne FA traegt der Titel den Auftrag. Andere Bereiche verlangen die FA weiter (MP-STEP-014).
+- Benutzerverwaltung "Passwort": Dialog nennt den Benutzer, Passwort zweimal eingeben (MP-AUTH-024 bei Abweichung), Passwortregel wird vorab geprueft.
+- Bereich umbenennen auf einen vorhandenen Namen wird abgewiesen (MP-DEPT-005).
+
+OBERFLAECHE (#84)
+- System: Systemstatus, Lizenz und Softwareupdate im Reiter "Firma & System" mit Zahl offener Punkte; Funktionen in drei Spalten; Takte und Charge je Maschine nebeneinander.
+- GF: KW-Wahl in der Kopfzeile (gilt fuer die ganze Seite, auch fuer den Mitarbeitereinsatz), Kennzahlen in einer Zeile, neue Reihenfolge der Abschnitte.
+- Personal: "Platz" nur bei Ressourcen mit mehreren Plaetzen, Personal-Gate als Schalter in der Kachel, Reiter neben der KW-Wahl.
+- Einplanen-Popup: "Personenstunden" statt "Maschinenzeit" bei Linien-Bereichen.
+- Behoben: Eingabefelder bei "Neuer Bereich" ueberlappten; FA-Dialog in Formbau blendete den Takt-Rechner wieder ein; gestreckte Felder im FA-Dialog; Takt-Einheit und "Stueck je Takt" zu schmal; Suchfeld im Bereichsvorrat abgeschnitten.
+
+DATEN UND UPDATE
+- Additive Felder (dayRules im Schichtkalender, overtime bei Personaleinteilungen); fehlen sie, bleibt die Planung unveraendert. Keine Migration noetig, Referenztests unveraendert.
+- Neue Datei data\fehlerprotokoll.jsonl (nur Diagnose) wird beim ersten Fehler angelegt.
+
 MASCHINENPLANUNG V12.27.0 - RELEASE NOTES
 =========================================
 Datum: 08.10.2026 · Basis: V12.26.0 · Update gemäß README_Windows.txt 2b, Daten bleiben erhalten
