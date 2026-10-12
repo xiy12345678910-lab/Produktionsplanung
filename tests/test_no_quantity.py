@@ -140,6 +140,36 @@ class NoQuantity(unittest.TestCase):
             self.assertEqual(ok, allowed, (noqty, msg))
             if not allowed:
                 self.assertIn('AV-Termin', msg)
+        # AV-Uebergabe in den Werkstattbereich: der AV-Termin bleibt Sache der AV.
+        new2 = copy.deepcopy(old); old2 = copy.deepcopy(old)
+        for d in (old2, new2):
+            for dep in d['departments']:
+                if dep['id'] == DEP:
+                    dep['noQuantity'] = True
+            next(x for x in d['workSteps'] if x['id'] == 'fa_due')['handoffUnassigned'] = False
+        next(x for x in new2['workSteps'] if x['id'] == 'fa_due')['dueDate'] = '2026-11-20'
+        ok, msg = server.department_change_allowed(old2, new2, DEP)
+        self.assertFalse(ok, msg)
+
+
+    def test_department_may_change_hours_on_line_resource_only_without_quantity(self):
+        # V12.28.3: Werkstatt-Arbeitsplatz (kind line, effortScaling) - Stunden pflegt die Abteilung; sonst die AV.
+        for noqty, allowed in ((True, True), (False, False)):
+            old = copy.deepcopy(BASE)
+            for d in old['departments']:
+                if d['id'] == DEP:
+                    d['noQuantity'] = noqty
+            for m in old['machines']:
+                if m['id'] == M['id']:
+                    m.update(kind='line', effortScaling=True)
+            o = self.order('fa_hours'); o.update(status='planned', baselinePlan=None, hours=4)
+            old['workSteps'].append(o)
+            new = copy.deepcopy(old)
+            next(x for x in new['workSteps'] if x['id'] == 'fa_hours')['hours'] = 6
+            ok, msg = server.department_change_allowed(old, new, DEP)
+            self.assertEqual(ok, allowed, (noqty, msg))
+            if not allowed:
+                self.assertIn('Konfektionsstunden', msg)
 
 
 if __name__ == '__main__':

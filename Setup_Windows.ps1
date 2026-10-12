@@ -92,7 +92,7 @@ Register-MPServerTask $Base $PythonExe
 Register-MPBackupTask $Base $PythonExe
 Start-ScheduledTask -TaskName $MP_TaskName
 
-$health = Wait-MPHealth $Base $Version 30
+$health = Wait-MPHealth $Base $Version 180
 if (-not $health -and $TlsCreated) {
     # #52: Server antwortet nicht per HTTPS - keinen kaputten Server hinterlassen, sondern auf HTTP zurueckfallen.
     Write-Warning 'MP-TLS-003: Server antwortet nach der HTTPS-Einrichtung nicht per HTTPS. Rueckfall auf HTTP.'
@@ -101,7 +101,7 @@ if (-not $health -and $TlsCreated) {
     if (-not (Remove-MPTls $Base)) { Write-Warning 'config\tls konnte nicht vollstaendig entfernt werden.' }
     $TlsCreated = $false
     Start-ScheduledTask -TaskName $MP_TaskName
-    $health = Wait-MPHealth $Base $Version 30
+    $health = Wait-MPHealth $Base $Version 180
     if ($health) { Write-Warning 'Server laeuft mit HTTP. HTTPS spaeter mit HTTPS_Einrichten.ps1 nachholen (README_Windows.txt 2c, FEHLERCODES.txt).' }
 }
 if (-not $health) { throw "Server V$Version antwortet nicht. Bitte Server_Status.ps1 pruefen." }

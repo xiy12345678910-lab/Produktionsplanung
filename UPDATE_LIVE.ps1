@@ -192,8 +192,10 @@ try {
     Set-MPUpdateStage 'restart'
 
     Set-MPUpdateStage 'healthcheck'
-    Write-Host '8/9 Health-/Versionscheck (bis 90 s) ...'
-    $health = Wait-MPHealth $TargetBase $NewVersion 90
+    # V12.28.3: bis 3 min warten, damit ein nur langsam startender Server (z. B. grosse Datenbank/Migration)
+    # nicht als Fehlstart gilt und vom zweiten Startversuch beendet wird.
+    Write-Host '8/9 Health-/Versionscheck (bis 180 s) ...'
+    $health = Wait-MPHealth $TargetBase $NewVersion 180
     if (-not $health) {
         # V12.28.1: Beim Kunden endete der erste Start ueber den Task (Update per Button 12.27.0 -> 12.28.0) ohne
         # Logzeile; derselbe Start lief kurz danach per Skript. Vor dem Rollback daher Diagnose und EIN zweiter Start.

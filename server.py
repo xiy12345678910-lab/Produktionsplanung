@@ -28,7 +28,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 MP_DEBUG_ABORTS = os.environ.get('MP_DEBUG_ABORTS') == '1'
-APP_VERSION = "12.28.2"
+APP_VERSION = "12.28.3"
 SERVER_STARTED = time.time()
 HOST = os.environ.get("MP_HOST", "0.0.0.0")
 PORT = int(os.environ.get("MP_PORT", "8765"))
@@ -3668,13 +3668,16 @@ def department_change_allowed(old: dict, new: dict, department_id: str) -> tuple
                         return False, "FA, Projekt, Menge und Vorgänger pflegt die Arbeitsvorbereitung."
         resource = next((m for m in old.get("machines") or [] if m.get("id") == (before or {}).get("machineId")), {})
         dep = str((before or rec).get("departmentId") or "")
-        if before is not None and (av_hours_department(old, dep) or resource.get("kind") == "line" or resource.get("effortScaling")) and canonical(before.get("hours")) != canonical(rec.get("hours")):
+        # V12.28.3: In Werkstattfertigung (Bereich ohne Mengenmeldung) legt die Abteilung die Stunden selbst fest,
+        # auch auf Personenstunden-Arbeitsplaetzen (kind line); sonst pflegt die AV die Konfektionsstunden.
+        own_hours = department_no_quantity(old, dep)
+        if before is not None and not own_hours and (av_hours_department(old, dep) or resource.get("kind") == "line" or resource.get("effortScaling")) and canonical(before.get("hours")) != canonical(rec.get("hours")):
             return False, "Konfektionsstunden pflegt die Arbeitsvorbereitung."
-        if before is not None and before.get("planningType") == "LABOR_HOURS" and canonical(before.get("requiredHours")) != canonical(rec.get("requiredHours")):
+        if before is not None and not own_hours and before.get("planningType") == "LABOR_HOURS" and canonical(before.get("requiredHours")) != canonical(rec.get("requiredHours")):
             return False, "Konfektionsstunden pflegt die Arbeitsvorbereitung."
         # V12.28.2: In Werkstattfertigung (Bereich ohne Mengenmeldung) legt die Abteilung ihre Auftraege selbst an
-        # und pflegt den Endtermin auch danach; sonst bleibt der AV-Termin Sache der Arbeitsvorbereitung.
-        if before is not None and str(before.get("dueDate") or "") != str(rec.get("dueDate") or "") and not department_no_quantity(old, dep):
+        # und pflegt den Endtermin auch danach; AV-Uebergaben (handoffUnassigned) und andere Bereiche: AV-Termin bleibt Sache der AV.
+        if before is not None and str(before.get("dueDate") or "") != str(rec.get("dueDate") or "") and not (department_no_quantity(old, dep) and "handoffUnassigned" not in before):
             return False, "Den AV-Termin (fertig bis) legt die Arbeitsvorbereitung fest. Die Abteilung plant innerhalb dieses Termins."
     for rec in changed_records("machineBlocks"):
         if machine_dept.get(str(rec.get("machineId")), "") != department_id:

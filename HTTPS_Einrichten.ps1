@@ -22,7 +22,7 @@ Write-Host "Firmen-CA vertraut (Fingerabdruck $($r.Thumbprint)). Zum Verteilen: 
 Stop-ScheduledTask -TaskName $MP_TaskName -ErrorAction SilentlyContinue
 [void](Wait-MPTaskIdle $MP_TaskName 30)
 Start-ScheduledTask -TaskName $MP_TaskName
-$h = Wait-MPHealth $Base (Get-MPPackageVersion $Base) 30
+$h = Wait-MPHealth $Base (Get-MPPackageVersion $Base) 180
 if ($h) {
     Write-Host "PASS - Server laeuft jetzt auf $($h.Url)" -ForegroundColor Green
     Write-Host 'Arbeitsplaetze: Firmen-CA.crt einmal als vertrauenswuerdige Stammzertifizierungsstelle importieren (README_Windows.txt 2c).'

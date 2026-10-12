@@ -1,10 +1,36 @@
+MASCHINENPLANUNG V12.28.3 - RELEASE NOTES
+=========================================
+Datum: 12.10.2026 · Basis: V12.28.2 · Update gemäß README_Windows.txt 2b, Daten bleiben erhalten
+
+SERVERSTART MIT MEHR GEDULD
+- Setup_Windows.ps1 und HTTPS_Einrichten.ps1 warten bis 180 s auf den Server (vorher 30 s), Start_Server.ps1/Neustart_Server.ps1 bis 90 s. Grund: Das Anlegen der Firewallregeln dauert auf frisch gestarteten Rechnern teils ueber 30 s; vorher fiel die Einrichtung deshalb unnoetig von HTTPS auf HTTP zurueck (MP-TLS-003).
+
+AB DIREKT IM AUFTRAGSDIALOG
+- Im Dialog "Fertigungsauftrag anlegen" (AV-Uebergabe und normaler Dialog) gibt es neben "Projekt / AB" das Feld "oder AB eingeben". Vorhandene AB: der Auftrag wird mit diesem Projekt verknuepft. Neue AB (z. B. 50500): im Hintergrund entsteht ein Projekt "Nur Produktion" (Phase angenommen, Liefertermin = Projektfertigstellung bzw. spaetester Bereichstermin), der Auftrag haengt daran.
+- Nur fuer Rollen, die solche Projekte anlegen duerfen (Admin, Arbeitsvorbereitung, Projektmanagement). Ohne Liefertermin Hinweis MP-PM-009. Scheitert die direkte Freigabe, wird das neue Projekt wieder entfernt.
+
+WERKSTATT: SOLLSTUNDEN DURCH DIE ABTEILUNG
+- Behoben: In Bereichen ohne Mengenmeldung (z. B. Formbau) bot die Auftragsliste der Abteilungsleitung die Sollstunden zum Aendern an, der Server lehnte auf Personenstunden-Arbeitsplaetzen aber mit "Konfektionsstunden pflegt die Arbeitsvorbereitung" ab. In Werkstattfertigung legt die Abteilung die Stunden jetzt auch nachtraeglich fest; in anderen Bereichen bleiben Konfektionsstunden Sache der AV.
+
+AUDIT-KORREKTUREN
+- AB-Feld im Auftragsdialog wird bei jedem Oeffnen geleert (vorher konnte eine alte AB am naechsten Auftrag haengen bleiben). Ohne AV-/Endtermin wird fuer eine neue AB nicht mehr der Starttermin als Liefertermin genommen, sondern MP-PM-009 gemeldet. AB-Vergleich wie am Server (Gross/Klein, ss).
+- Werkstatt: Den Endtermin von AV-Uebergaben pflegt weiter die AV; die Abteilung aendert ihn nur bei eigenen Auftraegen.
+- Update per Button: Start des Update-Tasks ausserhalb der internen Sperre (Update-Abfragen blockieren nicht mehr bis zu 120 s); der GitHub-Token wird nicht an PowerShell weitergegeben.
+
+UPDATE UND SPEICHERN
+- Update: Der neue Server bekommt bis zu 3 Minuten fuer den Start, bevor der zweite Startversuch folgt.
+- Legen zwei Personen gleichzeitig dieselbe neue AB an, zeigt die zweite Person nun eine klare Meldung (MP-PM-003/MP-PM-006: Dialog neu oeffnen und die vorhandene AB auswaehlen) statt "Ungueltige Aenderung".
+
+DOKU
+- FEHLERCODES.txt: acht bereits verwendete, bisher fehlende Codes nachgetragen (MP-AV-031/033, MP-CI-001/002, MP-DEM-000, MP-PM-040, MP-REP-010/011).
+
 MASCHINENPLANUNG V12.28.2 - RELEASE NOTES
 =========================================
 Datum: 12.10.2026 · Basis: V12.28.1 · Update gemäß README_Windows.txt 2b, Daten bleiben erhalten
 
 WERKSTATTFERTIGUNG (Bereiche ohne Mengenmeldung, z. B. Formbau)
 - Abteilungsleitung und Stellvertretung duerfen den Endtermin ihrer Auftraege auch nachtraeglich aendern (Auftragsliste und "Termin planen"). Server und Oberflaeche erlauben das nur in Bereichen ohne Mengenmeldung und nur im eigenen Bereich; in anderen Bereichen legt den AV-Termin weiter die Arbeitsvorbereitung fest.
-- Titel aendern bei Auftraegen ohne FA: Der Auftragsname (und die daraus entstandene FA) zieht mit. Auftraege mit eigener FA behalten ihre FA. Leerer Titel wird abgewiesen (MP-PLAN-071).
+- Titel aendern bei Auftraegen ohne FA: Der Auftragsname (und die daraus entstandene FA) zieht mit. Auftraege mit eigener FA behalten ihre FA. Leerer Titel wird abgewiesen (Oberflaeche MP-PLAN-071; der Server verlangt weiter einen Auftragsnamen, MP-STEP-014).
 
 MASCHINENPLANUNG V12.28.1 - RELEASE NOTES
 =========================================
@@ -99,7 +125,7 @@ UMZUG AUF EIN NEUES GERAET
 ROLLBACK = NUR PROGRAMMCODE
 - Ein fehlgeschlagenes Update spielt die Datenbank nur noch zurueck, wenn die neue Version schon gestartet war (moegliche Migration). Benutzerdaten gehen dabei nicht verloren: Die Wartungssperre (MP-UPD-003) blockiert alle schreibenden Anfragen, bis Health- und Sicherheitscheck bestanden sind; ein neuer Test prueft jede schreibende Route. Der ersetzte Stand bleibt in update_backups\fehlversuch_V*.
 - Nach bestandenem Check gibt es keinen Rollback mehr, auch wenn danach ein Aufraeumschritt scheitert. Vorher konnte ein solcher Fehler Aenderungen verwerfen, die nach dem Entsperren entstanden waren.
-- Zurueck zu einer aelteren Version (nur Code, die Daten bleiben): Update_von_GitHub.ps1 -Tag vALT -Rueckstufen bzw. UPDATE_LIVE.ps1 -Paket <Ordner> -Rueckstufen. Ein Vorabtest mit einer Kopie der aktuellen Daten laeuft vorher. Ohne den Schalter bleibt der Downgrade-Schutz; er prueft jetzt auch die installierte Version bei gestopptem Server (MP-UPD-007). Doku: docs/ROLLBACK.md.
+- Zurueck zu einer aelteren Version (nur Code, die Daten bleiben): Update_von_GitHub.ps1 -Tag vALT -Rueckstufen bzw. UPDATE_LIVE.ps1 -Paket <Ordner> -Rueckstufen. Ein Vorabtest mit einer Kopie der aktuellen Daten laeuft vorher. Ohne den Schalter bleibt der Downgrade-Schutz; er prueft jetzt auch die installierte Version bei gestopptem Server. MP-UPD-007: -Paket nur zusammen mit -Rueckstufen. Doku: docs/ROLLBACK.md.
 
 ZU GROSSE ANFRAGEN: HTTP 413
 - Anfragen ueber dem Groessenlimit werden mit 413 und MP-DATA-014 abgewiesen (bisher 400/MP-DATA-013). Kaputte Anfragen bleiben 400.
