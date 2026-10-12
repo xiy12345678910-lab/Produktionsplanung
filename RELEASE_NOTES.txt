@@ -1,3 +1,25 @@
+MASCHINENPLANUNG V12.28.1 - RELEASE NOTES
+=========================================
+Datum: 12.10.2026 · Basis: V12.28.0 · Update gemäß README_Windows.txt 2b, Daten bleiben erhalten
+
+UPDATE PER BUTTON ROBUSTER (#84)
+- Anlass: Das erste Update per Button beim Kunden (12.27.0 -> 12.28.0) endete mit Rollback: der neue Server startete ueber den Task "Maschinenplanung Server" ohne Logzeile nicht; dasselbe Paket lief kurz danach per Update_von_GitHub.ps1 durch. Auf frischen Windows-Systemen (CI) liess sich das nicht nachstellen.
+- Der Button startet die Hintergrund-Installation jetzt als eigenen SYSTEM-Task "Maschinenplanung Update" statt als Kindprozess des Servers - derselbe unabhaengige Ablauf wie beim Update per Skript. Deinstallieren.ps1 entfernt den Task mit.
+- Startet der neue Server nach dem Dateitausch nicht, versucht UPDATE_LIVE.ps1 vor dem Rollback einen zweiten Start ueber den Task. Das Update-Protokoll nennt Task-Status, LastTaskResult und letzte Startzeit.
+- Run_Server_LAN.ps1 protokolliert jeden Startschritt (LAN-Erkennung, Subnetz, Firewall, Info-Dateien), damit ein abgebrochener Start eingrenzbar ist.
+- Hinweis: Der Button nutzt immer den Code der INSTALLIERTEN Version. Das Update auf 12.28.1 deshalb per Update_von_GitHub.ps1 -Tag v12.28.1; ab 12.28.1 gilt der neue Ablauf.
+
+WERKSTATTFERTIGUNG (Bereiche ohne Mengenmeldung, z. B. Formbau)
+- Ressourcen heissen "Arbeitsplatz", das Fertig-Datum heisst "Endtermin" statt AV-Termin, dazu "Starttermin".
+- FA-Dialog ohne AV-Termin, WT/Projektnummer und Alternative Maschine; Artikel/Beschreibung steht gross oben, die FA ist optional und unauffaellig.
+- Auftragsliste ohne Spalte Menge und ohne Alternative, mit Spalte "Endtermin"; der Titel ist die Hauptzeile. In "Alle Bereiche" zeigen solche Zeilen keine Menge/Alternative.
+- "Termin planen": statt AV-Termin der Knopf "Produktion starten" (gleicher Start wie in der Auftragsliste, nur mit Produktionsrecht).
+- Wochenplan: "Arbeitsplaetze · Endtermine", Spalte "Arbeitsplatz", Kennzahl "Endtermin ueberschritten".
+- Planungsart "Personenstunden · Linie" heisst jetzt "Personenstunden · Werkstatt/Arbeitsplatz"; gespeicherte Daten bleiben unveraendert.
+
+INTERN
+- CI: Der Ende-zu-Ende-Test des Buttons startet den Server jetzt wie beim Kunden ueber den SYSTEM-Task (bisher von Hand). Neue Tests fuer den Worker-Task (tests/test_update_button.py).
+
 MASCHINENPLANUNG V12.28.0 - RELEASE NOTES
 =========================================
 Datum: 12.10.2026 · Basis: V12.27.0 · Update gemäß README_Windows.txt 2b, Daten bleiben erhalten

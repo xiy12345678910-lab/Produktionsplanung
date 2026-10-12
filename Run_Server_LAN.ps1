@@ -41,13 +41,17 @@ try {
     . (Join-Path $Base 'MP_Common.ps1')
     Write-Log "=== Start Run_Server_LAN (Python: $PythonExe, Port $Port) ==="
 
+    # V12.28.1: Zwischenschritte protokollieren, damit ein abgebrochener Start eingrenzbar ist.
+    Write-Log 'Schritt: LAN-Erkennung ...'
     $lan = Get-MPLanInfo
     if (-not $lan) {
         throw 'Kein aktives physisches IPv4-LAN mit Netzwerkprofil Privat oder Domaene gefunden. Server wird aus Sicherheitsgruenden NICHT gestartet.'
     }
+    Write-Log ("Schritt: Subnetz fuer {0}/{1} ..." -f $lan.IP, $lan.PrefixLength)
     $Subnet = (& $PythonExe -I -c "import ipaddress; print(ipaddress.ip_network('$($lan.IP)/$($lan.PrefixLength)', strict=False))").Trim()
     if (-not $Subnet) { throw 'LAN-Subnetz konnte nicht ermittelt werden.' }
 
+    Write-Log 'Schritt: Firewallregeln ...'
     ($MP_FirewallRules + $MP_LegacyFirewallRules) | ForEach-Object {
         Remove-NetFirewallRule -DisplayName $_ -ErrorAction SilentlyContinue | Out-Null
     }
@@ -62,6 +66,7 @@ try {
         Write-Log 'WARNUNG: Firewall-Internet-Sperre konnte nicht angelegt werden; LAN-Allow + Subnetzpruefung bleiben aktiv.'
     }
 
+    Write-Log 'Schritt: LAN_CONFIG.json / LAN_ADRESSEN.txt ...'
     $config = [ordered]@{
         lan_ip                = $lan.IP
         prefix_length         = $lan.PrefixLength

@@ -1,4 +1,4 @@
-MASCHINENPLANUNG V12.28.0 - KURZANLEITUNG FUER BENUTZER
+MASCHINENPLANUNG V12.28.1 - KURZANLEITUNG FUER BENUTZER
 ======================================================
 
 ANMELDEN
@@ -125,6 +125,9 @@ BEREICHE
 - Hat ein Produktionsbereich noch keinen Arbeitsplatz (Maschine/Linie), steht das im Wochenplan, in der
   Produktion und im Einplanen-Popup; Admin und Abteilungsleitung legen ihn dort mit "Arbeitsplatz anlegen"
   (Name, Planungsart) an, danach sind die Auftraege des Bereichs planbar.
+- Werkstatt ohne Mengenmeldung (z. B. Formbau): Ressourcen heissen "Arbeitsplatz", Termine "Starttermin"
+  und "Endtermin" (statt AV-Termin); keine Menge, kein WT, keine Alternative. Im Auftrag steht
+  Artikel/Beschreibung oben, die FA ist optional. "Termin planen" bietet direkt "Produktion starten".
 
 NACHRICHTEN (ab V12.9.0)
 - Rechts unten der Knopf 💬 (rote Zahl = ungelesen). Kleines Fenster; ⤢ macht es gross, – schliesst.

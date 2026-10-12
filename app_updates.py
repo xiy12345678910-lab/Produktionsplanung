@@ -91,6 +91,24 @@ def api_root():
     return test
 
 
+# V12.28.1: Hintergrund-Installation als eigener Task (siehe UpdateManager.launch_worker); ohne Trigger, nur auf Abruf.
+WORKER_TASK = 'Maschinenplanung Update'
+WORKER_TASK_PS = (
+    "$ErrorActionPreference='Stop';"
+    "$a=New-ScheduledTaskAction -Execute $env:MP_UPD_PY -Argument $env:MP_UPD_ARGS -WorkingDirectory $env:MP_UPD_BASE;"
+    "$p=New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest;"
+    "$s=New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan -Hours 2);"
+    "Register-ScheduledTask -TaskName $env:MP_UPD_TASK -Action $a -Principal $p -Settings $s -Force|Out-Null;"
+    "Start-ScheduledTask -TaskName $env:MP_UPD_TASK"
+)
+
+
+def worker_test_args():
+    """Nur Test: eine gueltige MP_UPDATE_TEST_API an den Worker-Task weitergeben (der erbt die Serverumgebung nicht)."""
+    test = os.environ.get(TEST_API_ENV, '')
+    return ['--test-api', test] if test and TEST_API.fullmatch(test) else []
+
+
 def request_bytes(url, limit=1024*1024):
     # Every URL is constructed from a validated repository or an exact release asset ID.
     root = api_root()
@@ -296,7 +314,15 @@ class UpdateManager:
             raise ValueError('Installation benötigt Windows Server 2019 oder neuer.')
         if sys.getwindowsversion().build < 17763:
             raise ValueError('Windows Build 17763 oder neuer ist erforderlich.')
-        subprocess.Popen([sys.executable, '-I', str(self.base/'app_updates.py'), '--run-job', job_id, '--base', str(self.base)], cwd=self.base, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, close_fds=True, creationflags=subprocess.DETACHED_PROCESS|subprocess.CREATE_NEW_PROCESS_GROUP)
+        # V12.28.1: Der Worker laeuft als eigener SYSTEM-Task, nicht als Kindprozess des Servers. Als Kind des
+        # Servertasks scheiterte beim Kunden der Neustart des neuen Servers ueber diesen Task (12.27.0 -> 12.28.0,
+        # Rollback); per Skript (unabhaengiger Prozess) lief dasselbe Paket durch. Werte gehen ueber die Umgebung
+        # an PowerShell, nie in den Befehlstext.
+        args = subprocess.list2cmdline(['-I', str(self.base/'app_updates.py'), '--run-job', job_id, '--base', str(self.base)] + worker_test_args())
+        env = {**os.environ, 'MP_UPD_TASK': WORKER_TASK, 'MP_UPD_PY': sys.executable, 'MP_UPD_ARGS': args, 'MP_UPD_BASE': str(self.base)}
+        result = subprocess.run(['powershell.exe', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', WORKER_TASK_PS], env=env, cwd=self.base, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=120)
+        if result.returncode:
+            raise ValueError('Update-Task konnte nicht gestartet werden: '+(result.stderr or result.stdout or '').strip()[-400:])
 
 
 def run_job(base, job_id, fetch=request_bytes, installer=None):
@@ -344,7 +370,12 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--run-job', required=True)
     parser.add_argument('--base', required=True)
+    parser.add_argument('--test-api', default='')
     args = parser.parse_args()
     if not re.fullmatch('[0-9a-f]{24}', args.run_job):
         raise SystemExit('Ungültige Update-ID.')
+    if args.test_api:
+        if not TEST_API.fullmatch(args.test_api):
+            raise SystemExit('Ungültige Test-Updatequelle.')
+        os.environ[TEST_API_ENV] = args.test_api
     run_job(Path(args.base), args.run_job)

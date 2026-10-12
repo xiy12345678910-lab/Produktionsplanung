@@ -195,8 +195,23 @@ try {
     Write-Host '8/9 Health-/Versionscheck (bis 90 s) ...'
     $health = Wait-MPHealth $TargetBase $NewVersion 90
     if (-not $health) {
+        # V12.28.1: Beim Kunden endete der erste Start ueber den Task (Update per Button 12.27.0 -> 12.28.0) ohne
+        # Logzeile; derselbe Start lief kurz danach per Skript. Vor dem Rollback daher Diagnose und EIN zweiter Start.
+        $task = Get-ScheduledTask -TaskName $MP_TaskName -ErrorAction SilentlyContinue
+        $info = Get-ScheduledTaskInfo -TaskName $MP_TaskName -ErrorAction SilentlyContinue
+        Write-Host ("--- Task-Status: {0}, LastTaskResult: {1}, LastRunTime: {2} ---" -f $task.State, $info.LastTaskResult, $info.LastRunTime) -ForegroundColor Yellow
+        Write-Host (Get-MPLogTail $TargetBase 40)
+        Write-Host '    Zweiter Startversuch ueber den Task ...' -ForegroundColor Yellow
+        try { Stop-MPServer $TargetBase } catch { Write-Warning $_.Exception.Message }
+        if (-not (Wait-MPTaskIdle $MP_TaskName 30)) { Write-Warning 'Task meldet noch "Running".' }
+        Start-ScheduledTask -TaskName $MP_TaskName
+        $health = Wait-MPHealth $TargetBase $NewVersion 90
+        if ($health) { Write-Host '    Zweiter Start erfolgreich.' -ForegroundColor Green }
+    }
+    if (-not $health) {
         $state = (Get-ScheduledTask -TaskName $MP_TaskName -ErrorAction SilentlyContinue).State
-        Write-Host "--- Task-Status: $state · letzte Zeilen aus logs\ ---" -ForegroundColor Yellow
+        $info = Get-ScheduledTaskInfo -TaskName $MP_TaskName -ErrorAction SilentlyContinue
+        Write-Host ("--- Task-Status: {0}, LastTaskResult: {1} · letzte Zeilen aus logs\ ---" -f $state, $info.LastTaskResult) -ForegroundColor Yellow
         Write-Host (Get-MPLogTail $TargetBase 40)
         throw "Server V$NewVersion antwortet nicht (Start ueber den Task fehlgeschlagen, siehe Log oben)."
     }

@@ -5,7 +5,7 @@ $Base = Split-Path -Parent $MyInvocation.MyCommand.Path
 . (Join-Path $Base 'MP_Common.ps1')
 Assert-MPAdmin 'Deinstallieren.ps1'
 try { Stop-MPServer $Base } catch { Write-Warning $_.Exception.Message }
-foreach ($name in @($MP_TaskName, $MP_BackupTaskName) + $MP_LegacyTaskNames) {
+foreach ($name in @($MP_TaskName, $MP_BackupTaskName, $MP_UpdateTaskName) + $MP_LegacyTaskNames) {
     Unregister-ScheduledTask -TaskName $name -Confirm:$false -ErrorAction SilentlyContinue
 }
 ($MP_FirewallRules + $MP_LegacyFirewallRules) | ForEach-Object { Remove-NetFirewallRule -DisplayName $_ -ErrorAction SilentlyContinue }
