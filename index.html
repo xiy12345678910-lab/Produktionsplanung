@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Produktionsplanung V12.28.3</title>
+<title>Produktionsplanung V12.28.4</title>
 <script>/* Darstellung je Gerät: ?theme= (nur dieser Aufruf) > gespeichert > Systemeinstellung */(function(){var t=null;try{t=new URLSearchParams(location.search).get('theme')||localStorage.getItem('mp_theme')}catch(e){}if(!/^(light|dark|hall)$/.test(t||''))t=window.matchMedia&&matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';document.documentElement.dataset.theme=t})()</script>
 <style>
 :root{
@@ -224,7 +224,7 @@ html[data-mod-off~="projects"] [data-mod="projects"],html[data-mod-off~="formats
 <body>
 <div class="app">
   <aside class="sidebar" aria-label="Hauptnavigation">
-    <div class="brand"><div class="brandMark">PP</div><div><h1>Produktionsplanung</h1><small>V12.28.3 · Bereiche · Personal</small></div></div>
+    <div class="brand"><div class="brandMark">PP</div><div><h1>Produktionsplanung</h1><small>V12.28.4 · Bereiche · Personal</small></div></div>
     <div class="modeSwitch" role="group" aria-label="Modus"><button id="modePlanning" class="active"><span>Planung</span></button><button id="modeProduction"><span>Produktion</span></button></div>
     <nav class="nav" id="smartNav" aria-label="Ansichten">
       <button class="active" id="navPlan"><span class="ico">▦</span><span class="txt">Planung</span></button>
@@ -389,7 +389,7 @@ html[data-mod-off~="projects"] [data-mod="projects"],html[data-mod-off~="formats
 
 <section class="weeklyPrint" id="weeklyPrint"><h1>Produktionsplanung – Wochen-Auftragsplan</h1><div class="printMeta" id="weeklyPrintMeta"></div><div id="weeklyPrintBody"></div></section>
 
-<div class="modal loginModal" id="loginModal"><div class="modalBox"><div class="loginIntro"><div><div class="loginLogo">PP</div><h2>Produktionsplanung</h2><p>Planung, Produktion und Personal in einem gemeinsamen Live-Stand für das lokale Firmennetz.</p><div class="loginFacts"><div class="loginFact">● Zentraler Windows-LAN-Server</div><div class="loginFact">● Multiuser mit Revision-/Konfliktschutz</div><div class="loginFact">● Planung & Produktion arbeiten auf demselben Datenstand</div></div></div><div style="font-size:max(var(--fsMin),calc(11px*var(--fs)));color:#9fb3cf">V12.28.3 · LAN ONLY</div></div><div class="loginFormPane"><h3>Anmelden</h3><p class="hint" style="margin:0 0 16px">Mit deinem Benutzerkonto anmelden.</p><div class="loginAccess"><strong>Server</strong><br><span id="loginAccessUrl">http://SERVER-IP:8765</span></div><div class="field"><label>Benutzername</label><input id="loginUser" autocomplete="username" placeholder="Benutzername"></div><div class="field"><label>Passwort</label><div class="passwordWrap"><input id="loginPassword" type="password" autocomplete="current-password" placeholder="Passwort"><button class="btn" id="loginShowPassword" type="button" title="Passwort anzeigen">◉</button></div></div><div class="loginError" id="loginError"></div><button class="btn primary loginSubmit" id="loginBtn">Anmelden</button><div class="loginFoot">Keine Installation auf diesem PC nötig. Änderungen werden ausschließlich am zentralen LAN-Server gespeichert.</div></div></div></div>
+<div class="modal loginModal" id="loginModal"><div class="modalBox"><div class="loginIntro"><div><div class="loginLogo">PP</div><h2>Produktionsplanung</h2><p>Planung, Produktion und Personal in einem gemeinsamen Live-Stand für das lokale Firmennetz.</p><div class="loginFacts"><div class="loginFact">● Zentraler Windows-LAN-Server</div><div class="loginFact">● Multiuser mit Revision-/Konfliktschutz</div><div class="loginFact">● Planung & Produktion arbeiten auf demselben Datenstand</div></div></div><div style="font-size:max(var(--fsMin),calc(11px*var(--fs)));color:#9fb3cf">V12.28.4 · LAN ONLY</div></div><div class="loginFormPane"><h3>Anmelden</h3><p class="hint" style="margin:0 0 16px">Mit deinem Benutzerkonto anmelden.</p><div class="loginAccess"><strong>Server</strong><br><span id="loginAccessUrl">http://SERVER-IP:8765</span></div><div class="field"><label>Benutzername</label><input id="loginUser" autocomplete="username" placeholder="Benutzername"></div><div class="field"><label>Passwort</label><div class="passwordWrap"><input id="loginPassword" type="password" autocomplete="current-password" placeholder="Passwort"><button class="btn" id="loginShowPassword" type="button" title="Passwort anzeigen">◉</button></div></div><div class="loginError" id="loginError"></div><button class="btn primary loginSubmit" id="loginBtn">Anmelden</button><div class="loginFoot">Keine Installation auf diesem PC nötig. Änderungen werden ausschließlich am zentralen LAN-Server gespeichert.</div></div></div></div>
 
 <div class="notifPanel" id="notifPanel" data-mod="notifications" role="dialog" aria-label="Benachrichtigungen"><div class="notifHead"><b id="notifTitle">Benachrichtigungen</b><button type="button" class="iconBtn" id="notifAllRead" title="Alle als gelesen markieren" aria-label="Alle als gelesen markieren">✓</button><button type="button" class="iconBtn" id="notifCfgBtn" title="Einstellungen" aria-label="Einstellungen" aria-pressed="false">⚙</button></div><div class="notifList" id="notifList"></div><div class="notifCfg" id="notifCfg"></div></div>
 <button type="button" class="chatFab" id="chatFab" data-mod="chat" aria-label="Nachrichten öffnen" title="Nachrichten"><span aria-hidden="true">💬</span><span class="chatBadge" id="chatBadge"></span></button>
@@ -401,7 +401,7 @@ html[data-mod-off~="projects"] [data-mod="projects"],html[data-mod-off~="formats
 <script>
 (()=>{
 'use strict';
-const CLIENT_VERSION='12.28.3';
+const CLIENT_VERSION='12.28.4';
 const KEY='produktionsplanung_webapp_v12';
 const LEGACY_KEYS=[]; // V12 startet bewusst ohne automatische Übernahme alter lokaler Daten
 const MS_H=3600000,MS_D=86400000;

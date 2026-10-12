@@ -46,6 +46,6 @@ PowerShell-Skripte wurden nur stichprobenartig gelesen (Injection/ACL); auf Wind
 
 ## Nächste Schritte
 
-1. Die Korrekturen A-1 bis A-3 als V12.28.4 ausliefern (Version erhöhen, Release Notes, PR, CI, Release-Workflow).
+1. Korrekturen A-1 bis A-3: V12.28.4 (Version, Release Notes und PR erledigt; Release nach Merge über den Workflow).
 2. A-4 entscheiden: Ist eine neue, eingeschränkte Firmen-CA mit erneutem Import auf den Arbeitsplätzen vertretbar?
 3. A-5 bis A-7 bei Gelegenheit bereinigen.
