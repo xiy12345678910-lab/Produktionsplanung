@@ -440,9 +440,13 @@ def verify(url: str, rec: dict, fp_old: dict, expect_ci_config: bool = True, com
     """Nach dem Update: gleiche Anmeldungen, alle Daten additiv gleich, Firmenprofil entspricht dem Bestand."""
     problems = []
     fp_new = fingerprint(url, rec)
+    # Anmeldung muss gleich ausgehen (erfolgreich bzw. abgewiesen). Seit V12.28.0 (#84) meldet ein gesperrtes
+    # Konto mit richtigem Passwort 403 MP-AUTH-025 statt 401; beides ist "abgewiesen".
+    refused = {401, 403}
     for u, code in fp_old["logins"].items():
-        if fp_new["logins"].get(u) != code:
-            problems.append(f"Login {u}: {code} -> {fp_new['logins'].get(u)}")
+        new = fp_new["logins"].get(u)
+        if new != code and not (code in refused and new in refused):
+            problems.append(f"Login {u}: {code} -> {new}")
     problems += [f"Daten{p}" for p in additive_diff(fp_old["per_user"], fp_new["per_user"])]
     if company:
         problems += check_company(url, rec, expect_ci_config)
