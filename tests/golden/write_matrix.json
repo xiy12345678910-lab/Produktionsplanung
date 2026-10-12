@@ -1,21 +1,39 @@
 {
  "admin": {
-  "baseFormats": "empty",
+  "baseFormats": [
+   200
+  ],
   "callOffs": "empty",
-  "dayRules": "empty",
-  "departmentStaffNeeds": "empty",
+  "dayRules": [
+   200
+  ],
+  "departmentStaffNeeds": [
+   200
+  ],
   "departments": [
    200
   ],
   "employees": [
    200
   ],
-  "exceptions": "empty",
-  "formats": "empty",
-  "frameOrders": "empty",
-  "history": "empty",
+  "exceptions": [
+   200
+  ],
+  "formats": [
+   200
+  ],
+  "frameOrders": [
+   403,
+   "MP-PROD-041"
+  ],
+  "history": [
+   400,
+   "MP-HIST-003"
+  ],
   "inventory": "empty",
-  "machineBlocks": "empty",
+  "machineBlocks": [
+   200
+  ],
   "machines": [
    200
   ],
@@ -23,15 +41,27 @@
    200
   ],
   "palletLabels": "empty",
-  "palletTemplates": "empty",
-  "personnelAbsences": "empty",
-  "personnelAssignments": "empty",
+  "palletTemplates": [
+   403,
+   "MP-MOD-001"
+  ],
+  "personnelAbsences": [
+   200
+  ],
+  "personnelAssignments": [
+   200
+  ],
   "personnelGate": "scalar-skip",
-  "planVersions": "empty",
+  "planVersions": [
+   200
+  ],
   "processTemplates": [
    200
   ],
-  "productionEvents": "empty",
+  "productionEvents": [
+   403,
+   "MP-PROD-041"
+  ],
   "projects": [
    200
   ],
@@ -39,18 +69,33 @@
    200
   ],
   "version": "scalar-skip",
-  "weekRules": "empty",
-  "weeklyEmployeeDeployments": "empty",
+  "weekRules": [
+   200
+  ],
+  "weeklyEmployeeDeployments": [
+   200
+  ],
   "workSteps": [
    200
   ],
-  "yearRules": "empty"
+  "yearRules": [
+   200
+  ]
  },
  "av1": {
-  "baseFormats": "empty",
+  "baseFormats": [
+   403,
+   "MP-AV-030"
+  ],
   "callOffs": "empty",
-  "dayRules": "empty",
-  "departmentStaffNeeds": "empty",
+  "dayRules": [
+   403,
+   "MP-AV-030"
+  ],
+  "departmentStaffNeeds": [
+   403,
+   "MP-AV-030"
+  ],
   "departments": [
    403,
    "MP-AV-030"
@@ -59,12 +104,27 @@
    403,
    "MP-AV-030"
   ],
-  "exceptions": "empty",
-  "formats": "empty",
-  "frameOrders": "empty",
-  "history": "empty",
+  "exceptions": [
+   403,
+   "MP-AV-030"
+  ],
+  "formats": [
+   403,
+   "MP-AV-030"
+  ],
+  "frameOrders": [
+   403,
+   "MP-PROD-041"
+  ],
+  "history": [
+   400,
+   "MP-HIST-003"
+  ],
   "inventory": "empty",
-  "machineBlocks": "empty",
+  "machineBlocks": [
+   403,
+   "MP-AV-030"
+  ],
   "machines": [
    403,
    "MP-AV-030"
@@ -74,16 +134,30 @@
    "MP-AV-030"
   ],
   "palletLabels": "empty",
-  "palletTemplates": "empty",
-  "personnelAbsences": "empty",
-  "personnelAssignments": "empty",
+  "palletTemplates": [
+   403,
+   "MP-AUTH-002"
+  ],
+  "personnelAbsences": [
+   403,
+   "MP-AV-030"
+  ],
+  "personnelAssignments": [
+   403,
+   "MP-AV-030"
+  ],
   "personnelGate": "scalar-skip",
-  "planVersions": "empty",
+  "planVersions": [
+   200
+  ],
   "processTemplates": [
    403,
    "MP-TPL-030"
   ],
-  "productionEvents": "empty",
+  "productionEvents": [
+   403,
+   "MP-PROD-041"
+  ],
   "projects": [
    200
   ],
@@ -92,18 +166,31 @@
    "MP-AV-030"
   ],
   "version": "scalar-skip",
-  "weekRules": "empty",
-  "weeklyEmployeeDeployments": "empty",
+  "weekRules": [
+   403,
+   "MP-AV-030"
+  ],
+  "weeklyEmployeeDeployments": [
+   403,
+   "MP-AV-030"
+  ],
   "workSteps": [
    200
   ],
-  "yearRules": "empty"
+  "yearRules": [
+   403,
+   "MP-AV-030"
+  ]
  },
  "dep1": {
   "baseFormats": "empty",
   "callOffs": "empty",
-  "dayRules": "empty",
-  "departmentStaffNeeds": "empty",
+  "dayRules": [
+   200
+  ],
+  "departmentStaffNeeds": [
+   200
+  ],
   "departments": [
    403,
    "MP-DEPT-030"
@@ -111,12 +198,23 @@
   "employees": [
    200
   ],
-  "exceptions": "empty",
+  "exceptions": [
+   403,
+   "MP-DEPT-030"
+  ],
   "formats": "empty",
-  "frameOrders": "empty",
-  "history": "empty",
+  "frameOrders": [
+   403,
+   "MP-PROD-041"
+  ],
+  "history": [
+   400,
+   "MP-HIST-003"
+  ],
   "inventory": "empty",
-  "machineBlocks": "empty",
+  "machineBlocks": [
+   200
+  ],
   "machines": [
    200
   ],
@@ -125,34 +223,60 @@
    "MP-DEPT-030"
   ],
   "palletLabels": "empty",
-  "palletTemplates": "empty",
-  "personnelAbsences": "empty",
-  "personnelAssignments": "empty",
+  "palletTemplates": [
+   403,
+   "MP-AUTH-002"
+  ],
+  "personnelAbsences": [
+   200
+  ],
+  "personnelAssignments": [
+   200
+  ],
   "personnelGate": "scalar-skip",
   "planVersions": "empty",
   "processTemplates": [
    403,
    "MP-DEPT-030"
   ],
-  "productionEvents": "empty",
+  "productionEvents": [
+   403,
+   "MP-PROD-041"
+  ],
   "projects": "empty",
   "shiftTemplates": [
    403,
    "MP-DEPT-030"
   ],
   "version": "scalar-skip",
-  "weekRules": "empty",
-  "weeklyEmployeeDeployments": "empty",
+  "weekRules": [
+   200
+  ],
+  "weeklyEmployeeDeployments": [
+   403,
+   "MP-DEPT-030"
+  ],
   "workSteps": [
    200
   ],
-  "yearRules": "empty"
+  "yearRules": [
+   200
+  ]
  },
  "gf1": {
-  "baseFormats": "empty",
+  "baseFormats": [
+   403,
+   "MP-GF-030"
+  ],
   "callOffs": "empty",
-  "dayRules": "empty",
-  "departmentStaffNeeds": "empty",
+  "dayRules": [
+   403,
+   "MP-GF-030"
+  ],
+  "departmentStaffNeeds": [
+   403,
+   "MP-GF-030"
+  ],
   "departments": [
    200
   ],
@@ -160,12 +284,26 @@
    403,
    "MP-GF-030"
   ],
-  "exceptions": "empty",
-  "formats": "empty",
-  "frameOrders": "empty",
-  "history": "empty",
+  "exceptions": [
+   200
+  ],
+  "formats": [
+   403,
+   "MP-GF-030"
+  ],
+  "frameOrders": [
+   403,
+   "MP-PROD-041"
+  ],
+  "history": [
+   400,
+   "MP-HIST-003"
+  ],
   "inventory": "empty",
-  "machineBlocks": "empty",
+  "machineBlocks": [
+   403,
+   "MP-GF-030"
+  ],
   "machines": [
    403,
    "MP-GF-030"
@@ -175,16 +313,31 @@
    "MP-GF-030"
   ],
   "palletLabels": "empty",
-  "palletTemplates": "empty",
-  "personnelAbsences": "empty",
-  "personnelAssignments": "empty",
+  "palletTemplates": [
+   403,
+   "MP-AUTH-002"
+  ],
+  "personnelAbsences": [
+   403,
+   "MP-GF-030"
+  ],
+  "personnelAssignments": [
+   403,
+   "MP-GF-030"
+  ],
   "personnelGate": "scalar-skip",
-  "planVersions": "empty",
+  "planVersions": [
+   403,
+   "MP-GF-030"
+  ],
   "processTemplates": [
    403,
    "MP-GF-030"
   ],
-  "productionEvents": "empty",
+  "productionEvents": [
+   403,
+   "MP-PROD-041"
+  ],
   "projects": [
    403,
    "MP-GF-030"
@@ -194,19 +347,31 @@
    "MP-GF-030"
   ],
   "version": "scalar-skip",
-  "weekRules": "empty",
-  "weeklyEmployeeDeployments": "empty",
+  "weekRules": [
+   403,
+   "MP-GF-030"
+  ],
+  "weeklyEmployeeDeployments": [
+   200
+  ],
   "workSteps": [
    403,
    "MP-GF-030"
   ],
-  "yearRules": "empty"
+  "yearRules": [
+   403,
+   "MP-GF-030"
+  ]
  },
  "lead1": {
   "baseFormats": "empty",
   "callOffs": "empty",
-  "dayRules": "empty",
-  "departmentStaffNeeds": "empty",
+  "dayRules": [
+   200
+  ],
+  "departmentStaffNeeds": [
+   200
+  ],
   "departments": [
    403,
    "MP-DEPT-030"
@@ -214,12 +379,23 @@
   "employees": [
    200
   ],
-  "exceptions": "empty",
+  "exceptions": [
+   403,
+   "MP-DEPT-030"
+  ],
   "formats": "empty",
-  "frameOrders": "empty",
-  "history": "empty",
+  "frameOrders": [
+   403,
+   "MP-PROD-041"
+  ],
+  "history": [
+   400,
+   "MP-HIST-003"
+  ],
   "inventory": "empty",
-  "machineBlocks": "empty",
+  "machineBlocks": [
+   200
+  ],
   "machines": [
    200
   ],
@@ -228,34 +404,60 @@
    "MP-DEPT-030"
   ],
   "palletLabels": "empty",
-  "palletTemplates": "empty",
-  "personnelAbsences": "empty",
-  "personnelAssignments": "empty",
+  "palletTemplates": [
+   403,
+   "MP-AUTH-002"
+  ],
+  "personnelAbsences": [
+   200
+  ],
+  "personnelAssignments": [
+   200
+  ],
   "personnelGate": "scalar-skip",
   "planVersions": "empty",
   "processTemplates": [
    403,
    "MP-DEPT-030"
   ],
-  "productionEvents": "empty",
+  "productionEvents": [
+   403,
+   "MP-PROD-041"
+  ],
   "projects": "empty",
   "shiftTemplates": [
    403,
    "MP-DEPT-030"
   ],
   "version": "scalar-skip",
-  "weekRules": "empty",
-  "weeklyEmployeeDeployments": "empty",
+  "weekRules": [
+   200
+  ],
+  "weeklyEmployeeDeployments": [
+   403,
+   "MP-DEPT-030"
+  ],
   "workSteps": [
    200
   ],
-  "yearRules": "empty"
+  "yearRules": [
+   200
+  ]
  },
  "pm1": {
-  "baseFormats": "empty",
+  "baseFormats": [
+   403,
+   "MP-PM-030"
+  ],
   "callOffs": "empty",
-  "dayRules": "empty",
-  "departmentStaffNeeds": "empty",
+  "dayRules": [
+   403,
+   "MP-PM-030"
+  ],
+  "departmentStaffNeeds": [
+   403,
+   "MP-PM-030"
+  ],
   "departments": [
    403,
    "MP-PM-030"
@@ -264,12 +466,27 @@
    403,
    "MP-PM-030"
   ],
-  "exceptions": "empty",
-  "formats": "empty",
-  "frameOrders": "empty",
-  "history": "empty",
+  "exceptions": [
+   403,
+   "MP-PM-030"
+  ],
+  "formats": [
+   403,
+   "MP-PM-030"
+  ],
+  "frameOrders": [
+   403,
+   "MP-PROD-041"
+  ],
+  "history": [
+   400,
+   "MP-HIST-003"
+  ],
   "inventory": "empty",
-  "machineBlocks": "empty",
+  "machineBlocks": [
+   403,
+   "MP-PM-030"
+  ],
   "machines": [
    403,
    "MP-PM-030"
@@ -279,15 +496,30 @@
    "MP-PM-030"
   ],
   "palletLabels": "empty",
-  "palletTemplates": "empty",
-  "personnelAbsences": "empty",
-  "personnelAssignments": "empty",
+  "palletTemplates": [
+   403,
+   "MP-AUTH-002"
+  ],
+  "personnelAbsences": [
+   403,
+   "MP-PM-030"
+  ],
+  "personnelAssignments": [
+   403,
+   "MP-PM-030"
+  ],
   "personnelGate": "scalar-skip",
-  "planVersions": "empty",
+  "planVersions": [
+   403,
+   "MP-PM-030"
+  ],
   "processTemplates": [
    200
   ],
-  "productionEvents": "empty",
+  "productionEvents": [
+   403,
+   "MP-PROD-041"
+  ],
   "projects": [
    200
   ],
@@ -296,19 +528,34 @@
    "MP-PM-030"
   ],
   "version": "scalar-skip",
-  "weekRules": "empty",
-  "weeklyEmployeeDeployments": "empty",
+  "weekRules": [
+   403,
+   "MP-PM-030"
+  ],
+  "weeklyEmployeeDeployments": [
+   403,
+   "MP-PM-030"
+  ],
   "workSteps": [
    403,
    "MP-PM-030"
   ],
-  "yearRules": "empty"
+  "yearRules": [
+   403,
+   "MP-PM-030"
+  ]
  },
  "prod1": {
   "baseFormats": "empty",
   "callOffs": "empty",
-  "dayRules": "empty",
-  "departmentStaffNeeds": "empty",
+  "dayRules": [
+   403,
+   "MP-AUTH-002"
+  ],
+  "departmentStaffNeeds": [
+   403,
+   "MP-AUTH-002"
+  ],
   "departments": [
    403,
    "MP-AUTH-002"
@@ -317,12 +564,24 @@
    403,
    "MP-AUTH-002"
   ],
-  "exceptions": "empty",
+  "exceptions": [
+   403,
+   "MP-AUTH-002"
+  ],
   "formats": "empty",
-  "frameOrders": "empty",
-  "history": "empty",
+  "frameOrders": [
+   403,
+   "MP-AUTH-002"
+  ],
+  "history": [
+   403,
+   "MP-AUTH-002"
+  ],
   "inventory": "empty",
-  "machineBlocks": "empty",
+  "machineBlocks": [
+   403,
+   "MP-AUTH-002"
+  ],
   "machines": [
    403,
    "MP-AUTH-002"
@@ -332,35 +591,65 @@
    "MP-AUTH-002"
   ],
   "palletLabels": "empty",
-  "palletTemplates": "empty",
-  "personnelAbsences": "empty",
-  "personnelAssignments": "empty",
+  "palletTemplates": [
+   403,
+   "MP-AUTH-002"
+  ],
+  "personnelAbsences": [
+   403,
+   "MP-AUTH-002"
+  ],
+  "personnelAssignments": [
+   403,
+   "MP-AUTH-002"
+  ],
   "personnelGate": "scalar-skip",
   "planVersions": "empty",
   "processTemplates": [
    403,
    "MP-AUTH-002"
   ],
-  "productionEvents": "empty",
+  "productionEvents": [
+   403,
+   "MP-AUTH-002"
+  ],
   "projects": "empty",
   "shiftTemplates": [
    403,
    "MP-AUTH-002"
   ],
   "version": "scalar-skip",
-  "weekRules": "empty",
-  "weeklyEmployeeDeployments": "empty",
+  "weekRules": [
+   403,
+   "MP-AUTH-002"
+  ],
+  "weeklyEmployeeDeployments": [
+   403,
+   "MP-AUTH-002"
+  ],
   "workSteps": [
    403,
    "MP-AUTH-002"
   ],
-  "yearRules": "empty"
+  "yearRules": [
+   403,
+   "MP-AUTH-002"
+  ]
  },
  "view1": {
-  "baseFormats": "empty",
+  "baseFormats": [
+   403,
+   "MP-AUTH-002"
+  ],
   "callOffs": "empty",
-  "dayRules": "empty",
-  "departmentStaffNeeds": "empty",
+  "dayRules": [
+   403,
+   "MP-AUTH-002"
+  ],
+  "departmentStaffNeeds": [
+   403,
+   "MP-AUTH-002"
+  ],
   "departments": [
    403,
    "MP-AUTH-002"
@@ -369,12 +658,27 @@
    403,
    "MP-AUTH-002"
   ],
-  "exceptions": "empty",
-  "formats": "empty",
-  "frameOrders": "empty",
-  "history": "empty",
+  "exceptions": [
+   403,
+   "MP-AUTH-002"
+  ],
+  "formats": [
+   403,
+   "MP-AUTH-002"
+  ],
+  "frameOrders": [
+   403,
+   "MP-AUTH-002"
+  ],
+  "history": [
+   403,
+   "MP-AUTH-002"
+  ],
   "inventory": "empty",
-  "machineBlocks": "empty",
+  "machineBlocks": [
+   403,
+   "MP-AUTH-002"
+  ],
   "machines": [
    403,
    "MP-AUTH-002"
@@ -384,16 +688,31 @@
    "MP-AUTH-002"
   ],
   "palletLabels": "empty",
-  "palletTemplates": "empty",
-  "personnelAbsences": "empty",
-  "personnelAssignments": "empty",
+  "palletTemplates": [
+   403,
+   "MP-AUTH-002"
+  ],
+  "personnelAbsences": [
+   403,
+   "MP-AUTH-002"
+  ],
+  "personnelAssignments": [
+   403,
+   "MP-AUTH-002"
+  ],
   "personnelGate": "scalar-skip",
-  "planVersions": "empty",
+  "planVersions": [
+   403,
+   "MP-AUTH-002"
+  ],
   "processTemplates": [
    403,
    "MP-AUTH-002"
   ],
-  "productionEvents": "empty",
+  "productionEvents": [
+   403,
+   "MP-AUTH-002"
+  ],
   "projects": [
    403,
    "MP-AUTH-002"
@@ -403,19 +722,37 @@
    "MP-AUTH-002"
   ],
   "version": "scalar-skip",
-  "weekRules": "empty",
-  "weeklyEmployeeDeployments": "empty",
+  "weekRules": [
+   403,
+   "MP-AUTH-002"
+  ],
+  "weeklyEmployeeDeployments": [
+   403,
+   "MP-AUTH-002"
+  ],
   "workSteps": [
    403,
    "MP-AUTH-002"
   ],
-  "yearRules": "empty"
+  "yearRules": [
+   403,
+   "MP-AUTH-002"
+  ]
  },
  "vt1": {
-  "baseFormats": "empty",
+  "baseFormats": [
+   403,
+   "MP-SALES-030"
+  ],
   "callOffs": "empty",
-  "dayRules": "empty",
-  "departmentStaffNeeds": "empty",
+  "dayRules": [
+   403,
+   "MP-SALES-030"
+  ],
+  "departmentStaffNeeds": [
+   403,
+   "MP-SALES-030"
+  ],
   "departments": [
    403,
    "MP-SALES-030"
@@ -424,12 +761,27 @@
    403,
    "MP-SALES-030"
   ],
-  "exceptions": "empty",
-  "formats": "empty",
-  "frameOrders": "empty",
-  "history": "empty",
+  "exceptions": [
+   403,
+   "MP-SALES-030"
+  ],
+  "formats": [
+   403,
+   "MP-SALES-030"
+  ],
+  "frameOrders": [
+   403,
+   "MP-PROD-041"
+  ],
+  "history": [
+   400,
+   "MP-HIST-003"
+  ],
   "inventory": "empty",
-  "machineBlocks": "empty",
+  "machineBlocks": [
+   403,
+   "MP-SALES-030"
+  ],
   "machines": [
    403,
    "MP-SALES-030"
@@ -439,16 +791,31 @@
    "MP-SALES-030"
   ],
   "palletLabels": "empty",
-  "palletTemplates": "empty",
-  "personnelAbsences": "empty",
-  "personnelAssignments": "empty",
+  "palletTemplates": [
+   403,
+   "MP-AUTH-002"
+  ],
+  "personnelAbsences": [
+   403,
+   "MP-SALES-030"
+  ],
+  "personnelAssignments": [
+   403,
+   "MP-SALES-030"
+  ],
   "personnelGate": "scalar-skip",
-  "planVersions": "empty",
+  "planVersions": [
+   403,
+   "MP-SALES-030"
+  ],
   "processTemplates": [
    403,
    "MP-SALES-030"
   ],
-  "productionEvents": "empty",
+  "productionEvents": [
+   403,
+   "MP-PROD-041"
+  ],
   "projects": [
    403,
    "MP-PM-031"
@@ -458,12 +825,21 @@
    "MP-SALES-030"
   ],
   "version": "scalar-skip",
-  "weekRules": "empty",
-  "weeklyEmployeeDeployments": "empty",
+  "weekRules": [
+   403,
+   "MP-SALES-030"
+  ],
+  "weeklyEmployeeDeployments": [
+   403,
+   "MP-SALES-030"
+  ],
   "workSteps": [
    403,
    "MP-SALES-030"
   ],
-  "yearRules": "empty"
+  "yearRules": [
+   403,
+   "MP-SALES-030"
+  ]
  }
 }
