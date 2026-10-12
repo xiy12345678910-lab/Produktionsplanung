@@ -70,6 +70,8 @@ try{
   // V12.23.0: System → Bereich anlegen mit Planungslogik (gleiche Implementierung wie GF-Steuerung).
   await page.fill('#adminNewDepartment','Siebdruck 2');await page.selectOption('#adminNewDepartmentLogic','cycle');await page.click('#adminAddDepartment');await page.waitForTimeout(600);
   await page.fill('#adminNewDepartment','Montage');await page.selectOption('#adminNewDepartmentLogic','line');await page.click('#adminAddDepartment');await page.waitForTimeout(600);
+  // Auf den Serverstand warten (beide Bereiche samt Ressource gespeichert) statt fester 600 ms.
+  await page.waitForFunction(async()=>{const s=(await(await fetch('/api/state',{cache:'no-store'})).json()).data;return ['Siebdruck 2','Montage'].every(n=>{const d=s.departments.find(x=>x.name===n);return d&&s.machines.some(m=>m.departmentId===d.id)})},null,{timeout:8000,polling:250}).catch(()=>{});
   {const st=await page.evaluate(async()=>(await(await fetch('/api/state')).json()).data),sd=st.departments.find(d=>d.name==='Siebdruck 2'),mo=st.departments.find(d=>d.name==='Montage'),res=id=>st.machines.filter(m=>m.departmentId===id);
    check(sd?.formats===true&&res(sd.id).length===1&&res(sd.id)[0].kind==='machine','System: Bereich mit Planungslogik Takt bekommt Formate und eine Maschine');
    check(mo&&!mo.formats&&res(mo.id)[0]?.kind==='line'&&res(mo.id)[0]?.effortScaling===true,'System: Bereich mit Planungslogik Personenstunden bekommt eine Linie');

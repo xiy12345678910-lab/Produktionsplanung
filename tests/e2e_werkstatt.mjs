@@ -143,6 +143,17 @@ try {
   check(ol.hint.includes('Rot = Endtermin') && ol.sub.includes('Endtermin') && !ol.sub.includes('AV-Termin') && ol.filterAll === 'Alle Arbeitsplätze', `Auftragsliste Formbau: Hinweise/Filter (${ol.sub} · ${ol.hint} · ${ol.filterAll})`);
   const fr = ol.rows.ws_fb || {};
   check(fr.title === 'Form Leuchtkasten' && !fr.qty && !fr.alt && !fr.altText && fr.cells === ol.heads.length, `Auftragsliste Formbau: Titel als Hauptzeile, keine Menge, keine Alternative (${JSON.stringify(fr)})`);
+  // V12.28.2: Abteilungsleitung aendert Endtermin und Titel nachtraeglich; ohne FA zieht der Auftragsname mit.
+  if (created) {
+    const row = `#ordersBody tr[data-id="${created.id}"]`;
+    check(await fb.locator(`${row} [data-f="dueDate"]`).isEnabled(), 'Auftragsliste Formbau: Endtermin fuer die Abteilungsleitung aenderbar');
+    await fb.fill(`${row} [data-f="dueDate"]`, '2026-12-01'); await fb.press(`${row} [data-f="dueDate"]`, 'Tab');
+    const due = await waitStep(fb, s => s.id === created.id && s.dueDate === '2026-12-01');
+    check(!!due, `Endtermin nachtraeglich geaendert und am Server gespeichert (${due?.dueDate || 'nein'}) ${await errText(fb)}`);
+    await fb.fill(`${row} .ordTitle`, 'Form Messestand XL'); await fb.press(`${row} .ordTitle`, 'Tab');
+    const ren = await waitStep(fb, s => s.id === created.id && s.description === 'Form Messestand XL');
+    check(ren && ren.order === 'Form Messestand XL' && ren.fa === 'Form Messestand XL' && ren.faNumber === ren.fa, `Titel ohne FA geaendert: Auftragsname zieht mit (${JSON.stringify(ren && { order: ren.order, fa: ren.fa })})`);
+  }
   // Termin planen -> Produktion starten
   await fb.click('#ordersBody tr[data-id="ws_fb"] [data-act="start"]'); await fb.waitForSelector('#startModal.show');
   const sm = await fb.evaluate(() => ({ text: document.querySelector('#startModal .modalBox').innerText, due: document.getElementById('manualDue').getClientRects().length > 0, btn: document.getElementById('startProdNow').getClientRects().length > 0 }));
@@ -163,6 +174,7 @@ try {
   check(col.heads.includes('Menge') && col.heads.includes('AV-Termin') && col.heads.includes('Maschine / Linie') && !col.heads.includes('Endtermin'), `Gegenprobe CNC: Spalten Maschine / Linie, Menge, AV-Termin (${col.heads.join(' | ')})`);
   const cr = col.rows.ws_cnc || {};
   check(cr.qty && cr.alt && cr.altText, `Gegenprobe CNC: Menge und Alternative in der Zeile (${JSON.stringify(cr)})`);
+  check(await cnc.locator('#ordersBody tr[data-id="ws_cnc"] [data-f="dueDate"]').isDisabled(), 'Gegenprobe CNC: AV-Termin fuer die Abteilungsleitung gesperrt');
   await cnc.click('#addOrder2'); await cnc.waitForSelector('#orderModal.show');
   const cd = await dialogInfo(cnc);
   check(cd.labels.some(l => l.startsWith('AV-Termin')) && cd.alt && cd.qty && cd.machineLabel === 'Maschine' && !cd.noQty && cd.faWeight >= 700 && cd.focus === 'qFA', `Gegenprobe CNC: FA-Dialog mit AV-Termin, Maschine, Menge, Alternative, FA gross (${cd.labels.join(' | ')})`);
@@ -177,7 +189,7 @@ try {
   const admin = await open('admin');
   await admin.click('#navList'); await admin.waitForTimeout(300);
   const al = await ordersInfo(admin);
-  const acr = al.rows.ws_cnc || {}, afr = Object.entries(al.rows).find(([, v]) => v.title === 'Form Messestand')?.[1] || {};
+  const acr = al.rows.ws_cnc || {}, afr = Object.entries(al.rows).find(([, v]) => v.title === 'Form Messestand XL')?.[1] || {};
   check(al.heads.includes('Menge') && al.heads.includes('AV-Termin') && acr.qty && acr.alt && afr.title && !afr.qty && !afr.alt && afr.cells === acr.cells, `Alle Bereiche: allgemeine Spalten, Formbau-Zeile ohne Menge/Alternative (${JSON.stringify({ acr, afr })})`);
   // Planungsart-Bezeichnung (global, gespeicherter Wert bleibt 'line')
   await admin.click('#navGF'); await admin.waitForTimeout(400);
