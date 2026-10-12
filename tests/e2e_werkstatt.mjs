@@ -27,7 +27,8 @@ const check = (ok, label) => { results.push([!!ok, label]); console.log((ok ? 'P
 const USERS = [['fblead', 'department_lead', 'formbau'], ['cnclead', 'department_lead', 'cnc']];
 const dataDir = mkdtempSync(path.join(tmpdir(), 'mp-werkstatt-'));
 const py = `
-import ipaddress, json, sys
+import ipaddress, json, sys, time
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 sys.path.insert(0, ${JSON.stringify(SRC)})
 import server
@@ -35,6 +36,10 @@ server.DATA_DIR = Path(${JSON.stringify(dataDir)})
 server.DB_PATH = server.DATA_DIR / "maschinenplanung.sqlite3"
 server.ALLOWED_NETWORK = ipaddress.ip_network("127.0.0.0/8")
 server.init_db(seed="werbetechnik")
+# Feste Uhr (Mi 07.10.2026, 07:00 Berlin, in der Schicht und ausserhalb der Pause): "Produktion starten"
+# prueft serverseitig die Arbeitszeit; mit der echten Uhr haengt das Ergebnis von der Laufzeit ab (CI 09:00 = Pause).
+clock_start = time.monotonic()
+server.now_iso = lambda: (datetime(2026, 10, 7, 5, tzinfo=timezone.utc) + timedelta(seconds=time.monotonic() - clock_start)).isoformat(timespec="seconds").replace("+00:00", "Z")
 server.create_or_reset_admin("admin", ${JSON.stringify(PASS)})
 with server.DB_LOCK, server.db_session() as con:
     old = json.loads(con.execute("SELECT json FROM state WHERE id=1").fetchone()["json"])
@@ -71,6 +76,7 @@ const browser = await chromium.launch();
 const errors = [];
 async function open(user) {
   const page = await browser.newPage({ viewport: { width: 1440, height: 950 }, timezoneId: 'Europe/Berlin' });
+  await page.clock.install({ time: new Date('2026-10-07T05:00:00Z') });
   page.on('pageerror', e => errors.push(`${user}: ${e.message}`));
   await page.goto(BASE);
   await page.fill('#loginUser', user);
