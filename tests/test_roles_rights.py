@@ -363,5 +363,47 @@ class RightsAuditV1227(RoleProfiles):
     test_actions_and_endpoints = None
 
 
+class AuditV12283(RoleProfiles):
+    '''Audit V12.28.3: Rollenprofil nur durch den Admin entfernen; Historie nur aus eigenen Aufträgen.'''
+    def _save(self, ck, mutate):
+        _, state, _ = self.req('GET', '/api/state', None, ck)
+        mutate(state['data'])
+        return self.req('PUT', '/api/state', state, ck)
+
+    def test_lead_cannot_remove_admin_profile(self):
+        self.assertEqual(self.put_role('stv-ohne-fertig', {'name': 'Stv ohne Fertigmelden', 'baseRole': 'department_deputy',
+                                                           'actions': {'prodFinish': False, 'userAdmin': False}})[0], 200)
+        self.user('a-lead', 'department_lead', DEP)
+        dep = self.user('a-stv', 'department_deputy', DEP, 'stv-ohne-fertig')['id']
+        lead = self.login('a-lead')[1]
+        for patch in ({'profileId': ''}, {'role': 'viewer'}):   # direkt und über den Rollenwechsel
+            st, body, _ = self.req('PATCH', f'/api/users/{dep}', patch, lead)
+            self.assertEqual((st, body.get('errorCode')), (403, 'MP-ROLE-003'), patch)
+        session = self.req('GET', '/api/session', None, self.login('a-stv')[1])[1]['user']
+        self.assertEqual((session['profileId'], session['actions']['prodFinish']), ('stv-ohne-fertig', False))
+        # Ohne Profil bleibt die Verwaltung durch die Leitung wie bisher möglich.
+        plain = self.user('a-stv2', 'department_deputy', DEP)['id']
+        self.assertEqual(self.req('PATCH', f'/api/users/{plain}', {'role': 'viewer'}, lead)[0], 200)
+        self.assertEqual(self.req('PATCH', f'/api/users/{dep}', {'profileId': ''}, self.admin)[0], 200)
+
+    def test_history_only_from_own_removed_order(self):
+        self.user('h-lead', 'department_lead', DEP)
+        self.user('h-konf', 'department_lead', KONF)
+        fake = {'id': 'h-fremd', 'originalOrderId': 'gibt-es-nicht', 'recordType': 'cancelled', 'fa': 'FA-FAKE', 'departmentId': KONF, 'goodQty': 999, 'scrapQty': 0}
+        for name in ('h-lead', 'h-konf'):
+            st, body, _ = self._save(self.login(name)[1], lambda d: d['history'].insert(0, dict(fake)))
+            self.assertEqual((st, body.get('errorCode')), (403, 'MP-DEPT-030'), (name, body))
+        # Storno eines freigegebenen Auftrags ohne Maschine (z. B. Stunden) im eigenen, nicht ersten Bereich bleibt erlaubt.
+        step = {'id': 'ws_l', 'departmentId': KONF, 'planningType': 'LABOR_HOURS', 'status': 'released'}
+        old = {'departments': BASE['departments'], 'machines': BASE['machines'], 'workSteps': [step], 'history': []}
+        new = {**old, 'workSteps': [], 'history': [{**step, 'id': 'h_l', 'originalOrderId': 'ws_l', 'recordType': 'cancelled', 'status': 'cancelled'}]}
+        self.assertEqual(server.department_change_allowed(old, new, KONF), (True, ''))
+        self.assertFalse(server.department_change_allowed(old, new, DEP)[0])
+
+    test_profile_validation_and_management = None
+    test_av_profile_is_enforced_on_server = None
+    test_actions_and_endpoints = None
+
+
 if __name__ == '__main__':
     unittest.main(verbosity=2)

@@ -91,6 +91,17 @@ def migrate_role_profiles(con: sqlite3.Connection) -> None:
 
 def resolve_profile_id(con, actor: dict, role: str, requested, current: str = "") -> str:
     """Rollenprofil für einen Benutzer prüfen: nur Admin weist zu; Profil aktiv und zur Systemrolle passend."""
+    if actor["role"] != "admin":
+        # Audit V12.28.3: Auch Entfernen – direkt (profileId "") oder über einen Rollenwechsel, der das Profil
+        # verwirft – bleibt dem Admin vorbehalten. Sonst hebt eine Bereichsleitung eine vom Admin gesetzte
+        # Einschränkung (z. B. kein Fertigmelden, Personal ausgeblendet) wieder auf.
+        if requested is not None and str(requested or "") != current:
+            raise PermissionError("Rollenprofile weist nur der Admin zu.")
+        if current:
+            found = con.execute("SELECT json FROM role_profiles WHERE id=?", (current,)).fetchone()
+            if not found or json.loads(found["json"]).get("baseRole") != role:
+                raise PermissionError("Benutzer mit eigener Rolle: die Systemrolle ändert nur der Admin.")
+        return current
     if requested is None:
         found = con.execute("SELECT json FROM role_profiles WHERE id=?", (current,)).fetchone() if current else None
         return current if found and json.loads(found["json"]).get("baseRole") == role else ""
