@@ -99,6 +99,11 @@ def additive_diff(old, new, path: str = "", fill=()) -> list[str]:
 # Metadaten, die eine Migration beim Start setzen darf (kein Fachinhalt).
 STATE_META_COLUMNS = {"updated_at", "updated_by"}
 SKIP_TABLES = {"sessions"}
+# Lizenz-Buchfuehrung (mp_license, Tabelle app_meta): seit aktiver Lizenzpruefung (V12.28.0) legt der neue Server
+# Kulanzbeginn und "zuletzt gesehen" beim Start an; "zuletzt gesehen" aendert sich laufend. Kein Fachinhalt.
+# Vorhandene Zeilen (z. B. ein Kulanzbeginn aus dem Bestand) muessen weiter erhalten bleiben.
+LICENSE_META_NEW = {"license.graceStart", "license.lastSeen"}
+LICENSE_META_VOLATILE = {"license.lastSeen"}
 
 
 def dump_db(db_path: Path) -> dict:
@@ -147,12 +152,15 @@ def compare_dumps(a: dict, b: dict, exact: bool = False) -> list[str]:
         if t not in b:
             problems.append(f"Tabelle {t} fehlt")
             continue
-        if len(rows) != len(b[t]):
+        added_ok = {k for k in b[t] if k not in rows and k in LICENSE_META_NEW} if t == "app_meta" else set()
+        if len(rows) != len(b[t]) - len(added_ok):
             problems.append(f"Tabelle {t}: {len(rows)} -> {len(b[t])} Zeilen")
         for key, row in rows.items():
             nrow = b[t].get(key)
             if nrow is None:
                 problems.append(f"Tabelle {t}: Zeile {key} fehlt")
+                continue
+            if t == "app_meta" and key in LICENSE_META_VOLATILE:
                 continue
             for col, val in row.items():
                 if t == "state" and col in STATE_META_COLUMNS and not exact:
