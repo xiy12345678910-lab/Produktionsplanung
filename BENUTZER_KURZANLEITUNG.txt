@@ -1,4 +1,4 @@
-MASCHINENPLANUNG V12.27.0 - KURZANLEITUNG FUER BENUTZER
+MASCHINENPLANUNG V12.28.0 - KURZANLEITUNG FUER BENUTZER
 ======================================================
 
 ANMELDEN
@@ -122,6 +122,9 @@ FREIGABE / PRODUKTION
 BEREICHE
 - Zwei Arten: Produktion (Maschinen/Linien, Wochenplan) und Entwicklung & Vertrieb (nur Projektaufgaben).
 - Die Leitung eines Bereichs meldet im Projekt den Status der eigenen Aufgaben (Aufgabe anklicken).
+- Hat ein Produktionsbereich noch keinen Arbeitsplatz (Maschine/Linie), steht das im Wochenplan, in der
+  Produktion und im Einplanen-Popup; Admin und Abteilungsleitung legen ihn dort mit "Arbeitsplatz anlegen"
+  (Name, Planungsart) an, danach sind die Auftraege des Bereichs planbar.
 
 NACHRICHTEN (ab V12.9.0)
 - Rechts unten der Knopf 💬 (rote Zahl = ungelesen). Kleines Fenster; ⤢ macht es gross, – schliesst.
@@ -148,6 +151,16 @@ CHARGEN (z. B. Roester, ab V12.27.0)
 - Hat ein FA auf dieser Maschine eine Menge, rechnet die Planung die Laufzeit selbst, z. B.
   "3 Chargen × 2:00 + Reinigung 2 × 0:15 = 6:30 h". Die Charge geht vor Takt und manueller Laufzeit; ohne Menge
   gilt weiter die eingetragene Laufzeit. Haken entfernen = Charge aus.
+
+SONDERSCHICHTEN UND UEBERSTUNDEN (ab V12.28.0)
+- System → Maschinen & Schichtkalender → Abweichungen: "Gilt fuer: Tage", Von/Bis, Betrieb (wie geplant,
+  1- oder 2-schichtig, frei) und Ueberstunden je Tag (bis 4:00) fuer eine Maschine oder einen ganzen Bereich.
+- So werden z. B. Samstagsschichten geplant. Im Personal-Wochenplan erscheinen Sa/So, sobald dort gearbeitet wird;
+  Einteilungen an freien Tagen oder ueber die Vertragsstunden sind als Ueberstunden markiert.
+
+MITARBEITER-POPUP (ab V12.28.0)
+- Klick auf einen Mitarbeiter (Liste oder Wochenplan): Verwaltung (Zeiten, Schicht, Qualifikationen ...) und
+  Auswertung fuer KW, Monat, Jahr oder von-bis (Stunden Soll/geplant/Ist, Abwesenheiten, Auftraege, Bereiche).
 
 FIRMENDATEN
 - Liegen in config\firma.json neben data\ und bleiben bei jedem Update erhalten.

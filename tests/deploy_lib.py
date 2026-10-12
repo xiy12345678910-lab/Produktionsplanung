@@ -99,6 +99,11 @@ def additive_diff(old, new, path: str = "", fill=()) -> list[str]:
 # Metadaten, die eine Migration beim Start setzen darf (kein Fachinhalt).
 STATE_META_COLUMNS = {"updated_at", "updated_by"}
 SKIP_TABLES = {"sessions"}
+# Lizenz-Buchfuehrung (mp_license, Tabelle app_meta): seit aktiver Lizenzpruefung (V12.28.0) legt der neue Server
+# Kulanzbeginn und "zuletzt gesehen" beim Start an; "zuletzt gesehen" aendert sich laufend. Kein Fachinhalt.
+# Vorhandene Zeilen (z. B. ein Kulanzbeginn aus dem Bestand) muessen weiter erhalten bleiben.
+LICENSE_META_NEW = {"license.graceStart", "license.lastSeen"}
+LICENSE_META_VOLATILE = {"license.lastSeen"}
 
 
 def dump_db(db_path: Path) -> dict:
@@ -147,12 +152,15 @@ def compare_dumps(a: dict, b: dict, exact: bool = False) -> list[str]:
         if t not in b:
             problems.append(f"Tabelle {t} fehlt")
             continue
-        if len(rows) != len(b[t]):
+        added_ok = {k for k in b[t] if k not in rows and k in LICENSE_META_NEW} if t == "app_meta" else set()
+        if len(rows) != len(b[t]) - len(added_ok):
             problems.append(f"Tabelle {t}: {len(rows)} -> {len(b[t])} Zeilen")
         for key, row in rows.items():
             nrow = b[t].get(key)
             if nrow is None:
                 problems.append(f"Tabelle {t}: Zeile {key} fehlt")
+                continue
+            if t == "app_meta" and key in LICENSE_META_VOLATILE:
                 continue
             for col, val in row.items():
                 if t == "state" and col in STATE_META_COLUMNS and not exact:
@@ -432,9 +440,13 @@ def verify(url: str, rec: dict, fp_old: dict, expect_ci_config: bool = True, com
     """Nach dem Update: gleiche Anmeldungen, alle Daten additiv gleich, Firmenprofil entspricht dem Bestand."""
     problems = []
     fp_new = fingerprint(url, rec)
+    # Anmeldung muss gleich ausgehen (erfolgreich bzw. abgewiesen). Seit V12.28.0 (#84) meldet ein gesperrtes
+    # Konto mit richtigem Passwort 403 MP-AUTH-025 statt 401; beides ist "abgewiesen".
+    refused = {401, 403}
     for u, code in fp_old["logins"].items():
-        if fp_new["logins"].get(u) != code:
-            problems.append(f"Login {u}: {code} -> {fp_new['logins'].get(u)}")
+        new = fp_new["logins"].get(u)
+        if new != code and not (code in refused and new in refused):
+            problems.append(f"Login {u}: {code} -> {new}")
     problems += [f"Daten{p}" for p in additive_diff(fp_old["per_user"], fp_new["per_user"])]
     if company:
         problems += check_company(url, rec, expect_ci_config)

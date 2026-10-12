@@ -130,6 +130,59 @@ def admin_state():
     return b['revision'], b['data']
 
 
+# #73 Phase 0: Sammlungen, die der Test-Datenstand leer lässt, mit je einem gültigen Datensatz füllen,
+# damit die Schreib-Matrix sie prüft. Erst nach Datenstand-, Sichtbarkeits- und Rechte-Referenz (die bleiben unverändert).
+# Planbare Sammlungen speichert der Admin per PUT (Server prüft sie dabei); serverseitig geführte Sammlungen
+# (Produktion, Bedarf, Historie) entstehen nur über eigene Endpunkte und werden deshalb direkt in die Datenbank geschrieben.
+def seed_empty_collections():
+    rev, data = admin_state()
+    mach = next(m for m in data['machines'] if m.get('departmentId') == DEP)
+    emp = next(e for e in data['employees'] if e.get('departmentId') == DEP)
+    fmt_dep = next((d['id'] for d in data['departments'] if d.get('formats')), DEP)
+    plannable = {
+        'yearRules': [{'machineId': mach['id'], 'year': 2026, 'mode': '1'}],
+        'weekRules': [{'machineId': mach['id'], 'year': 2026, 'week': 44, 'mode': '1'}],
+        'dayRules': [{'machineId': mach['id'], 'date': '2026-10-17', 'mode': '1', 'extraMinutes': 0}],
+        'exceptions': [{'date': '2026-12-24', 'mode': '0'}],
+        'machineBlocks': [{'id': 'blk_golden', 'machineId': mach['id'], 'start': '2026-10-20T06:00', 'end': '2026-10-20T08:00', 'note': 'Wartung'}],
+        'personnelAssignments': [{'employeeId': emp['id'], 'machineId': mach['id'], 'date': '2026-10-12', 'shift': 'early', 'start': '06:00', 'end': '14:00'}],
+        'personnelAbsences': [{'employeeId': emp['id'], 'date': '2026-10-13', 'label': 'Urlaub'}],
+        'weeklyEmployeeDeployments': [{'employeeId': emp['id'], 'weekStart': '2026-10-12', 'departmentId': DEP}],
+        'departmentStaffNeeds': [{'departmentId': DEP, 'weekStart': '2026-10-12', 'requested': 1}],
+        'baseFormats': [{'id': 'bf_golden', 'departmentId': fmt_dep, 'name': 'Platte 1000', 'L': 1000, 'B': 1000}],
+        'formats': [{'id': 'fmt_golden', 'number': 'F-GOLD', 'departmentId': fmt_dep, 'name': 'Golden-Format', 'L': 1000, 'B': 800}],
+        'planVersions': [{'id': 'pv_golden', 'name': 'Golden-Stand', 'createdAt': '2026-10-07T05:00:00Z'}],
+    }
+    for key, recs in plannable.items():
+        if data.get(key):
+            continue
+        data[key] = recs
+        rev, cur = admin_state()
+        cur[key] = recs
+        if key == 'personnelAssignments':  # Zuordnung braucht die Maschinenfreigabe des Mitarbeiters
+            for e in cur['employees']:
+                if e['id'] == emp['id']:
+                    e['skills'] = sorted(set(e.get('skills') or []) | {mach['id']})
+        st, body, _ = req('PUT', '/api/state', {'revision': rev, 'data': cur, 'action': 'Golden Seed ' + key}, ADMIN)
+        assert st == 200, ('seed', key, st, body)
+    # palletTemplates: Funktion Palettenetiketten ist im Test-Datenstand aus, Admin-PUT waere MP-MOD-001.
+    server_owned = {
+        'palletTemplates': [{'id': 'tpl_golden', 'name': 'Standard', 'shelfLifeDays': 30, 'fromAddress': 'Firma A', 'toAddress': 'Kunde B'}],
+        'productionEvents': [{'id': 'ev_golden', 'departmentId': DEP, 'orderId': 'o_golden', 'type': 'start', 'ts': '2026-10-07T05:00:00Z'}],
+        'history': [{'id': 'h_golden', 'originalOrderId': 'old_golden', 'recordType': 'done', 'fa': 'FA-ALT', 'departmentId': DEP, 'machineId': mach['id'], 'goodQty': 1, 'scrapQty': 0, 'finishedAt': '2026-10-01T10:00:00Z'}],
+        'frameOrders': [{'id': 'fo_golden', 'number': 'RA-GOLD', 'customer': 'K', 'articleId': 'A', 'departmentId': DEP, 'totalQty': 10, 'status': 'open'}],
+    }
+    with server.db_session() as con:
+        s = json.loads(con.execute('SELECT json FROM state WHERE id=1').fetchone()[0])
+        for key, recs in server_owned.items():
+            if not s.get(key):
+                s[key] = recs
+        con.execute('UPDATE state SET json=?,revision=revision+1 WHERE id=1', (json.dumps(s),))
+
+
+seed_empty_collections()
+
+
 ORIG_DATA = json.loads(json.dumps(admin_state()[1]))
 PROBE_FIELDS = ('name', 'note', 'description', 'label')
 

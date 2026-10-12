@@ -1,3 +1,54 @@
+MASCHINENPLANUNG V12.28.0 - RELEASE NOTES
+=========================================
+Datum: 12.10.2026 · Basis: V12.27.0 · Update gemäß README_Windows.txt 2b, Daten bleiben erhalten
+
+LIZENZPRUEFUNG AKTIV (#52)
+- Der oeffentliche Schluessel des Lizenzgebers ist eingetragen (mp_license.py, 3072 Bit). Ab dieser Version prueft das Programm die Lizenzdatei config\lizenz.key.
+- Bestehende Installationen: Lizenzdatei VOR oder direkt nach dem Update installieren (Datei als config\lizenz.key ablegen oder System > Lizenz > hochladen). Ohne gueltige Lizenz Hinweis fuer den Admin und 30 Tage Kulanz, danach nur Lesen (MP-LIC-001). Daten werden nie geloescht. Anleitung: docs/LIZENZ.md.
+
+SONDERSCHICHTEN UND UEBERSTUNDEN (#84)
+- System > Maschinen & Schichtkalender > Abweichungen: neue Art "Gilt fuer: Tage" mit Von/Bis, Betrieb (wie geplant / 1-schichtig / 2-schichtig / frei) und Ueberstunden je Tag (0:00-4:00). Ziel ist eine Maschine oder ein ganzer Bereich; auch KW- und Jahresregeln koennen jetzt fuer einen ganzen Bereich gesetzt werden.
+- Damit lassen sich Samstags-/Sonntagsschichten planen. Der speziellere Eintrag gewinnt (Tag vor Wochenende, Betriebsferien, KW- und Jahresregel). Ueberstunden verlaengern das Tagesende. Planung im Browser und Freigabepruefung am Server rechnen gleich; eine Freigabe am Samstag wird akzeptiert.
+- Personal: Sa/So erscheinen im Wochenplan, sobald dort gearbeitet wird. Einteilung an freien Tagen oder ueber die Vertragsstunden hinaus zaehlt als Ueberstunden (farblich markiert, nicht gekuerzt, nicht gegen die Wochenstunden).
+- Abteilungsleitung nur fuer Maschinen des eigenen Bereichs. Neuer Fehlercode MP-CAL-015.
+
+MITARBEITER-POPUP (#84)
+- Klick auf einen Mitarbeiter (Liste oder Wochenplan) oeffnet ein Popup mit Verwaltung (Stammzeiten, Wochenstunden/Arbeitstage, Stammmaschine, Schicht, Qualifikationen, Leiharbeiter-Zeitraum, aktiv/inaktiv, loeschen) und Auswertung fuer KW, Monat, Jahr oder von-bis: Stunden Soll/geplant/Ist, Abwesenheiten, Auftraege und Maschinen, Einsatz je Bereich.
+- Die Mitarbeiterliste ist kompakt (Name, Funktion, Bereich, Stunden, Schicht, Stammmaschine, heute). Ohne Recht "Personal" ist die Verwaltung im Popup gesperrt, die Auswertung lesbar. Neuer Fehlercode MP-PERS-036.
+
+FEHLERPROTOKOLL IM SYSTEMSTATUS (#84)
+- Der Server protokolliert jede Fehlerantwort und jeden Serverfehler in data\fehlerprotokoll.jsonl (hoechstens 1000 Eintraege, ohne Benutzernamen, nur Rolle). Der Browser meldet Fehlerdialoge und JavaScript-Fehler dazu.
+- System > Firma & System > Systemstatus zeigt "Fehler seit Update" je Code und die letzten 20 Eintraege. Das Diagnosepaket enthaelt das Protokoll und das Logende von Server und Update.
+- Beim Start einer neuen Version fallen Eintraege frueherer Versionen weg: das Protokoll zeigt immer nur Fehler seit dem letzten Update.
+
+AV, BEREICHE OHNE MENGENMELDUNG, PASSWORT (#84)
+- AV kann mehrere Bereiche ohne Projekt/AB anlegen (Projekt-Pflicht entfaellt). Vorgaenger ohne AB-Auftrag nur innerhalb derselben FA.
+- Bereiche ohne Mengenmeldung (z. B. Formbau) legen eigene Auftraege an: FA, AB und WT optional, Titel und Stunden Pflicht. Ohne FA traegt der Titel den Auftrag. Andere Bereiche verlangen die FA weiter (MP-STEP-014).
+- Benutzerverwaltung "Passwort": Dialog nennt den Benutzer, Passwort zweimal eingeben (MP-AUTH-024 bei Abweichung), Passwortregel wird vorab geprueft.
+- Bereich umbenennen auf einen vorhandenen Namen wird abgewiesen (MP-DEPT-005).
+- Bereiche ohne Arbeitsplatz (aeltere Bereiche ohne Maschine/Linie, z. B. Zuschnitte, Schlosserei): Wochenplan/Bereichsvorrat, Produktion und Einplanen-Popup zeigen "Dieser Bereich hat noch keinen Arbeitsplatz." Admin und Abteilungsleitung/Stellvertretung des Bereichs legen ihn dort mit "Arbeitsplatz anlegen" an (Name, Planungsart wie bei "Bereich anlegen"); der FA ist danach sofort planbar. Andere Rollen sehen nur den Hinweis. Keine Datenmigration: ohne Klick bleibt alles unveraendert.
+- Behoben: Setzte der Admin ein neues Passwort fuer einen Benutzer, der sich vorher mehrmals vertippt hatte, scheiterte die Anmeldung mit dem neuen Passwort bis zu 10 Minuten (Fehlversuch-Sperre MP-AUTH-003 blieb bestehen). Neues Passwort und Aktivieren heben die Sperre jetzt auf.
+- Gesperrtes Konto: Mit richtigem Passwort meldet die Anmeldung jetzt "Konto ist gesperrt" (MP-AUTH-025) statt "Benutzer oder Passwort falsch". Mit falschem Passwort bleibt es bei MP-AUTH-004.
+
+OBERFLAECHE (#84)
+- System: Systemstatus, Lizenz und Softwareupdate im Reiter "Firma & System" mit Zahl offener Punkte; Funktionen in drei Spalten; Takte und Charge je Maschine nebeneinander.
+- GF: KW-Wahl in der Kopfzeile (gilt fuer die ganze Seite, auch fuer den Mitarbeitereinsatz), Kennzahlen in einer Zeile, neue Reihenfolge der Abschnitte.
+- Personal: "Platz" nur bei Ressourcen mit mehreren Plaetzen, Personal-Gate als Schalter in der Kachel, Reiter neben der KW-Wahl.
+- Einplanen-Popup: "Personenstunden" statt "Maschinenzeit" bei Linien-Bereichen.
+- Behoben: Eingabefelder bei "Neuer Bereich" ueberlappten; FA-Dialog in Formbau blendete den Takt-Rechner wieder ein; gestreckte Felder im FA-Dialog; Takt-Einheit und "Stueck je Takt" zu schmal; Suchfeld im Bereichsvorrat abgeschnitten.
+
+INTERN (#73)
+- Phase 1: Bedarf (Rahmenauftraege, Abrufe, Bestand, Reservierung, Bedarf -> FA) liegt im neuen Modul mp_demand.py, flach neben server.py und Teil des Pakets. Keine Verhaltensaenderung; server.py bietet alle Namen weiter an.
+- Phase 0: Die Referenz der Schreibrechte (tests/golden/write_matrix.json) prueft jetzt auch Kalenderregeln, Sonderschichten, Ausnahmen, Maschinensperren, Personaleinteilung/-abwesenheit/-einsatz, Personalbedarf, Formate, Planstaende, Produktionsereignisse, Historie, Rahmenauftraege und Palettenvorlagen (bisher leer und ungeprueft).
+
+INTERN (#84)
+- Neuer Windows-CI-Test fuer den Admin-Button "Update installieren" (tests/ci_windows_update_button.ps1, HTTPS und HTTP): Installation mit kuenstlich niedrigerer Version, Anmeldung als Admin, /api/updates findet das Testrelease des aktuellen Commits, /api/updates/install startet den Hintergrundprozess, der UPDATE_LIVE.ps1 aus dem geladenen Paket ausfuehrt. Geprueft werden neue Version, erhaltene Daten, Audit, Protokoll updates\install-<id>.log und der Neustart als SYSTEM-Task.
+- Dafuer kennt der Updater die Testquelle MP_UPDATE_TEST_API (nur Umgebungsvariable beim Serverstart, nur http://127.0.0.1:<port>/repos/, nie mit GitHub-Token). Ohne die Variable unveraendert nur api.github.com. Plattformunabhaengiger Teil: tests/test_update_button.py.
+
+DATEN UND UPDATE
+- Additive Felder (dayRules im Schichtkalender, overtime bei Personaleinteilungen); fehlen sie, bleibt die Planung unveraendert. Keine Migration noetig, Referenztests unveraendert.
+- Neue Datei data\fehlerprotokoll.jsonl (nur Diagnose) wird beim ersten Fehler angelegt.
+
 MASCHINENPLANUNG V12.27.0 - RELEASE NOTES
 =========================================
 Datum: 08.10.2026 · Basis: V12.26.0 · Update gemäß README_Windows.txt 2b, Daten bleiben erhalten

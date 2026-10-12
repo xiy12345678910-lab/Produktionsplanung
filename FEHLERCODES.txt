@@ -1,4 +1,4 @@
-MASCHINENPLANUNG V12.27.0 - FEHLERCODES
+MASCHINENPLANUNG V12.28.0 - FEHLERCODES
 ======================================
 
 Jeder Fehler wird dem Mitarbeiter als Klartext + Code angezeigt.
@@ -227,6 +227,7 @@ SUPPORT-REGEL
 [AUTH - Ergänzungen V12]
 MP-AUTH-021  Diese Rolle darf im eigenen Bereich nur Stellvertretungen (Leitung) bzw. Lesende (Stellvertretung) anlegen. / Benutzerverwaltung ist auf untergeordnete Rollen im eigenen Bereich begrenzt.
 MP-AUTH-023  Aktuelles Passwort ist falsch.
+MP-AUTH-025  Konto ist gesperrt (Passwort war richtig). Admin aktiviert das Konto unter System > Benutzer.
 MP-AUTH-024  Die neuen Passwörter stimmen nicht überein.
 
 [DEPT - Produktionsbereiche und Bereichsrechte]
@@ -533,3 +534,13 @@ MP-MACH-021  Charge und "Dauer nach Besetzung" (effortScaling) schliessen sich a
 MP-PLAN-072  Freigabe muss die aktuell gueltige Chargen-Einstellung der Einsatzmaschine und die Menge einfrieren
              (Freigabeplan.batch). Abhilfe: Seite neu laden und erneut freigeben.
 MP-PLAN-047  (erweitert) Freigabeplan mit Charge: Dauer = Chargen-Stunden aus der eingefrorenen Einstellung + Umruestzeit.
+
+V12.28.0 NEU/GEAENDERT (#84)
+MP-CAL-015   Sonderschicht (Tage) ungueltig: Ziel, Zeitraum (hoechstens 93 Tage), Betrieb oder Ueberstunden (0:00-4:00 je Tag).
+MP-AUTH-025  Konto ist gesperrt (erst nach richtigem Passwort gemeldet; vorher MP-AUTH-004).
+MP-AUTH-003  (geaendert) Neues Passwort durch den Admin oder Aktivieren hebt die Fehlversuch-Sperre des Benutzers auf.
+MP-PERS-036  Mitarbeiter-Auswertung: Zeitraum ungueltig (von <= bis angeben).
+MP-PERS-035  (erweitert) Einteilungen mit overtime=true (freie Tage, ueber Vertragsstunden) zaehlen nicht gegen die Wochenstunden.
+MP-AUTH-024  (erweitert) Auch beim Passwort setzen in der Benutzerverwaltung: die beiden Eingaben stimmen nicht ueberein.
+MP-DEPT-005  (erweitert) Umbenennen auf einen vorhandenen Bereichsnamen wird abgewiesen.
+MP-STEP-014  (geaendert) Bereiche ohne Mengenmeldung brauchen keine FA (Titel traegt den Auftrag); andere Bereiche weiter mit FA.

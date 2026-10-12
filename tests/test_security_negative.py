@@ -128,8 +128,34 @@ class SecurityNegative(unittest.TestCase):
         st, body, _ = self.req('PATCH', f'/api/users/{uid}', {'active': False}, self.admin)
         self.assertEqual(st, 200, body)
         self.assertEqual(self.req('GET', '/api/session', None, ck)[0], 401)
-        st, body, _ = self.req('POST', '/api/login', {'username': 'lock2', 'password': PASS})
+        st, body, _ = self.req('POST', '/api/login', {'username': 'lock2', 'password': 'Falsch-Passwort-9'})
         self.assertEqual((st, body.get('errorCode')), (401, 'MP-AUTH-004'))
+        # #84: Sperre wird erst mit richtigem Passwort genannt, Anmeldung bleibt verweigert
+        st, body, _ = self.req('POST', '/api/login', {'username': 'lock2', 'password': PASS})
+        self.assertEqual((st, body.get('errorCode')), (403, 'MP-AUTH-025'))
+
+    def test_admin_password_reset_clears_login_lockout(self):
+        """#84: Nach Fehlversuchen gesperrt, Admin setzt neues Passwort: Anmeldung damit sofort moeglich."""
+        uid = self.make_user('lock3')
+        for _ in range(server.LOGIN_MAX_PER_IP_USER):
+            self.req('POST', '/api/login', {'username': 'Lock3', 'password': 'Falsch-Passwort-9'})
+        st, body, _ = self.req('POST', '/api/login', {'username': 'lock3', 'password': PASS})
+        self.assertEqual((st, body.get('errorCode')), (429, 'MP-AUTH-003'))
+        neu = 'Neues-Passwort-42'
+        st, body, _ = self.req('PATCH', f'/api/users/{uid}', {'password': neu}, self.admin)
+        self.assertEqual(st, 200, body)
+        st, body, _ = self.req('POST', '/api/login', {'username': 'lock3', 'password': PASS})
+        self.assertEqual((st, body.get('errorCode')), (401, 'MP-AUTH-004'), 'altes Passwort gilt nicht mehr')
+        st, body, _ = self.req('POST', '/api/login', {'username': 'lock3', 'password': neu})
+        self.assertEqual(st, 200, body)
+
+    def test_reactivation_clears_login_lockout(self):
+        uid = self.make_user('lock4')
+        self.assertEqual(self.req('PATCH', f'/api/users/{uid}', {'active': False}, self.admin)[0], 200)
+        for _ in range(server.LOGIN_MAX_PER_IP_USER):
+            self.req('POST', '/api/login', {'username': 'lock4', 'password': 'Falsch-Passwort-9'})
+        self.assertEqual(self.req('PATCH', f'/api/users/{uid}', {'active': True}, self.admin)[0], 200)
+        self.assertEqual(self.req('POST', '/api/login', {'username': 'lock4', 'password': PASS})[0], 200)
 
     def test_session_of_deleted_user_rejected(self):
         uid = self.make_user('del1')
