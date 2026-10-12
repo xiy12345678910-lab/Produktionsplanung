@@ -334,7 +334,7 @@ def run_case(label: str, commit: str, scenario: str, keep: bool, ip: str):
         for u in [{"username": ADMIN, "password": ADMIN_PW, "active": True}] + rec["users"]:
             a = L.Api(srv.url)
             code = a.login(u["username"], u["password"])
-            want = 200 if u["active"] else 401
+            want = 200 if u["active"] else 403  # #84: gesperrt + richtiges Passwort = MP-AUTH-025 (403)
             if code != want:
                 problems.append(f"{u['username']}: {code} (erwartet {want})")
         a = L.Api(srv.url)

@@ -32,6 +32,10 @@ OBERFLAECHE (#84)
 - Einplanen-Popup: "Personenstunden" statt "Maschinenzeit" bei Linien-Bereichen.
 - Behoben: Eingabefelder bei "Neuer Bereich" ueberlappten; FA-Dialog in Formbau blendete den Takt-Rechner wieder ein; gestreckte Felder im FA-Dialog; Takt-Einheit und "Stueck je Takt" zu schmal; Suchfeld im Bereichsvorrat abgeschnitten.
 
+INTERN (#73)
+- Phase 1: Bedarf (Rahmenauftraege, Abrufe, Bestand, Reservierung, Bedarf -> FA) liegt im neuen Modul mp_demand.py, flach neben server.py und Teil des Pakets. Keine Verhaltensaenderung; server.py bietet alle Namen weiter an.
+- Phase 0: Die Referenz der Schreibrechte (tests/golden/write_matrix.json) prueft jetzt auch Kalenderregeln, Sonderschichten, Ausnahmen, Maschinensperren, Personaleinteilung/-abwesenheit/-einsatz, Personalbedarf, Formate, Planstaende, Produktionsereignisse, Historie, Rahmenauftraege und Palettenvorlagen (bisher leer und ungeprueft).
+
 DATEN UND UPDATE
 - Additive Felder (dayRules im Schichtkalender, overtime bei Personaleinteilungen); fehlen sie, bleibt die Planung unveraendert. Keine Migration noetig, Referenztests unveraendert.
 - Neue Datei data\fehlerprotokoll.jsonl (nur Diagnose) wird beim ersten Fehler angelegt.
