@@ -2,6 +2,9 @@ MASCHINENPLANUNG V12.28.3 - RELEASE NOTES
 =========================================
 Datum: 12.10.2026 · Basis: V12.28.2 · Update gemäß README_Windows.txt 2b, Daten bleiben erhalten
 
+SERVERSTART MIT MEHR GEDULD
+- Setup_Windows.ps1 und HTTPS_Einrichten.ps1 warten bis 180 s auf den Server (vorher 30 s), Start_Server.ps1/Neustart_Server.ps1 bis 90 s. Grund: Das Anlegen der Firewallregeln dauert auf frisch gestarteten Rechnern teils ueber 30 s; vorher fiel die Einrichtung deshalb unnoetig von HTTPS auf HTTP zurueck (MP-TLS-003).
+
 AB DIREKT IM AUFTRAGSDIALOG
 - Im Dialog "Fertigungsauftrag anlegen" (AV-Uebergabe und normaler Dialog) gibt es neben "Projekt / AB" das Feld "oder AB eingeben". Vorhandene AB: der Auftrag wird mit diesem Projekt verknuepft. Neue AB (z. B. 50500): im Hintergrund entsteht ein Projekt "Nur Produktion" (Phase angenommen, Liefertermin = Projektfertigstellung bzw. spaetester Bereichstermin), der Auftrag haengt daran.
 - Nur fuer Rollen, die solche Projekte anlegen duerfen (Admin, Arbeitsvorbereitung, Projektmanagement). Ohne Liefertermin Hinweis MP-PM-009. Scheitert die direkte Freigabe, wird das neue Projekt wieder entfernt.
