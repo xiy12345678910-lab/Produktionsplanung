@@ -22,6 +22,8 @@ AV, BEREICHE OHNE MENGENMELDUNG, PASSWORT (#84)
 - Bereiche ohne Mengenmeldung (z. B. Formbau) legen eigene Auftraege an: FA, AB und WT optional, Titel und Stunden Pflicht. Ohne FA traegt der Titel den Auftrag. Andere Bereiche verlangen die FA weiter (MP-STEP-014).
 - Benutzerverwaltung "Passwort": Dialog nennt den Benutzer, Passwort zweimal eingeben (MP-AUTH-024 bei Abweichung), Passwortregel wird vorab geprueft.
 - Bereich umbenennen auf einen vorhandenen Namen wird abgewiesen (MP-DEPT-005).
+- Behoben: Setzte der Admin ein neues Passwort fuer einen Benutzer, der sich vorher mehrmals vertippt hatte, scheiterte die Anmeldung mit dem neuen Passwort bis zu 10 Minuten (Fehlversuch-Sperre MP-AUTH-003 blieb bestehen). Neues Passwort und Aktivieren heben die Sperre jetzt auf.
+- Gesperrtes Konto: Mit richtigem Passwort meldet die Anmeldung jetzt "Konto ist gesperrt" (MP-AUTH-025) statt "Benutzer oder Passwort falsch". Mit falschem Passwort bleibt es bei MP-AUTH-004.
 
 OBERFLAECHE (#84)
 - System: Systemstatus, Lizenz und Softwareupdate im Reiter "Firma & System" mit Zahl offener Punkte; Funktionen in drei Spalten; Takte und Charge je Maschine nebeneinander.

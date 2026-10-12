@@ -4619,6 +4619,16 @@ def login_attempt_succeeded(ip: str, username: str, stamp: float) -> None:
             xs.remove(stamp)
 
 
+def login_attempts_clear_user(username: str) -> None:
+    """#84: Admin setzt Passwort bzw. aktiviert das Konto: Fehlversuche dieses Benutzers (alle IPs) verwerfen.
+    Sonst scheitert das neue Passwort bis zu 10 Minuten mit MP-AUTH-003, wenn der Benutzer vorher gesperrt war."""
+    u = str(username or "").strip().lower()[:80]
+    with LOGIN_LOCK:
+        LOGIN_FAILS.pop("user:" + u, None)
+        for key in [k for k in LOGIN_FAILS if k.startswith("ipuser:") and k.rsplit("|", 1)[-1] == u]:
+            LOGIN_FAILS.pop(key, None)
+
+
 def client_ip_allowed(ip: str) -> bool:
     if ALLOWED_NETWORK is None:
         return False
@@ -5584,12 +5594,15 @@ class Handler(BaseHTTPRequestHandler):
             # Passwortprüfung (~0,2 s) bewusst außerhalb der globalen DB-Sperre.
             # Unbekannte Benutzer durchlaufen dieselbe Rechenzeit (kein Timing-Hinweis).
             if row:
-                ok = verify_password(password, row["salt"], row["password_hash"]) and bool(row["active"])
+                ok = verify_password(password, row["salt"], row["password_hash"])
             else:
                 verify_password(password, DUMMY_SALT, DUMMY_HASH)
                 ok = False
             if not ok:
                 return self.json_response(401, mp_error("MP-AUTH-004", "Benutzer oder Passwort falsch."))
+            # #84: Gesperrtes Konto erst nach richtigem Passwort nennen (verraet nichts ohne Passwort).
+            if not row["active"]:
+                return self.json_response(403, mp_error("MP-AUTH-025", "Konto ist gesperrt. Bitte den Admin ansprechen."))
             profile = None
             if row["profile_id"]:
                 with DB_LOCK, db_session() as con:
@@ -5858,6 +5871,8 @@ class Handler(BaseHTTPRequestHandler):
             con.execute(f"UPDATE users SET {','.join(fields)} WHERE id=?", vals)
             if not active or "password" in body or role != target["role"] or department_id != target["department_id"] or profile_id != str(target["profile_id"] or ""):
                 con.execute("DELETE FROM sessions WHERE user_id=?", (uid,))
+            if "password" in body or (active and not target["active"]):
+                login_attempts_clear_user(target["username"])
             con.execute("INSERT INTO server_audit(ts,username,action,detail,revision) VALUES(?,?,?,?,NULL)", (now_iso(), user["username"], "Benutzer geändert", target["username"]))
         return self.json_response(200, {"ok": True})
 
