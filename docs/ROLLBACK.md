@@ -38,11 +38,11 @@ Die ersetzte, evtl. migrierte Datenbank bleibt zur Kontrolle in `update_backups\
 
 PowerShell (kein Administrator nötig, das UAC-Fenster folgt):
 
-    powershell -ExecutionPolicy Bypass -File C:\ProgramData\Maschinenplanung\Update_von_GitHub.ps1 -Tag v12.26.0 -Rueckstufen
+    powershell -ExecutionPolicy Bypass -File C:\ProgramData\Maschinenplanung\Update_von_GitHub.ps1 -Tag v12.27.0 -Rueckstufen
 
 Ohne Internet, mit einem entpackten älteren Paket (PowerShell als Administrator):
 
-    C:\ProgramData\Maschinenplanung\UPDATE_LIVE.ps1 -Paket D:\Paket_V12.26.0 -Rueckstufen
+    C:\ProgramData\Maschinenplanung\UPDATE_LIVE.ps1 -Paket D:\Paket_V12.27.0 -Rueckstufen
 
 So läuft die Rückstufung ab:
 
