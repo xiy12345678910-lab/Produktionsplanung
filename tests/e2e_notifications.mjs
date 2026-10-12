@@ -173,6 +173,8 @@ try {
   await lb.fill('#nqFrom', '00:00'); await lb.fill('#nqTo', '23:59'); await lb.check('#nqOn');
   // Erst weiter, wenn die Ruhezeit am Server gespeichert ist (feste Pausen waren auf CI zu knapp).
   for (let i = 0; i < 50; i++) { const q = (await api(lb, '/api/notifications/prefs')).body?.quiet; if (q?.on && q.from === '00:00' && q.to === '23:59') break; await lb.waitForTimeout(100); }
+  // ... und bis die Seite selbst die Ruhezeit anwendet (Server gespeichert heisst noch nicht: lokal uebernommen).
+  await lb.waitForFunction(() => typeof notifQuiet === 'function' && notifQuiet(), null, { timeout: 8000 }).catch(() => {});
   await lb.evaluate(() => Object.defineProperty(document, 'hidden', { get: () => true, configurable: true }));
   await lb.keyboard.press('Escape');
   const badgeBefore = await lb.locator('#notifBtn').innerText();
