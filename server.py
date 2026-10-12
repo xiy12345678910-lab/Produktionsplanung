@@ -28,7 +28,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 MP_DEBUG_ABORTS = os.environ.get('MP_DEBUG_ABORTS') == '1'
-APP_VERSION = "12.28.3"
+APP_VERSION = "12.28.4"
 SERVER_STARTED = time.time()
 HOST = os.environ.get("MP_HOST", "0.0.0.0")
 PORT = int(os.environ.get("MP_PORT", "8765"))
@@ -3609,8 +3609,6 @@ def department_change_allowed(old: dict, new: dict, department_id: str) -> tuple
     # Umhängen im selben Speichervorgang keine fremden Sperren/Regeln freischaltet.
     machine_dept = {str(m.get("id")): str(m.get("departmentId") or dd) for m in (new.get("machines") or []) if isinstance(m, dict)}
     machine_dept.update({str(m.get("id")): str(m.get("departmentId") or dd) for m in (old.get("machines") or []) if isinstance(m, dict)})
-    old_orders = {k:v for k,v in _record_map(old.get("workSteps")).items() if v.get("planningType") == "MACHINE"}
-    new_orders = {k:v for k,v in _record_map(new.get("workSteps")).items() if v.get("planningType") == "MACHINE"}
     employee_dept = {str(e.get("id")): str(e.get("departmentId") or "") for e in (new.get("employees") or []) if isinstance(e, dict)}
     employee_dept.update({str(e.get("id")): str(e.get("departmentId") or "") for e in (old.get("employees") or []) if isinstance(e, dict)})
 
@@ -3718,11 +3716,16 @@ def department_change_allowed(old: dict, new: dict, department_id: str) -> tuple
     for rec in changed_keyed("personnelAbsences", lambda x: f"{x.get('employeeId')}|{x.get('date')}"):
         if employee_dept_on(rec) != department_id:
             return False, "Abwesenheit gehört nicht zum eigenen Bereich."
+    # Audit V12.28.3: Neue Historie (Storno) nur zu einem Auftrag des eigenen Bereichs, der in diesem Speichervorgang
+    # entfällt – jede Planungsart, nicht nur MACHINE. Vorher galt ein Eintrag ohne Auftrag als Standardbereich: dessen
+    # Leitung konnte dauerhafte (append-only) Einträge für fremde Bereiche anlegen, andere Bereiche nichts stornieren.
     for rec in changed_records("history"):
         oid = str(rec.get("originalOrderId") or "")
-        source = old_orders.get(oid) or new_orders.get(oid) or {}
-        did = str(source.get("departmentId") or machine_dept.get(str(source.get("machineId")), dd))
-        if did != department_id:
+        source = old_steps.get(oid) if oid not in new_steps else None
+        if source is None:
+            return False, "Historieneinträge entstehen nur aus einem Auftrag des eigenen Bereichs."
+        did = _step_dept(source, machine_dept, dd)
+        if did != department_id or str(rec.get("departmentId") or did) != department_id:
             return False, "Historieneintrag gehört nicht zum eigenen Bereich."
     return True, ""
 
@@ -4798,7 +4801,9 @@ class Handler(BaseHTTPRequestHandler):
             origin = str(self.headers.get("Origin", "") or "").strip()
             if origin and origin != "null":
                 o = urlparse(origin)
-                if o.scheme != ("https" if self.server.ssl_context is not None else "http") or not host_name_allowed(o.hostname or "", bind_ip) or (o.port or 80) != bind_port:
+                scheme = "https" if self.server.ssl_context is not None else "http"
+                # Audit V12.28.3: Standardport je Schema (HTTPS an Port 443 sendet Origin ohne Port).
+                if o.scheme != scheme or not host_name_allowed(o.hostname or "", bind_ip) or (o.port or (443 if scheme == "https" else 80)) != bind_port:
                     self.close_connection = True
                     self.json_response(403, mp_error("MP-REQ-403", "Anfrage von fremder Seite abgelehnt."))
                     return False

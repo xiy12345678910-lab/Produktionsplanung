@@ -1,3 +1,12 @@
+MASCHINENPLANUNG V12.28.4 - RELEASE NOTES
+=========================================
+Datum: 12.10.2026 · Basis: V12.28.3 · Update gemäß README_Windows.txt 2b, Daten bleiben erhalten
+
+SICHERHEIT (DEEP AUDIT, docs/AUDIT_V12_28.md)
+- Behoben: Eine Abteilungsleitung konnte eine vom Admin zugewiesene eigene Rolle (z. B. "ohne Fertigmelden") bei Stellvertretung oder Lesenden wieder entfernen, direkt oder ueber einen Rollenwechsel hin und zurueck. Eigene Rollen setzt und entfernt jetzt nur der Admin (MP-ROLE-003). Benutzer ohne eigene Rolle verwaltet die Leitung wie bisher.
+- Behoben: Die Leitung des ersten Produktionsbereichs konnte Storno-Eintraege in der Ist-Historie fuer fremde Bereiche anlegen (mit beliebigen Mengen und Stunden; die Historie ist unveraenderlich). Ein Historieneintrag entsteht jetzt nur zu einem Auftrag des eigenen Bereichs, der im selben Schritt entfaellt (MP-DEPT-030). Nebenbei koennen Bereiche mit Stunden- oder Prozessplanung freigegebene Auftraege wieder stornieren.
+- Behoben: HTTPS am Standardport 443 haette jedes Speichern abgelehnt (MP-REQ-403). Normalbetrieb (Port 8765) war nicht betroffen.
+
 MASCHINENPLANUNG V12.28.3 - RELEASE NOTES
 =========================================
 Datum: 12.10.2026 · Basis: V12.28.2 · Update gemäß README_Windows.txt 2b, Daten bleiben erhalten
