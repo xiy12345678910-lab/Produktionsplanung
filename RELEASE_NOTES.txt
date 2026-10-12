@@ -1,3 +1,11 @@
+MASCHINENPLANUNG V12.28.2 - RELEASE NOTES
+=========================================
+Datum: 12.10.2026 · Basis: V12.28.1 · Update gemäß README_Windows.txt 2b, Daten bleiben erhalten
+
+WERKSTATTFERTIGUNG (Bereiche ohne Mengenmeldung, z. B. Formbau)
+- Abteilungsleitung und Stellvertretung duerfen den Endtermin ihrer Auftraege auch nachtraeglich aendern (Auftragsliste und "Termin planen"). Server und Oberflaeche erlauben das nur in Bereichen ohne Mengenmeldung und nur im eigenen Bereich; in anderen Bereichen legt den AV-Termin weiter die Arbeitsvorbereitung fest.
+- Titel aendern bei Auftraegen ohne FA: Der Auftragsname (und die daraus entstandene FA) zieht mit. Auftraege mit eigener FA behalten ihre FA. Leerer Titel wird abgewiesen (MP-PLAN-071).
+
 MASCHINENPLANUNG V12.28.1 - RELEASE NOTES
 =========================================
 Datum: 12.10.2026 · Basis: V12.28.0 · Update gemäß README_Windows.txt 2b, Daten bleiben erhalten

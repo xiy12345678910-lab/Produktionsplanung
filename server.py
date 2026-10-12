@@ -28,7 +28,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 MP_DEBUG_ABORTS = os.environ.get('MP_DEBUG_ABORTS') == '1'
-APP_VERSION = "12.28.1"
+APP_VERSION = "12.28.2"
 SERVER_STARTED = time.time()
 HOST = os.environ.get("MP_HOST", "0.0.0.0")
 PORT = int(os.environ.get("MP_PORT", "8765"))
@@ -3672,7 +3672,9 @@ def department_change_allowed(old: dict, new: dict, department_id: str) -> tuple
             return False, "Konfektionsstunden pflegt die Arbeitsvorbereitung."
         if before is not None and before.get("planningType") == "LABOR_HOURS" and canonical(before.get("requiredHours")) != canonical(rec.get("requiredHours")):
             return False, "Konfektionsstunden pflegt die Arbeitsvorbereitung."
-        if before is not None and str(before.get("dueDate") or "") != str(rec.get("dueDate") or ""):
+        # V12.28.2: In Werkstattfertigung (Bereich ohne Mengenmeldung) legt die Abteilung ihre Auftraege selbst an
+        # und pflegt den Endtermin auch danach; sonst bleibt der AV-Termin Sache der Arbeitsvorbereitung.
+        if before is not None and str(before.get("dueDate") or "") != str(rec.get("dueDate") or "") and not department_no_quantity(old, dep):
             return False, "Den AV-Termin (fertig bis) legt die Arbeitsvorbereitung fest. Die Abteilung plant innerhalb dieses Termins."
     for rec in changed_records("machineBlocks"):
         if machine_dept.get(str(rec.get("machineId")), "") != department_id:

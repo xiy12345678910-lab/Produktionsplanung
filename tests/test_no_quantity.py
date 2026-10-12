@@ -125,5 +125,22 @@ class NoQuantity(unittest.TestCase):
         self.assertEqual(server.validate_state(BASE, s)[1], 'MP-STEP-014')
 
 
+    def test_department_may_change_due_date_only_without_quantity(self):
+        # V12.28.2: In Werkstattfertigung pflegt die Abteilung den Endtermin auch nachtraeglich; sonst die AV.
+        for noqty, allowed in ((True, True), (False, False)):
+            old = copy.deepcopy(BASE)
+            for d in old['departments']:
+                if d['id'] == DEP:
+                    d['noQuantity'] = noqty
+            o = self.order('fa_due'); o.update(status='planned', baselinePlan=None, dueDate='2026-11-02')
+            old['workSteps'].append(o)
+            new = copy.deepcopy(old)
+            next(x for x in new['workSteps'] if x['id'] == 'fa_due')['dueDate'] = '2026-11-20'
+            ok, msg = server.department_change_allowed(old, new, DEP)
+            self.assertEqual(ok, allowed, (noqty, msg))
+            if not allowed:
+                self.assertIn('AV-Termin', msg)
+
+
 if __name__ == '__main__':
     unittest.main()
