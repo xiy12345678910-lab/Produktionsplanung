@@ -26,6 +26,7 @@ AV, BEREICHE OHNE MENGENMELDUNG, PASSWORT (#84)
 - Bereiche ohne Mengenmeldung (z. B. Formbau) legen eigene Auftraege an: FA, AB und WT optional, Titel und Stunden Pflicht. Ohne FA traegt der Titel den Auftrag. Andere Bereiche verlangen die FA weiter (MP-STEP-014).
 - Benutzerverwaltung "Passwort": Dialog nennt den Benutzer, Passwort zweimal eingeben (MP-AUTH-024 bei Abweichung), Passwortregel wird vorab geprueft.
 - Bereich umbenennen auf einen vorhandenen Namen wird abgewiesen (MP-DEPT-005).
+- Bereiche ohne Arbeitsplatz (aeltere Bereiche ohne Maschine/Linie, z. B. Zuschnitte, Schlosserei): Wochenplan/Bereichsvorrat, Produktion und Einplanen-Popup zeigen "Dieser Bereich hat noch keinen Arbeitsplatz." Admin und Abteilungsleitung/Stellvertretung des Bereichs legen ihn dort mit "Arbeitsplatz anlegen" an (Name, Planungsart wie bei "Bereich anlegen"); der FA ist danach sofort planbar. Andere Rollen sehen nur den Hinweis. Keine Datenmigration: ohne Klick bleibt alles unveraendert.
 - Behoben: Setzte der Admin ein neues Passwort fuer einen Benutzer, der sich vorher mehrmals vertippt hatte, scheiterte die Anmeldung mit dem neuen Passwort bis zu 10 Minuten (Fehlversuch-Sperre MP-AUTH-003 blieb bestehen). Neues Passwort und Aktivieren heben die Sperre jetzt auf.
 - Gesperrtes Konto: Mit richtigem Passwort meldet die Anmeldung jetzt "Konto ist gesperrt" (MP-AUTH-025) statt "Benutzer oder Passwort falsch". Mit falschem Passwort bleibt es bei MP-AUTH-004.
 
