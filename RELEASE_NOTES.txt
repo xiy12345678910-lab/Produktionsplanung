@@ -17,6 +17,10 @@ AUDIT-KORREKTUREN
 - Werkstatt: Den Endtermin von AV-Uebergaben pflegt weiter die AV; die Abteilung aendert ihn nur bei eigenen Auftraegen.
 - Update per Button: Start des Update-Tasks ausserhalb der internen Sperre (Update-Abfragen blockieren nicht mehr bis zu 120 s); der GitHub-Token wird nicht an PowerShell weitergegeben.
 
+UPDATE UND SPEICHERN
+- Update: Der neue Server bekommt bis zu 3 Minuten fuer den Start, bevor der zweite Startversuch folgt.
+- Legen zwei Personen gleichzeitig dieselbe neue AB an, zeigt die zweite Person nun eine klare Meldung (MP-PM-003/MP-PM-006: Dialog neu oeffnen und die vorhandene AB auswaehlen) statt "Ungueltige Aenderung".
+
 DOKU
 - FEHLERCODES.txt: acht bereits verwendete, bisher fehlende Codes nachgetragen (MP-AV-031/033, MP-CI-001/002, MP-DEM-000, MP-PM-040, MP-REP-010/011).
 
