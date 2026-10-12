@@ -2,6 +2,10 @@ MASCHINENPLANUNG V12.28.0 - RELEASE NOTES
 =========================================
 Datum: 12.10.2026 · Basis: V12.27.0 · Update gemäß README_Windows.txt 2b, Daten bleiben erhalten
 
+LIZENZPRUEFUNG AKTIV (#52)
+- Der oeffentliche Schluessel des Lizenzgebers ist eingetragen (mp_license.py, 3072 Bit). Ab dieser Version prueft das Programm die Lizenzdatei config\lizenz.key.
+- Bestehende Installationen: Lizenzdatei VOR oder direkt nach dem Update installieren (Datei als config\lizenz.key ablegen oder System > Lizenz > hochladen). Ohne gueltige Lizenz Hinweis fuer den Admin und 30 Tage Kulanz, danach nur Lesen (MP-LIC-001). Daten werden nie geloescht. Anleitung: docs/LIZENZ.md.
+
 SONDERSCHICHTEN UND UEBERSTUNDEN (#84)
 - System > Maschinen & Schichtkalender > Abweichungen: neue Art "Gilt fuer: Tage" mit Von/Bis, Betrieb (wie geplant / 1-schichtig / 2-schichtig / frei) und Ueberstunden je Tag (0:00-4:00). Ziel ist eine Maschine oder ein ganzer Bereich; auch KW- und Jahresregeln koennen jetzt fuer einen ganzen Bereich gesetzt werden.
 - Damit lassen sich Samstags-/Sonntagsschichten planen. Der speziellere Eintrag gewinnt (Tag vor Wochenende, Betriebsferien, KW- und Jahresregel). Ueberstunden verlaengern das Tagesende. Planung im Browser und Freigabepruefung am Server rechnen gleich; eine Freigabe am Samstag wird akzeptiert.

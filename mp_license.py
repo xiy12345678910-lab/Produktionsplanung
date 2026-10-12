@@ -26,7 +26,7 @@ from datetime import date, datetime, timezone
 
 # Öffentlicher Schlüssel des Lizenzgebers: n hexadezimal, e. Leer = Lizenzprüfung nicht aktiv.
 # Eintrag per PR mit der Ausgabe von "python tools/lizenz_werkzeug.py schluessel-erzeugen" (docs/LIZENZ.md).
-PUBLIC_KEY = {"n": "", "e": 65537}
+PUBLIC_KEY = {"n": "a9483466ffdba8daa788a7a526b44c077152649d584c9e7b443dec2fa6449b1bce94f1afcac7d2984a7748f4b8a46dac6207b2fade55fb4a444c3021accd40ebd8ecafcc39137f6f96da7f3ea9a96b9e6b63ee583761af7cc1c18ed1b19bac1579fc88c57f024f61cdc7863e2cebd15f97eda01edcc937ae34e68d51db97abbb6d0d6f2f174a4ef0e4e72bd28b51149f65566f881382b89ec4a12dcfa49b68576ca2a3e8b4e3c2700b7a7a6a1905d598c15841cbdb1272419e8a1fd45677e9148e02b853197cf250a52ddeb637d28f7fec4b13864a7ceeb71d0cd0d16553e434b0ca70bc86854a099a2dd1d43d73210a85dc864983aedf8a34522b49e3e3649e4100bf68868b48b0a2772756dfd8dee791af6dd2802fd58670e5fed881bf41ef6093e10d1d1e77d55d758357d12064c5bb61c53df5a9844a3b8a40e731a900fec906e0d22ca441ad0dccbd8c6332b82cbd8d9f8c2d971bf8513f35615bdfc7d475a788655d58a96d9a5bc1ab3dab12196bb910d79cf71a3a73389dcd0c19384f", "e": 65537}
 
 GRACE_DAYS = 30
 WARN_DAYS = 30            # Hinweis an den Admin, wenn eine befristete Lizenz in <= 30 Tagen abläuft
