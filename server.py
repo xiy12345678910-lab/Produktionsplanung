@@ -3676,8 +3676,8 @@ def department_change_allowed(old: dict, new: dict, department_id: str) -> tuple
         if before is not None and not own_hours and before.get("planningType") == "LABOR_HOURS" and canonical(before.get("requiredHours")) != canonical(rec.get("requiredHours")):
             return False, "Konfektionsstunden pflegt die Arbeitsvorbereitung."
         # V12.28.2: In Werkstattfertigung (Bereich ohne Mengenmeldung) legt die Abteilung ihre Auftraege selbst an
-        # und pflegt den Endtermin auch danach; sonst bleibt der AV-Termin Sache der Arbeitsvorbereitung.
-        if before is not None and str(before.get("dueDate") or "") != str(rec.get("dueDate") or "") and not department_no_quantity(old, dep):
+        # und pflegt den Endtermin auch danach; AV-Uebergaben (handoffUnassigned) und andere Bereiche: AV-Termin bleibt Sache der AV.
+        if before is not None and str(before.get("dueDate") or "") != str(rec.get("dueDate") or "") and not (department_no_quantity(old, dep) and "handoffUnassigned" not in before):
             return False, "Den AV-Termin (fertig bis) legt die Arbeitsvorbereitung fest. Die Abteilung plant innerhalb dieses Termins."
     for rec in changed_records("machineBlocks"):
         if machine_dept.get(str(rec.get("machineId")), "") != department_id:

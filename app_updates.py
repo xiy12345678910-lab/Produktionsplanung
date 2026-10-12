@@ -299,15 +299,17 @@ class UpdateManager:
                 f.write(job_id)
             job = {'jobId': job_id, 'version': self.available['version'], 'actor': actor, 'stage': 'checking', 'currentVersion': self.current, 'repository': self.available['repository']}
             atomic_json(self.folder/'status.json', job)
-            try:
-                audit(self.base, job, 'Update gestartet')
-                self.launch(job_id)
-            except Exception as e:
-                job.update(stage='failed', error=str(e)[:500])
-                atomic_json(self.folder/'status.json', job)
-                (self.folder/'update.lock').unlink(missing_ok=True)
-                raise
-            return job, True
+        # V12.28.3: Start ausserhalb der Sperre (launch_worker kann PowerShell bis 120 s warten lassen; poll/check
+        # sollen nicht blockieren). Doppelstarts verhindert weiter die exklusiv angelegte update.lock.
+        try:
+            audit(self.base, job, 'Update gestartet')
+            self.launch(job_id)
+        except Exception as e:
+            job.update(stage='failed', error=str(e)[:500])
+            atomic_json(self.folder/'status.json', job)
+            (self.folder/'update.lock').unlink(missing_ok=True)
+            raise
+        return job, True
 
     def launch_worker(self, job_id):
         if os.name != 'nt':
@@ -319,7 +321,8 @@ class UpdateManager:
         # Rollback); per Skript (unabhaengiger Prozess) lief dasselbe Paket durch. Werte gehen ueber die Umgebung
         # an PowerShell, nie in den Befehlstext.
         args = subprocess.list2cmdline(['-I', str(self.base/'app_updates.py'), '--run-job', job_id, '--base', str(self.base)] + worker_test_args())
-        env = {**os.environ, 'MP_UPD_TASK': WORKER_TASK, 'MP_UPD_PY': sys.executable, 'MP_UPD_ARGS': args, 'MP_UPD_BASE': str(self.base)}
+        env = {k: v for k, v in os.environ.items() if k != 'MP_UPDATE_GITHUB_TOKEN'}  # PowerShell braucht den Token nicht
+        env.update({'MP_UPD_TASK': WORKER_TASK, 'MP_UPD_PY': sys.executable, 'MP_UPD_ARGS': args, 'MP_UPD_BASE': str(self.base)})
         result = subprocess.run(['powershell.exe', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', WORKER_TASK_PS], env=env, cwd=self.base, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=120)
         if result.returncode:
             raise ValueError('Update-Task konnte nicht gestartet werden: '+(result.stderr or result.stdout or '').strip()[-400:])

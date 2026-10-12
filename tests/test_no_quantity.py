@@ -140,6 +140,16 @@ class NoQuantity(unittest.TestCase):
             self.assertEqual(ok, allowed, (noqty, msg))
             if not allowed:
                 self.assertIn('AV-Termin', msg)
+        # AV-Uebergabe in den Werkstattbereich: der AV-Termin bleibt Sache der AV.
+        new2 = copy.deepcopy(old); old2 = copy.deepcopy(old)
+        for d in (old2, new2):
+            for dep in d['departments']:
+                if dep['id'] == DEP:
+                    dep['noQuantity'] = True
+            next(x for x in d['workSteps'] if x['id'] == 'fa_due')['handoffUnassigned'] = False
+        next(x for x in new2['workSteps'] if x['id'] == 'fa_due')['dueDate'] = '2026-11-20'
+        ok, msg = server.department_change_allowed(old2, new2, DEP)
+        self.assertFalse(ok, msg)
 
 
     def test_department_may_change_hours_on_line_resource_only_without_quantity(self):

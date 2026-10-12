@@ -9,6 +9,11 @@ AB DIREKT IM AUFTRAGSDIALOG
 WERKSTATT: SOLLSTUNDEN DURCH DIE ABTEILUNG
 - Behoben: In Bereichen ohne Mengenmeldung (z. B. Formbau) bot die Auftragsliste der Abteilungsleitung die Sollstunden zum Aendern an, der Server lehnte auf Personenstunden-Arbeitsplaetzen aber mit "Konfektionsstunden pflegt die Arbeitsvorbereitung" ab. In Werkstattfertigung legt die Abteilung die Stunden jetzt auch nachtraeglich fest; in anderen Bereichen bleiben Konfektionsstunden Sache der AV.
 
+AUDIT-KORREKTUREN
+- AB-Feld im Auftragsdialog wird bei jedem Oeffnen geleert (vorher konnte eine alte AB am naechsten Auftrag haengen bleiben). Ohne AV-/Endtermin wird fuer eine neue AB nicht mehr der Starttermin als Liefertermin genommen, sondern MP-PM-009 gemeldet. AB-Vergleich wie am Server (Gross/Klein, ss).
+- Werkstatt: Den Endtermin von AV-Uebergaben pflegt weiter die AV; die Abteilung aendert ihn nur bei eigenen Auftraegen.
+- Update per Button: Start des Update-Tasks ausserhalb der internen Sperre (Update-Abfragen blockieren nicht mehr bis zu 120 s); der GitHub-Token wird nicht an PowerShell weitergegeben.
+
 DOKU
 - FEHLERCODES.txt: acht bereits verwendete, bisher fehlende Codes nachgetragen (MP-AV-031/033, MP-CI-001/002, MP-DEM-000, MP-PM-040, MP-REP-010/011).
 
