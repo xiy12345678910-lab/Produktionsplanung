@@ -3668,9 +3668,12 @@ def department_change_allowed(old: dict, new: dict, department_id: str) -> tuple
                         return False, "FA, Projekt, Menge und Vorgänger pflegt die Arbeitsvorbereitung."
         resource = next((m for m in old.get("machines") or [] if m.get("id") == (before or {}).get("machineId")), {})
         dep = str((before or rec).get("departmentId") or "")
-        if before is not None and (av_hours_department(old, dep) or resource.get("kind") == "line" or resource.get("effortScaling")) and canonical(before.get("hours")) != canonical(rec.get("hours")):
+        # V12.28.3: In Werkstattfertigung (Bereich ohne Mengenmeldung) legt die Abteilung die Stunden selbst fest,
+        # auch auf Personenstunden-Arbeitsplaetzen (kind line); sonst pflegt die AV die Konfektionsstunden.
+        own_hours = department_no_quantity(old, dep)
+        if before is not None and not own_hours and (av_hours_department(old, dep) or resource.get("kind") == "line" or resource.get("effortScaling")) and canonical(before.get("hours")) != canonical(rec.get("hours")):
             return False, "Konfektionsstunden pflegt die Arbeitsvorbereitung."
-        if before is not None and before.get("planningType") == "LABOR_HOURS" and canonical(before.get("requiredHours")) != canonical(rec.get("requiredHours")):
+        if before is not None and not own_hours and before.get("planningType") == "LABOR_HOURS" and canonical(before.get("requiredHours")) != canonical(rec.get("requiredHours")):
             return False, "Konfektionsstunden pflegt die Arbeitsvorbereitung."
         # V12.28.2: In Werkstattfertigung (Bereich ohne Mengenmeldung) legt die Abteilung ihre Auftraege selbst an
         # und pflegt den Endtermin auch danach; sonst bleibt der AV-Termin Sache der Arbeitsvorbereitung.

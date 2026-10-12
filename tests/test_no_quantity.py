@@ -142,5 +142,25 @@ class NoQuantity(unittest.TestCase):
                 self.assertIn('AV-Termin', msg)
 
 
+    def test_department_may_change_hours_on_line_resource_only_without_quantity(self):
+        # V12.28.3: Werkstatt-Arbeitsplatz (kind line, effortScaling) - Stunden pflegt die Abteilung; sonst die AV.
+        for noqty, allowed in ((True, True), (False, False)):
+            old = copy.deepcopy(BASE)
+            for d in old['departments']:
+                if d['id'] == DEP:
+                    d['noQuantity'] = noqty
+            for m in old['machines']:
+                if m['id'] == M['id']:
+                    m.update(kind='line', effortScaling=True)
+            o = self.order('fa_hours'); o.update(status='planned', baselinePlan=None, hours=4)
+            old['workSteps'].append(o)
+            new = copy.deepcopy(old)
+            next(x for x in new['workSteps'] if x['id'] == 'fa_hours')['hours'] = 6
+            ok, msg = server.department_change_allowed(old, new, DEP)
+            self.assertEqual(ok, allowed, (noqty, msg))
+            if not allowed:
+                self.assertIn('Konfektionsstunden', msg)
+
+
 if __name__ == '__main__':
     unittest.main()

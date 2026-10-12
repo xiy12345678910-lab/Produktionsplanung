@@ -544,3 +544,13 @@ MP-PERS-035  (erweitert) Einteilungen mit overtime=true (freie Tage, ueber Vertr
 MP-AUTH-024  (erweitert) Auch beim Passwort setzen in der Benutzerverwaltung: die beiden Eingaben stimmen nicht ueberein.
 MP-DEPT-005  (erweitert) Umbenennen auf einen vorhandenen Bereichsnamen wird abgewiesen.
 MP-STEP-014  (geaendert) Bereiche ohne Mengenmeldung brauchen keine FA (Titel traegt den Auftrag); andere Bereiche weiter mit FA.
+
+NACHGETRAGEN V12.28.3 (bereits verwendet, bisher nicht dokumentiert)
+MP-AV-031    AV-Uebergabe: mindestens einen Fertigungsbereich auswaehlen.
+MP-AV-033    AV-Uebergabe: Vorgaenger ungueltig (kein ausgewaehlter Bereich, eigener Vorgaenger oder Abhaengigkeitsschleife).
+MP-CI-001    Firmen-CI ungueltig: Text zu lang oder Farbe nicht im Format #RRGGBB.
+MP-CI-002    Firmen-CI: Logo muss PNG/JPG sein (max. 300 KB).
+MP-DEM-000   Unbekannte Bedarfsaktion (Rahmenauftraege/Abrufe).
+MP-PM-040    Kundenplan: Aufgaben/Termine ungueltig bzw. keine Aufgaben mit Terminen fuer den Kundenplan.
+MP-REP-010   Report: keine fertig gemeldeten Auftraege fuer diese Auswahl.
+MP-REP-011   Report: Popup blockiert - Popups fuer diese Seite erlauben.
