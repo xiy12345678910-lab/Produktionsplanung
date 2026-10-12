@@ -8,7 +8,7 @@
 #  2. Eine Aenderung anlegen (Benutzer + Mitarbeiter im Datenstand), per API wie der Browser.
 #  3. Test-Release des aktuellen Commits bauen (tools/build_release.py) und ueber eine lokale Nachbildung der
 #     GitHub-Release-API (tests/update_button_lib.py serve, nur 127.0.0.1) bereitstellen.
-#  4. Server einmal mit MP_UPDATE_TEST_API neu starten (nur Umgebungsvariable dieses Prozesses, siehe
+#  4. Server-Task (SYSTEM, wie beim Kunden) mit MP_UPDATE_TEST_API in seiner Aktion neu starten (siehe
 #     app_updates.api_root), als Admin anmelden, /api/updates findet die Version, POST /api/updates/install.
 #  5. Warten bis der Worker fertig ist; pruefen: Health = neue Version, Daten erhalten, Audit, Protokoll
 #     updates\install-<id>.log mit Erfolg, Status/Lock/Wartungssperre, Server wieder als SYSTEM-Task.
@@ -17,8 +17,8 @@
 #  - Get-MPLanInfo liefert die IP des Runners (kein "physisches Privat-Netz" auf Runnern). Diese Aenderung steckt
 #    auch im Test-Release, weil UPDATE_LIVE.ps1 und Run_Server_LAN.ps1 aus dem Paket laufen.
 #  - Setup_Windows.ps1 bekommt Benutzer/Passwort statt Read-Host.
-#  - Updatequelle ist die lokale Nachbildung statt api.github.com (MP_UPDATE_TEST_API nur fuer diesen einen
-#    Serverstart; nach dem Update laeuft der Server wieder normal als SYSTEM-Task ohne diese Variable).
+#  - Updatequelle ist die lokale Nachbildung statt api.github.com (MP_UPDATE_TEST_API nur in der Aktion des
+#    Servertasks bis zum Update; UPDATE_LIVE.ps1 registriert den Task danach wieder normal ohne diese Variable).
 # Exitcode 0 nur, wenn alle Pruefungen bestanden sind, sonst 1.
 param(
     [ValidateSet('https', 'http')][string]$Scheme = 'https'
@@ -155,12 +155,15 @@ try {
     if ([string]@($task.Actions)[0].Arguments -match '(?i)-PythonExe\s+"([^"]+)"') { $taskPy = $Matches[1] }
     if (-not $taskPy) { throw 'Python des Servertasks nicht ermittelt.' }
     Stop-MPServer $Base
-    # Nur dieser Prozessbaum erbt die Variable; der Worker erbt sie vom Server (launch_worker).
-    $env:MP_UPDATE_TEST_API = "http://127.0.0.1:$mockPort/repos/"
-    $srvArgs = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', (Q (Join-Path $Base 'Run_Server_LAN.ps1')), '-PythonExe', (Q $taskPy), '-Port', [string]$MP_Port)
-    $manual = Start-Process -FilePath (Get-Command powershell.exe).Source -ArgumentList $srvArgs -PassThru -WindowStyle Hidden
-    Remove-Item Env:MP_UPDATE_TEST_API -ErrorAction SilentlyContinue
-    Check ([bool](Wait-MPHealth $Base $oldVer 60)) "Server V$oldVer mit Testquelle gestartet"
+    # Wie beim Kunden laeuft der Server als SYSTEM im Task "Maschinenplanung Server" (nicht von Hand gestartet:
+    # sonst bleibt verborgen, was der Task-Kontext mit dem Update-Prozess macht, siehe V12.28.1). Die Testquelle
+    # setzt nur die Aktion dieses Tasks; UPDATE_LIVE.ps1 registriert den Task danach wieder normal (ohne Variable).
+    $testApi = "http://127.0.0.1:$mockPort/repos/"
+    $cmd = "`$env:MP_UPDATE_TEST_API='$testApi'; & '$(Join-Path $Base 'Run_Server_LAN.ps1')' -PythonExe '$taskPy' -Port $MP_Port"
+    $action = New-ScheduledTaskAction -Execute (Get-Command powershell.exe).Source -Argument ('-NoProfile -ExecutionPolicy Bypass -Command "' + $cmd + '"') -WorkingDirectory $Base
+    Set-ScheduledTask -TaskName $MP_TaskName -Action $action | Out-Null
+    Start-ScheduledTask -TaskName $MP_TaskName
+    Check ([bool](Wait-MPHealth $Base $oldVer 60)) "Server V$oldVer mit Testquelle als SYSTEM-Task gestartet"
     $jobFile = Join-Path $Work 'job.json'
     $ok = Lib (@('trigger', '--url', $Url, '--admin-password', $AdminPw, '--expect-version', $newVer, '--out', $jobFile) + $caArgs)
     Check $ok "Admin: /api/updates findet V$newVer, POST /api/updates/install startet den Auftrag"
@@ -187,7 +190,7 @@ try {
     Check (-not (Test-Path -LiteralPath $lockFile)) 'updates\update.lock entfernt (Worker beendet)'
     Check (-not (Test-Path -LiteralPath (Join-Path $Base 'updates\installing'))) 'Wartungssperre updates\installing entfernt'
     Check (@(Get-ChildItem -LiteralPath (Join-Path $Base 'update_backups') -Directory -Filter "pre_V$($newVer)_*" -ErrorAction SilentlyContinue).Count -ge 1) "Rollback-Stand update_backups\pre_V$($newVer)_* angelegt"
-    Check ($manual.HasExited) 'manuell gestarteter Server (mit Testquelle) wurde vom Updater beendet'
+    Check (-not ([string]@((Get-ScheduledTask -TaskName $MP_TaskName).Actions)[0].Arguments -match 'MP_UPDATE_TEST_API')) 'Servertask nach dem Update wieder normal registriert (ohne Testquelle)'
     Check ((Get-ScheduledTask -TaskName $MP_TaskName).State -eq 'Running') 'Servertask laeuft'
     $owner = $null
     $listener = @(Get-NetTCPConnection -State Listen -LocalPort $MP_Port -ErrorAction SilentlyContinue) | Select-Object -First 1
