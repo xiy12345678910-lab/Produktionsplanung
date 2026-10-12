@@ -12,7 +12,7 @@ import subprocess
 import sys
 import threading
 import time
-from urllib.request import Request, HTTPRedirectHandler, build_opener
+from urllib.request import Request, HTTPRedirectHandler, ProxyHandler, build_opener
 from urllib.parse import urlparse
 import zipfile
 
@@ -70,17 +70,41 @@ def read_json(path, default=None):
         return default
 
 
+GITHUB_API = 'https://api.github.com/repos/'
+# #84: NUR fuer den Ende-zu-Ende-Test des Admin-Buttons (tests/ci_windows_update_button.ps1, tests/test_update_button.py).
+# MP_UPDATE_TEST_API ersetzt die GitHub-API durch eine Nachbildung auf DIESEM Rechner (http://127.0.0.1:<port>/repos/).
+# Sicherheit: Der Wert kommt ausschliesslich aus der Prozessumgebung beim Start von server.py (der Worker erbt sie);
+# keine Anfrage, keine Konfigurationsdatei und kein Browser kann ihn setzen. Erlaubt ist nur genau diese
+# Loopback-Form, jeder andere Wert bricht die Updatepruefung ab (nie stillschweigend eine fremde Quelle). Der
+# Token MP_UPDATE_GITHUB_TOKEN geht nie an die Testquelle. Im Produktivbetrieb ist die Variable nicht gesetzt:
+# dann gilt unveraendert ausschliesslich https://api.github.com.
+TEST_API_ENV = 'MP_UPDATE_TEST_API'
+TEST_API = re.compile(r'http://127\.0\.0\.1:[1-9][0-9]{0,4}/repos/')
+
+
+def api_root():
+    test = os.environ.get(TEST_API_ENV, '')
+    if not test:
+        return GITHUB_API
+    if not TEST_API.fullmatch(test):
+        raise ValueError('Ungültige Test-Updatequelle '+TEST_API_ENV+' (nur http://127.0.0.1:<port>/repos/).')
+    return test
+
+
 def request_bytes(url, limit=1024*1024):
     # Every URL is constructed from a validated repository or an exact release asset ID.
-    if not url.startswith('https://api.github.com/repos/'):
+    root = api_root()
+    if not url.startswith(root):
         raise ValueError('Unzulässige Updatequelle.')
     headers = {'User-Agent': 'Produktionsplanung-Update', 'Accept': 'application/vnd.github+json'}
     if '/releases/assets/' in url:
         headers['Accept'] = 'application/octet-stream'
     token = os.environ.get('MP_UPDATE_GITHUB_TOKEN')
-    if token:
+    if token and root == GITHUB_API:
         headers['Authorization'] = 'Bearer '+token
-    with build_opener(ReleaseRedirect()).open(Request(url, headers=headers), timeout=30) as response:
+    # Die Loopback-Testquelle nie ueber einen Proxy der Umgebung ansprechen.
+    handlers = [ReleaseRedirect()] if root == GITHUB_API else [ReleaseRedirect(), ProxyHandler({})]
+    with build_opener(*handlers).open(Request(url, headers=headers), timeout=30) as response:
         data = response.read(limit+1)
     if len(data) > limit:
         raise ValueError('Updatepaket überschreitet die Größenbegrenzung.')
@@ -90,7 +114,7 @@ def request_bytes(url, limit=1024*1024):
 def release_info(repo, current, fetch=request_bytes):
     if not REPO.fullmatch(repo):
         raise ValueError('Updatequelle muss GitHub konto/repository sein.')
-    api = 'https://api.github.com/repos/'+repo+'/'
+    api = api_root()+repo+'/'
     release = json.loads(fetch(api+'releases/latest'))
     tag = release.get('tag_name', '')
     latest = tag.removeprefix('v')

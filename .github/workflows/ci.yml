@@ -43,6 +43,7 @@ jobs:
           python tests/test_blocks.py
           python tests/test_updates.py
           python tests/test_update_subfolders.py
+          python tests/test_update_button.py
           python tests/test_release_tools.py
           python tests/test_av_handoff.py
           python tests/test_project_live.py
@@ -151,3 +152,28 @@ jobs:
         run: |
           Get-ChildItem "$env:RUNNER_TEMP\mpdeploy\*.log" -ErrorAction SilentlyContinue | ForEach-Object { "=== $($_.Name)"; Get-Content $_.FullName -Tail 60 }
           Get-ChildItem "$env:ProgramData\Maschinenplanung\logs\*.log" -ErrorAction SilentlyContinue | ForEach-Object { "=== $($_.Name)"; Get-Content $_.FullName -Tail 60 }
+
+  # #84: Admin-Button "Update installieren" Ende-zu-Ende: /api/updates/install -> Worker (launch_worker/run_job) ->
+  # UPDATE_LIVE.ps1 aus dem heruntergeladenen Paket. Quelle ist eine lokale Nachbildung der GitHub-Release-API
+  # (MP_UPDATE_TEST_API, nur Loopback, nur Umgebungsvariable). Windows PowerShell 5.1 wie beim Kunden.
+  windows-update-button:
+    runs-on: windows-latest
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        scheme: [https, http]   # https = Standard bei Neuinstallation (#52), http = Bestand / -OhneHttps
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Update-Button Ende-zu-Ende (${{ matrix.scheme }})
+        shell: powershell
+        run: ./tests/ci_windows_update_button.ps1 -Scheme ${{ matrix.scheme }}
+      - name: Logs bei Fehler
+        if: failure()
+        shell: pwsh
+        run: |
+          Get-ChildItem "$env:RUNNER_TEMP\mpbutton\*.log", "$env:RUNNER_TEMP\mpbutton\*.jsonl" -ErrorAction SilentlyContinue | ForEach-Object { "=== $($_.Name)"; Get-Content $_.FullName -Tail 80 }
+          Get-ChildItem "$env:ProgramData\Maschinenplanung\logs\*.log", "$env:ProgramData\Maschinenplanung\updates\install-*.log" -ErrorAction SilentlyContinue | ForEach-Object { "=== $($_.Name)"; Get-Content $_.FullName -Tail 120 }

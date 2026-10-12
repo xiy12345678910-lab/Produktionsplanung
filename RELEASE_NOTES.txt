@@ -41,6 +41,10 @@ INTERN (#73)
 - Phase 1: Bedarf (Rahmenauftraege, Abrufe, Bestand, Reservierung, Bedarf -> FA) liegt im neuen Modul mp_demand.py, flach neben server.py und Teil des Pakets. Keine Verhaltensaenderung; server.py bietet alle Namen weiter an.
 - Phase 0: Die Referenz der Schreibrechte (tests/golden/write_matrix.json) prueft jetzt auch Kalenderregeln, Sonderschichten, Ausnahmen, Maschinensperren, Personaleinteilung/-abwesenheit/-einsatz, Personalbedarf, Formate, Planstaende, Produktionsereignisse, Historie, Rahmenauftraege und Palettenvorlagen (bisher leer und ungeprueft).
 
+INTERN (#84)
+- Neuer Windows-CI-Test fuer den Admin-Button "Update installieren" (tests/ci_windows_update_button.ps1, HTTPS und HTTP): Installation mit kuenstlich niedrigerer Version, Anmeldung als Admin, /api/updates findet das Testrelease des aktuellen Commits, /api/updates/install startet den Hintergrundprozess, der UPDATE_LIVE.ps1 aus dem geladenen Paket ausfuehrt. Geprueft werden neue Version, erhaltene Daten, Audit, Protokoll updates\install-<id>.log und der Neustart als SYSTEM-Task.
+- Dafuer kennt der Updater die Testquelle MP_UPDATE_TEST_API (nur Umgebungsvariable beim Serverstart, nur http://127.0.0.1:<port>/repos/, nie mit GitHub-Token). Ohne die Variable unveraendert nur api.github.com. Plattformunabhaengiger Teil: tests/test_update_button.py.
+
 DATEN UND UPDATE
 - Additive Felder (dayRules im Schichtkalender, overtime bei Personaleinteilungen); fehlen sie, bleibt die Planung unveraendert. Keine Migration noetig, Referenztests unveraendert.
 - Neue Datei data\fehlerprotokoll.jsonl (nur Diagnose) wird beim ersten Fehler angelegt.
