@@ -1,3 +1,11 @@
+MASCHINENPLANUNG V12.28.3 - RELEASE NOTES
+=========================================
+Datum: 12.10.2026 · Basis: V12.28.2 · Update gemäß README_Windows.txt 2b, Daten bleiben erhalten
+
+AB DIREKT IM AUFTRAGSDIALOG
+- Im Dialog "Fertigungsauftrag anlegen" (AV-Uebergabe und normaler Dialog) gibt es neben "Projekt / AB" das Feld "oder AB eingeben". Vorhandene AB: der Auftrag wird mit diesem Projekt verknuepft. Neue AB (z. B. 50500): im Hintergrund entsteht ein Projekt "Nur Produktion" (Phase angenommen, Liefertermin = Projektfertigstellung bzw. spaetester Bereichstermin), der Auftrag haengt daran.
+- Nur fuer Rollen, die solche Projekte anlegen duerfen (Admin, Arbeitsvorbereitung, Projektmanagement). Ohne Liefertermin Hinweis MP-PM-009. Scheitert die direkte Freigabe, wird das neue Projekt wieder entfernt.
+
 MASCHINENPLANUNG V12.28.2 - RELEASE NOTES
 =========================================
 Datum: 12.10.2026 · Basis: V12.28.1 · Update gemäß README_Windows.txt 2b, Daten bleiben erhalten
