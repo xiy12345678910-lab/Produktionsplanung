@@ -51,6 +51,17 @@ function Run-PS([string]$script, [string[]]$extra, [string]$log) {
 }
 function Py { & python (Join-Path $Repo 'tests\deploy_lib.py') @args | Out-Host; if ($LASTEXITCODE -ne 0) { return $false } return $true }
 function Health([string]$url) { try { return (Invoke-RestMethod -Uri "$url/api/health" -TimeoutSec 5).version } catch { return $null } }
+# V12.29.0: Klartext-HTTP am HTTPS-Port antwortet nur noch mit 301 auf https:// (server.py _redirect_plain_http).
+# Health() folgt Weiterleitungen und eignet sich dafuer nicht; hier ohne Weiterleitung nur Status und Ziel.
+function Plain-Http([string]$url) {
+    try {
+        $req = [Net.HttpWebRequest]::Create("$url/api/health")
+        $req.AllowAutoRedirect = $false
+        $req.Timeout = 5000
+        $resp = $req.GetResponse()
+        try { return @{ Code = [int]$resp.StatusCode; Location = [string]$resp.Headers['Location'] } } finally { $resp.Close() }
+    } catch { return $null }
+}
 function Hashes([string]$dir) {
     $h = @{}
     if (Test-Path -LiteralPath $dir) {
@@ -318,7 +329,9 @@ if ($Scenario -eq 'ci') {
     Check $trusted 'Firmen-CA.crt im Live-Ordner und in LocalMachine\Root vertraut'
     # Ohne -SkipCertificateCheck: das Zertifikat muss ueber die eben vertraute Firmen-CA gueltig sein.
     Check ((Health $UrlTls) -eq $newVer) "Neuinstallation: Server antwortet per HTTPS ($UrlTls, V$newVer)"
-    Check (-not (Health $Url)) 'Neuinstallation: kein unverschluesseltes HTTP mehr'
+    $plain = Plain-Http $Url
+    $plainText = if ($plain) { "$($plain.Code) $($plain.Location)" } else { 'keine Antwort' }
+    Check ($plain -and $plain.Code -eq 301 -and $plain.Location -like 'https://*') "Neuinstallation: kein unverschluesseltes HTTP mehr, nur 301 auf https:// ($plainText)"
 
     # 8d. Umzug, Teil 2: Import auf ein "neues Geraet" ohne Installation (kein Setup), aus einem Paket >= Exportversion.
     if ($umzugZip) {

@@ -70,6 +70,7 @@ MASCHINENPLANUNG V12.29.0 - WINDOWS-SERVER (LAN ONLY)
         .\Firma_Einrichten.ps1 -Vorlage <Vorlagedatei vom Entwickler>      (oder -Neutral = bewusst ohne Name/Logo)
      Danach UPDATE_LIVE.ps1 erneut starten. Alternativ erst V12.14.1 installieren.
    - Optional in LAN_CONFIG.json: "UpdateRepo": "konto/repo" (Quelle fuer Update_von_GitHub.ps1).
+     Ab V12.29.0 auch Gitea: "UpdateRepo": "https://gitea-host/konto/repo" (privat: Token in config\update\token.txt).
    - Ungueltige Datei: Server startet nicht, Meldung MP-CFG-001/002 (siehe FEHLERCODES.txt).
 
 2d. LIZENZSCHLUESSEL (config\lizenz.key, ab V12.27.0)

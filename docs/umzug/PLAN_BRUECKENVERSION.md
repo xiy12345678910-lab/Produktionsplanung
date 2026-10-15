@@ -30,6 +30,13 @@ Stand: 12.10.2026, V12.28.4. Ziel: Neustart auf einem eigenen Gitea-Server. GitH
 
 ## 3. Brückenversion (V12.29.0, muss noch **auf GitHub** veröffentlicht werden)
 
+> **Stand 15.10.2026 (Gitea-Repo, Branch `claude/bruecke-gitea-updates`):** Punkte 1–3 umgesetzt, abweichend vom Entwurf:
+> Quelle ist weiter das eine Feld `UpdateRepo` (bzw. `update.source`), jetzt auch als `https://host/konto/repo`.
+> Es wird von `Run_Server_LAN.ps1` und dem Umzug schon heute erhalten. Lesetoken: `config\update\token.txt`.
+> `Update_von_GitHub.ps1` behält seinen Namen (wird überall referenziert) und lädt bei Gitea das Quellarchiv des Commits.
+> Geprüft gegen das echte Gitea (28.1.0): Release finden, Tag-Commit, „liegt in main“, Download und SHA256.
+> **Offen:** Standardquelle im Paket auf Gitea umstellen (braucht die für Kunden erreichbare Gitea-URL), Punkte 4–6.
+
 1. `app_updates.py`: Quelle als Host plus `konto/repo` in `LAN_CONFIG.json` (z. B. `"UpdateHost": "https://git.firma.de"`).
    Für diesen Host gilt die Gitea-API aus Abschnitt 2. Weiterleitungen sind nur zu genau diesem Host erlaubt.
    Ohne Eintrag gilt der neue Standard (Gitea-Adresse fest im Paket, wie heute der GitHub-Standard).

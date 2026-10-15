@@ -17,6 +17,13 @@ from urllib.parse import urlparse
 import zipfile
 
 REPO = re.compile(r'[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+')
+# V12.29.0 (Bruecke GitHub -> Gitea): Quelle "konto/repo" = GitHub wie bisher; "https://host[:port][/pfad]/konto/repo"
+# = Gitea. Fuer Gitea gelten dessen API (api/v1), Downloads ueber /konto/repo/releases/download/<tag>/<name>,
+# Weiterleitungen nur auf denselben Host und der Lesetoken aus config/update/token.txt nur fuer genau diesen Host
+# (Ordner nur fuer SYSTEM/Administratoren, MP_Common.ps1 Protect-MPInstall).
+GITEA_SOURCE = re.compile(r'(https://[A-Za-z0-9.-]+(?::[1-9][0-9]{0,4})?(?:/[A-Za-z0-9_.-]+)*?)/([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)')
+TOKEN_FILE = Path('config')/'update'/'token.txt'
+TOKEN = re.compile(r'[A-Za-z0-9_.-]{16,200}')
 VERSION = re.compile(r'(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)')
 ACTIVE = {'checking', 'download', 'preflight', 'backup', 'installation', 'migration', 'restart', 'healthcheck', 'rollback'}
 MAX_PACKAGE = 64 * 1024 * 1024
@@ -39,10 +46,18 @@ def member_name(name):
     return name
 
 
+GITHUB_HOSTS = {'api.github.com', 'github.com', 'release-assets.githubusercontent.com', 'objects.githubusercontent.com', 'github-releases.githubusercontent.com'}
+
+
 class ReleaseRedirect(HTTPRedirectHandler):
+    def __init__(self, origin=None):
+        super().__init__()
+        self.origin = origin  # Gitea: nur genau dieser Host (Schema, Name, Port)
+
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         target = urlparse(newurl)
-        if target.scheme != 'https' or target.hostname not in {'api.github.com', 'github.com', 'release-assets.githubusercontent.com', 'objects.githubusercontent.com', 'github-releases.githubusercontent.com'}:
+        allowed = origin_of(newurl) == self.origin if self.origin else target.scheme == 'https' and target.hostname in GITHUB_HOSTS
+        if not allowed:
             raise ValueError('Unzulässige Weiterleitung der Updatequelle.')
         redirected = super().redirect_request(req, fp, code, msg, headers, newurl)
         if target.hostname != urlparse(req.full_url).hostname:
@@ -71,6 +86,25 @@ def read_json(path, default=None):
 
 
 GITHUB_API = 'https://api.github.com/repos/'
+
+
+def origin_of(url):
+    u = urlparse(url)
+    return u.scheme+'://'+(u.netloc.rsplit('@', 1)[-1]).lower()
+
+
+def normalize_source(text):
+    """'konto/repo' (GitHub), 'https://github.com/konto/repo' -> 'konto/repo'; Gitea-URL ohne '/' und '.git' am Ende."""
+    text = str(text or '').strip()
+    if text.startswith('https://github.com/'):
+        text = text[len('https://github.com/'):]
+    text = text.rstrip('/')
+    if text.endswith('.git'):
+        text = text[:-4]
+    segments = text.split('://', 1)[1].split('/')[1:] if '://' in text else text.split('/')
+    if not (REPO.fullmatch(text) or GITEA_SOURCE.fullmatch(text)) or any(not part.strip('.') for part in segments):  # nie '.'/'..'
+        raise ValueError('Ungültige zentrale Updatequelle (konto/repository oder https://gitea-host/konto/repository).')
+    return text
 # #84: NUR fuer den Ende-zu-Ende-Test des Admin-Buttons (tests/ci_windows_update_button.ps1, tests/test_update_button.py).
 # MP_UPDATE_TEST_API ersetzt die GitHub-API durch eine Nachbildung auf DIESEM Rechner (http://127.0.0.1:<port>/repos/).
 # Sicherheit: Der Wert kommt ausschliesslich aus der Prozessumgebung beim Start von server.py (der Worker erbt sie);
@@ -79,7 +113,8 @@ GITHUB_API = 'https://api.github.com/repos/'
 # Token MP_UPDATE_GITHUB_TOKEN geht nie an die Testquelle. Im Produktivbetrieb ist die Variable nicht gesetzt:
 # dann gilt unveraendert ausschliesslich https://api.github.com.
 TEST_API_ENV = 'MP_UPDATE_TEST_API'
-TEST_API = re.compile(r'http://127\.0\.0\.1:[1-9][0-9]{0,4}/repos/')
+# Gitea-Nachbildung: http://127.0.0.1:<port>/api/v1/repos/ (Downloads dann unter http://127.0.0.1:<port>/<konto>/<repo>/).
+TEST_API = re.compile(r'http://127\.0\.0\.1:[1-9][0-9]{0,4}/(api/v1/)?repos/')
 
 
 def api_root():
@@ -103,25 +138,71 @@ WORKER_TASK_PS = (
 )
 
 
+def endpoint(source):
+    """(art, api, web) einer geprueften Quelle: api endet auf .../repos/<konto>/<repo>/, web (nur Gitea) auf /<konto>/<repo>/."""
+    source = normalize_source(source)
+    match = GITEA_SOURCE.fullmatch(source)
+    repo = match.group(2) if match else source
+    root = api_root()
+    if root != GITHUB_API:  # Testquelle ersetzt jede Quelle
+        if root.endswith('/api/v1/repos/'):
+            return 'gitea', root+repo+'/', root[:-len('api/v1/repos/')]+repo+'/'
+        return 'github', root+repo+'/', None
+    if not match:
+        return 'github', GITHUB_API+repo+'/', None
+    return 'gitea', match.group(1)+'/api/v1/repos/'+repo+'/', match.group(1)+'/'+repo+'/'
+
+
+def read_token(base):
+    """Lesetoken fuer eine private Gitea-Quelle (config/update/token.txt); fehlt er, wird ohne Anmeldung gefragt."""
+    try:
+        token = (Path(base)/TOKEN_FILE).read_text(encoding='utf-8-sig').strip()
+    except OSError:
+        return ''
+    if not TOKEN.fullmatch(token):
+        raise ValueError('Ungültiger Token in config/update/token.txt.')
+    return token
+
+
+def source_fetch(source, token=''):
+    """Abruf, der nur URLs dieser Quelle zulaesst. Der Gitea-Token geht nur an den Gitea-Host, nie an GitHub oder die Testquelle."""
+    kind, api, web = endpoint(source)
+    if kind == 'github':
+        return request_bytes
+    secret = token if api_root() == GITHUB_API else ''
+    def fetch(url, limit=1024*1024):
+        if not (url.startswith(api) or url.startswith(web+'releases/download/')):
+            raise ValueError('Unzulässige Updatequelle.')
+        return request_bytes(url, limit, origin_of(api), secret)
+    return fetch
+
+
 def worker_test_args():
     """Nur Test: eine gueltige MP_UPDATE_TEST_API an den Worker-Task weitergeben (der erbt die Serverumgebung nicht)."""
     test = os.environ.get(TEST_API_ENV, '')
     return ['--test-api', test] if test and TEST_API.fullmatch(test) else []
 
 
-def request_bytes(url, limit=1024*1024):
+def request_bytes(url, limit=1024*1024, origin=None, token=''):
     # Every URL is constructed from a validated repository or an exact release asset ID.
+    # origin: nur ueber source_fetch (Gitea), dort ist die URL bereits gegen die Quelle geprueft.
     root = api_root()
-    if not url.startswith(root):
+    if origin is None and not url.startswith(root):
         raise ValueError('Unzulässige Updatequelle.')
-    headers = {'User-Agent': 'Produktionsplanung-Update', 'Accept': 'application/vnd.github+json'}
-    if '/releases/assets/' in url:
+    if origin is not None and origin_of(url) != origin:
+        raise ValueError('Unzulässige Updatequelle.')
+    if origin and not url.startswith('https://') and root == GITHUB_API:
+        raise ValueError('Gitea-Updatequelle braucht https://.')
+    headers = {'User-Agent': 'Produktionsplanung-Update', 'Accept': 'application/vnd.github+json' if origin is None else 'application/json'}
+    if '/releases/assets/' in url or '/releases/download/' in url:
         headers['Accept'] = 'application/octet-stream'
-    token = os.environ.get('MP_UPDATE_GITHUB_TOKEN')
-    if token and root == GITHUB_API:
-        headers['Authorization'] = 'Bearer '+token
+    gh_token = os.environ.get('MP_UPDATE_GITHUB_TOKEN')
+    if gh_token and root == GITHUB_API and origin is None:
+        headers['Authorization'] = 'Bearer '+gh_token
+    if token and origin:
+        headers['Authorization'] = 'token '+token
     # Die Loopback-Testquelle nie ueber einen Proxy der Umgebung ansprechen.
-    handlers = [ReleaseRedirect()] if root == GITHUB_API else [ReleaseRedirect(), ProxyHandler({})]
+    handlers = [ReleaseRedirect(origin)] if root == GITHUB_API else [ReleaseRedirect(origin), ProxyHandler({})]
     with build_opener(*handlers).open(Request(url, headers=headers), timeout=30) as response:
         data = response.read(limit+1)
     if len(data) > limit:
@@ -129,34 +210,43 @@ def request_bytes(url, limit=1024*1024):
     return data
 
 
-def release_info(repo, current, fetch=request_bytes):
-    if not REPO.fullmatch(repo):
-        raise ValueError('Updatequelle muss GitHub konto/repository sein.')
-    api = api_root()+repo+'/'
+def release_info(repo, current, fetch=None, token=''):
+    kind, api, web = endpoint(repo)
+    fetch = fetch or source_fetch(repo, token)
     release = json.loads(fetch(api+'releases/latest'))
     tag = release.get('tag_name', '')
     latest = tag.removeprefix('v')
     if release.get('draft') or release.get('prerelease') or version(latest) <= version(current):
         return None
-    commit = json.loads(fetch(api+'commits/'+tag))['sha']
+    if kind == 'gitea':
+        # Gitea: Commit des Tags ueber tags/<tag>; "liegt in main" = compare main...<commit> ohne eigene Commits.
+        commit = str(((json.loads(fetch(api+'tags/'+tag)).get('commit')) or {}).get('sha') or '')
+    else:
+        commit = json.loads(fetch(api+'commits/'+tag))['sha']
     if not re.fullmatch('[0-9a-f]{40}', commit):
         raise ValueError('Release-Commit ist ungültig.')
     compare = json.loads(fetch(api+'compare/main...'+commit))
-    if compare.get('status') not in {'identical', 'behind'}:
+    if (compare.get('total_commits') != 0) if kind == 'gitea' else (compare.get('status') not in {'identical', 'behind'}):
         raise ValueError('Release liegt außerhalb von main.')
     assets = {a.get('name'): a for a in release.get('assets') or []}
     manifest_asset = assets.get('update-manifest.json') or {}
     package = assets.get('produktionsplanung-v'+latest+'.zip') or {}
     if not isinstance(manifest_asset.get('id'), int) or not isinstance(package.get('id'), int):
         raise ValueError('Release enthält kein geprüftes Updatepaket.')
-    manifest = json.loads(fetch(api+'releases/assets/'+str(manifest_asset['id'])))
+    if kind == 'gitea':
+        # Inhalt nur ueber den festen Download-Pfad dieses Repos (nie ueber browser_download_url aus der Antwort).
+        asset_url = lambda name: web+'releases/download/'+tag+'/'+name  # noqa: E731
+        manifest_url, package_url = asset_url('update-manifest.json'), asset_url('produktionsplanung-v'+latest+'.zip')
+    else:
+        manifest_url, package_url = api+'releases/assets/'+str(manifest_asset['id']), api+'releases/assets/'+str(package['id'])
+    manifest = json.loads(fetch(manifest_url))
     validate_manifest(manifest, latest, current)
     if manifest.get('commit') != commit:
         raise ValueError('Paket und Release-Commit stimmen nicht überein.')
     # Reserved for signed distribution. An unsupported signature is never silently ignored.
     if manifest.get('signature'):
         raise ValueError('Signierte Distribution benötigt einen konfigurierten Signaturprüfer.')
-    return {'version': latest, 'currentVersion': current, 'notes': str(release.get('body') or '')[:20000], 'manifest': manifest, 'packageUrl': api+'releases/assets/'+str(package['id']), 'repository': repo, 'commit': commit}
+    return {'version': latest, 'currentVersion': current, 'notes': str(release.get('body') or '')[:20000], 'manifest': manifest, 'packageUrl': package_url, 'repository': normalize_source(repo), 'commit': commit}
 
 
 def validate_manifest(manifest, expected, current):
@@ -225,7 +315,7 @@ def audit(base, job, action):
 
 
 class UpdateManager:
-    def __init__(self, base, current, config, launch=None, fetch=request_bytes):
+    def __init__(self, base, current, config, launch=None, fetch=None):
         self.base, self.current, self.config = Path(base), current, config
         self.fetch, self.launch = fetch, launch or self.launch_worker
         self.guard = threading.Lock()
@@ -241,18 +331,14 @@ class UpdateManager:
 
     def repository(self):
         source = (self.config().get('update') or {}).get('source') or ''
-        if source.startswith('https://github.com/'):
-            source = source[len('https://github.com/'):].rstrip('/')
         if not source:
             source = (read_json(self.base/'LAN_CONFIG.json', {}) or {}).get('UpdateRepo') or ''
         if not source:
             # Keep the distribution default in its existing single authoritative file.
             defaults = (self.base/'Update_von_GitHub.ps1').read_text(encoding='utf-8-sig')
-            match = re.search(r"\$Repo\s*=\s*'([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)'", defaults)
+            match = re.search(r"\$Repo\s*=\s*'([^']+)'", defaults)
             source = match.group(1) if match else ''
-        if not REPO.fullmatch(source):
-            raise ValueError('Ungültige zentrale Updatequelle (konto/repository).')
-        return source
+        return normalize_source(source)
 
     def check(self):
         with self.guard:
@@ -260,7 +346,7 @@ class UpdateManager:
                 return
             self.checking = True
         try:
-            result = release_info(self.repository(), self.current, self.fetch)
+            result = release_info(self.repository(), self.current, self.fetch, read_token(self.base))
             with self.guard:
                 self.available, self.error = result, ''
         except Exception as e:
@@ -352,7 +438,7 @@ class UpdateManager:
             raise ValueError('Update-Task konnte nicht gestartet werden: '+(result.stderr or result.stdout or '').strip()[-400:])
 
 
-def run_job(base, job_id, fetch=request_bytes, installer=None):
+def run_job(base, job_id, fetch=None, installer=None):
     base = Path(base)
     folder = base/'updates'
     job = read_json(folder/'status.json')
@@ -364,6 +450,7 @@ def run_job(base, job_id, fetch=request_bytes, installer=None):
         audit(base, job, 'Update: '+value)
     try:
         stage('checking')
+        fetch = fetch or source_fetch(job['repository'], read_token(base))
         info = release_info(job['repository'], job['currentVersion'], fetch)
         if not info or info['version'] != job['version']:
             raise ValueError('Freigegebenes Release hat sich geändert; Update erneut starten.')

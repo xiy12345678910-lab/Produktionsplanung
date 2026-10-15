@@ -145,4 +145,90 @@ class UpdateTests(unittest.TestCase):
         with self.assertRaises(ValueError):updates.release_info('owner/repo','12.19.0',fetch)
 
 
+
+GITEA='https://git.firma.example:3000/konto/produktionsplanung'
+
+
+def gitea_source(v='12.20.0',in_main=True):
+    blob,manifest=package(v)
+    release={'tag_name':'v'+v,'draft':False,'prerelease':False,'body':'Changes','assets':[{'name':'update-manifest.json','id':7,'browser_download_url':'https://evil.example/x'},{'name':'produktionsplanung-v'+v+'.zip','id':8}]}
+    api='https://git.firma.example:3000/api/v1/repos/konto/produktionsplanung/'
+    dl='https://git.firma.example:3000/konto/produktionsplanung/releases/download/v'+v+'/'
+    calls=[]
+    def fetch(url,limit=1024*1024):
+        calls.append(url)
+        if url==api+'releases/latest':return json.dumps(release).encode()
+        if url==api+'tags/v'+v:return json.dumps({'commit':{'sha':COMMIT}}).encode()
+        if url==api+'compare/main...'+COMMIT:return json.dumps({'total_commits':0 if in_main else 2}).encode()
+        if url==dl+'update-manifest.json':return json.dumps(manifest).encode()
+        if url==dl+'produktionsplanung-v'+v+'.zip':return blob
+        raise AssertionError(url)
+    return fetch,calls
+
+
+class GiteaSourceTests(unittest.TestCase):
+    """V12.29.0: Bruecke GitHub -> Gitea. Quelle 'https://host[:port][/pfad]/konto/repo' nutzt die Gitea-API."""
+
+    def test_normalize_and_endpoint(self):
+        self.assertEqual(updates.normalize_source('https://github.com/o/r/'),'o/r')
+        self.assertEqual(updates.normalize_source(GITEA+'.git'),GITEA)
+        self.assertEqual(updates.endpoint('o/r'),('github','https://api.github.com/repos/o/r/',None))
+        self.assertEqual(updates.endpoint('https://h.example/sub/dir/o/r'),('gitea','https://h.example/sub/dir/api/v1/repos/o/r/','https://h.example/sub/dir/o/r/'))
+        for bad in ['http://h.example/o/r','https://h.example/o','https://user@h.example/o/r','https://h.example/o/r?x=1','https://h.example/../o/r','https://h.example:0/o/r','ftp://h/o/r']:
+            with self.assertRaises(ValueError,msg=bad):updates.normalize_source(bad)
+
+    def test_release_found_and_downloaded_from_fixed_paths(self):
+        fetch,calls=gitea_source()
+        info=updates.release_info(GITEA,'12.19.0',fetch)
+        self.assertEqual((info['version'],info['commit'],info['repository']),('12.20.0',COMMIT,GITEA))
+        self.assertTrue(info['packageUrl'].endswith('/konto/produktionsplanung/releases/download/v12.20.0/produktionsplanung-v12.20.0.zip'))
+        self.assertFalse(any('evil' in c for c in calls),'browser_download_url aus der Antwort wird nie benutzt')
+        self.assertIsNone(updates.release_info(GITEA,'12.20.0',fetch))
+
+    def test_release_outside_main_is_rejected(self):
+        fetch,_=gitea_source(in_main=False)
+        with self.assertRaises(ValueError):updates.release_info(GITEA,'12.19.0',fetch)
+
+    def test_token_only_to_gitea_host_and_never_redirected_elsewhere(self):
+        sent=[]
+        class Opener:
+            def __init__(self,*handlers):self.handlers=handlers
+            def open(self,req,timeout):
+                sent.append((req.full_url,req.get_header('Authorization'),[h for h in self.handlers if isinstance(h,updates.ReleaseRedirect)][0].origin))
+                return io.BytesIO(b'{}')
+        saved=updates.build_opener;updates.build_opener=Opener
+        try:
+            fetch=updates.source_fetch(GITEA,'t'*40)
+            fetch('https://git.firma.example:3000/api/v1/repos/konto/produktionsplanung/releases/latest')
+            fetch('https://git.firma.example:3000/konto/produktionsplanung/releases/download/v1.0.0/a.zip')
+            for bad in ['https://api.github.com/repos/konto/produktionsplanung/releases/latest','https://git.firma.example:3000/api/v1/repos/andere/repo/releases/latest',
+                        'https://git.firma.example:3001/api/v1/repos/konto/produktionsplanung/x','https://git.firma.example:3000/konto/produktionsplanung/raw/main/x']:
+                with self.assertRaises(ValueError,msg=bad):fetch(bad)
+            self.assertIs(updates.source_fetch('o/r','t'*40),updates.request_bytes,'GitHub-Quelle bekommt den Gitea-Token nie')
+        finally:
+            updates.build_opener=saved
+        self.assertEqual([a for _,a,_ in sent],['token '+'t'*40]*2)
+        self.assertEqual({o for *_,o in sent},{'https://git.firma.example:3000'})
+        r=updates.ReleaseRedirect('https://git.firma.example:3000')
+        req=updates.Request('https://git.firma.example:3000/a',headers={'Authorization':'token x'})
+        for bad in ['https://evil.example/a','http://git.firma.example:3000/a','https://git.firma.example/a']:
+            with self.assertRaises(ValueError,msg=bad):r.redirect_request(req,None,302,'',{},bad)
+        self.assertIsNotNone(r.redirect_request(req,None,302,'',{},'https://git.firma.example:3000/b'))
+
+    def test_token_file(self):
+        with tempfile.TemporaryDirectory() as d:
+            self.assertEqual(updates.read_token(d),'')
+            f=Path(d)/'config'/'update'/'token.txt';f.parent.mkdir(parents=True);f.write_text('\ufeff'+'a'*40+'\r\n',encoding='utf-8')
+            self.assertEqual(updates.read_token(d),'a'*40)
+            f.write_text('a b',encoding='utf-8')
+            with self.assertRaises(ValueError):updates.read_token(d)
+
+    def test_manager_reads_gitea_source_from_lan_config(self):
+        with tempfile.TemporaryDirectory() as d:
+            (Path(d)/'LAN_CONFIG.json').write_text(json.dumps({'UpdateRepo':GITEA+'/'}),encoding='utf-8')
+            m=updates.UpdateManager(d,'12.19.0',lambda:{},lambda _:None,gitea_source()[0])
+            self.assertEqual(m.repository(),GITEA)
+            m.check();self.assertEqual((m.error,m.available['version']),('','12.20.0'))
+
+
 if __name__=='__main__':unittest.main(verbosity=2)

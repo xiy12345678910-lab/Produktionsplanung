@@ -11,13 +11,14 @@ Stand: 12.10.2026. Alles zum Umzug steht in diesem Ordner. GitHub wird nach dem 
 | `BEFEHLE.md` | Befehle zum Kopieren: Code, Tags, Archiv-Tags, Releases mit Paketen, Kontrolle |
 | `PLAN_BRUECKENVERSION.md` | Warum vor dem Löschen eine Brückenversion (V12.29.0) nötig ist, Gitea-API-Unterschiede, Notweg |
 | `CHECKLISTE.md` | Abhakliste vom Anlegen des Gitea-Repos bis zum Löschen von GitHub |
+| `RUNNER.md` | Was die Gitea-Runner (Linux, Windows) brauchen, Release-Workflow auf Gitea |
 
 ## Reihenfolge (kurz)
 
 1. Kunde auf aktuellen Stand bringen (V12.28.3, danach V12.28.4).
 2. Gitea-Repo leer anlegen, Code und Tags übertragen (`BEFEHLE.md` Abschnitt 1–2).
 3. Releases mit Paketen auf Gitea anlegen (`BEFEHLE.md` Abschnitt 3).
-4. CI auf Gitea einrichten (Runner Linux + Windows, Workflows nach `.gitea/workflows/`).
+4. CI auf Gitea einrichten: Runner Linux + Windows (`RUNNER.md`). Die Workflows bleiben in `.github/workflows/` und laufen auf beiden Plattformen.
 5. Brückenversion V12.29.0 bauen. Sie lädt Updates von Gitea. Auf GitHub **und** Gitea veröffentlichen (`PLAN_BRUECKENVERSION.md`).
 6. V12.29.0 auf **jedem** Kundenserver installieren und prüfen.
 7. GitHub archivieren, nach einer Wartezeit löschen.
@@ -32,9 +33,9 @@ Updates sind dann nur noch per Hand mit `UPDATE_LIVE.ps1 -Paket` möglich.
 | Issues nach Gitea | erledigt (Betreiber). **Ausnahme: #91** wurde danach auf GitHub angelegt und muss noch übertragen werden. |
 | Branches bewertet | erledigt (`INVENTAR.md` Abschnitt 1) |
 | Tags/Releases bewertet | erledigt (`INVENTAR.md` Abschnitt 2) |
-| Code + Tags nach Gitea | offen |
-| Releases + Pakete nach Gitea | offen |
-| CI auf Gitea | offen |
-| Brückenversion V12.29.0 | offen. Braucht: Gitea-URL, Konto/Repo, öffentlich/privat, Gitea-Version, Erreichbarkeit aus dem Kunden-LAN |
+| Code + Tags nach Gitea | erledigt (Abgleich 15.10.2026: Branches, Tags, Issues, PRs, Kommentare, Releases mit Paketen identisch) |
+| Releases + Pakete nach Gitea | erledigt (7 Releases, Pakete byte-gleich) |
+| CI auf Gitea | Workflows bereit (CI wird ausgelöst, `release.yml` kann Gitea). Offen: Runner (`RUNNER.md`) |
+| Brückenversion V12.29.0 | Code fertig (Gitea-Quelle per `UpdateRepo`, siehe `PLAN_BRUECKENVERSION.md` Abschnitt 3). Offen: für Kunden erreichbare Gitea-URL als Standard, Lesetoken je Kunde |
 | Kunde auf V12.29.0 | offen |
 | GitHub gelöscht | offen (zuletzt) |
