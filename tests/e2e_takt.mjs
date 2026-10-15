@@ -84,7 +84,7 @@ try {
   check(await page.locator('#planTaktField').isVisible(), 'Takt-Auswahl sichtbar bei Ressource mit Takten');
   await page.selectOption('#planTakt', 'tk_t');
   const hv = await page.inputValue('#planHours');
-  check(Number(hv) === 1, `Laufzeit aus Takt x Menge = 1 h (${hv})`);
+  check(hv === '1:00', `Laufzeit aus Takt x Menge = 1:00 h (${hv})`);
   await page.fill('#planHours', '2'); check(await page.inputValue('#planHours') === '2', 'Laufzeit bleibt editierbar');
   await page.click('#planCancel');
   // Menge 0 -> Hinweis

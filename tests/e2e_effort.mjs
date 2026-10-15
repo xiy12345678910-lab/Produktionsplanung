@@ -122,7 +122,7 @@ try {
   }
   await setup({ effort: true, gate: true, emps: 2, hours: 40 });
   p = await plan();
-  check(p.text === '40 Ph · 2 Pers. → 20 h', `Anzeige am Auftrag: "${p.text}"`);
+  check(p.text === '40:00 Ph · 2 Pers. → 20:00 h', `Anzeige am Auftrag: "${p.text}"`);
   check(/Pers\./.test(p.tip), `Tooltip nennt die Besetzung je Tag: "${p.tip.slice(0, 80)}"`);
 
   // ---- Obergrenze ----
@@ -147,7 +147,7 @@ try {
   const w4 = (await plan()).wall;
   check(near(w2, 20) && near(w4, 10), `Zwei Mitarbeiter mehr zugeordnet: 20 h -> 10 h (${w2.toFixed(1)} -> ${w4.toFixed(1)})`);
   const ui = await ev(page, () => { switchView('orders'); renderAll(); return { row: document.querySelector('#ordersBody tr')?.innerText || '', tip: document.querySelector('#ordersBody [title^="Dauer nach Besetzung"]')?.getAttribute('title') || '', kpi: document.getElementById('mLate')?.textContent }; });
-  check(/40 Ph · 4 Pers\. → 10 h/.test(ui.row), 'Auftragsliste zeigt "40 Ph · 4 Pers. → 10 h" nach der Änderung');
+  check(/40:00 Ph · 4 Pers\. → 10:00 h/.test(ui.row), 'Auftragsliste zeigt "40:00 Ph · 4 Pers. → 10:00 h" nach der Änderung');
   check(ui.tip.length > 20, 'Tooltip am Auftrag vorhanden');
 
   // ---- Gate AUS: es zählt die geplante crew ----
@@ -189,7 +189,7 @@ try {
     return { ok: true, flushed, status: st?.status, effort: st?.baselinePlan?.effort === true, crews: [...new Set((st?.baselinePlan?.segments || []).map(s => s.crew))], shown: calcSchedule()['o1'].effort ? effortText(calcSchedule()['o1'].effort) : '' };
   });
   check(rel.ok && rel.flushed && rel.status === 'released' && rel.effort, `Freigabe wird vom Server angenommen (${JSON.stringify(rel.crews)})`);
-  check(rel.shown === '40 Ph · 2 Pers. → 20 h', `Freigegebener Auftrag zeigt den eingefrorenen Plan: "${rel.shown}"`);
+  check(rel.shown === '40:00 Ph · 2 Pers. → 20:00 h', `Freigegebener Auftrag zeigt den eingefrorenen Plan: "${rel.shown}"`);
 
   // ---- Einstellungen: Schalter als Symbol mit Tooltip ----
   await setup({ effort: false, gate: false, hours: 40 });

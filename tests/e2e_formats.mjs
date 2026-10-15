@@ -158,10 +158,10 @@ try {
   await setTool(t1, 'n', 2);
   st = await until(lead, s => { const t = s.formats[0].tools.find(x => x.id === t1); return t.wkz === 'WKZ-100' && t.l === 300 && t.n === 2; }, 'WKZ-Nr. (Großschrift), Maße und Nutzen gespeichert');
 
-  // Laufzeit: FA 7001 100 Stk / 2 Nutzen = 50 Takte, FA 7002 60 Stk / 1 = 60 Takte → 60 Takte × 12 s = 0,2 h
+  // Laufzeit: FA 7001 100 Stk / 2 Nutzen = 50 Takte, FA 7002 60 Stk / 1 = 60 Takte → 60 Takte × 12 s = 0:12 h
   const kpi = await lead.evaluate(() => [...document.querySelectorAll('.fmKpis b')].map(b => b.textContent));
   check(kpi[0] === '60', `Takte = 60 (${kpi[0]})`);
-  check(kpi[2] === '0,2 h', `Laufzeit = 0,2 h (${kpi.join(' | ')} · Takt-ID ${st.formats[0].taktId} · Maschine ${st.formats[0].machineId} · Takte ${JSON.stringify(st.machines.find(m => m.id === 'tz1').takte)})`);
+  check(kpi[2] === '0:12 h', `Laufzeit = 0:12 h (${kpi.join(' | ')} · Takt-ID ${st.formats[0].taktId} · Maschine ${st.formats[0].machineId} · Takte ${JSON.stringify(st.machines.find(m => m.id === 'tz1').takte)})`);
   check(await lead.locator('#fmSvg .fmTool').count() === 3, 'Draufsicht zeigt 3 Werkzeuge (2 Nutzen + 1)');
   if (process.env.FMT_SHOTS) await lead.screenshot({ path: process.env.FMT_SHOTS + '/formate.png' });
 

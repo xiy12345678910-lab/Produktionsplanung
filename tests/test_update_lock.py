@@ -105,6 +105,7 @@ AUTH = {"/api/login", "/api/logout"}   # nur Sitzungen (keine Produktionsdaten);
 # Literal aus server.py -> (Methode, Pfad, Body) einer echten Anfrage
 COVERED = {
     "/api/updates/install": [("POST", "/api/updates/install", {})],
+    "/api/updates/check": [("POST", "/api/updates/check", {})],
     "/api/license": [("POST", "/api/license", {"data": "e30="}), ("DELETE", "/api/license", None)],
     "/api/config/logo": [("POST", "/api/config/logo", {"data": "", "contentType": "image/png"})],
     "/api/templates/apply": [("POST", "/api/templates/apply", {"template": "metall_cnc"})],

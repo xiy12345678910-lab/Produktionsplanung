@@ -1,4 +1,4 @@
-MASCHINENPLANUNG V12.28.4 - WINDOWS-SERVER (LAN ONLY)
+MASCHINENPLANUNG V12.29.0 - WINDOWS-SERVER (LAN ONLY)
 =====================================================
 
 1. VORAUSSETZUNGEN
@@ -45,6 +45,9 @@ MASCHINENPLANUNG V12.28.4 - WINDOWS-SERVER (LAN ONLY)
    (System, nur Admin) zeigt "HTTPS nicht eingerichtet". Umstellen einmalig als Administrator:
         cd C:\ProgramData\Maschinenplanung
         .\HTTPS_Einrichten.ps1                       (optional: -Name mp.firma.local)
+     Meldet PowerShell "Ausfuehrung von Skripts ist deaktiviert" bzw. "nicht digital signiert":
+        powershell -ExecutionPolicy Bypass -File C:\ProgramData\Maschinenplanung\HTTPS_Einrichten.ps1
+     Ab V12.29.0 werden alte http://-Adressen automatisch auf https:// umgeleitet.
    - Legt config\tls an (Firmen-CA + Serverzertifikat, nur SYSTEM/Administratoren lesbar), vertraut der CA
      auf dem Server und startet ihn neu. Adresse danach: https://<LAN-IP>:8765 bzw. https://<PC-Name>:8765
    - Arbeitsplaetze (auch nach Neuinstallation noetig): Datei Firmen-CA.crt (im Live-Ordner) EINMAL als
@@ -90,6 +93,7 @@ MASCHINENPLANUNG V12.28.4 - WINDOWS-SERVER (LAN ONLY)
 
 4. GEPLANTE AUFGABEN
    - "Maschinenplanung Server": beim Windows-Start, Konto SYSTEM, automatischer Neustart bei Fehlern.
+     Ab V12.29.0 wartet der Start bis zu 10 Minuten, bis das LAN (Profil Privat/Domaene) bereit ist.
    - "Maschinenplanung Backup": taeglich 12:15 und 22:15 Online-Backup mit Integritaetspruefung,
      60 Sicherungen (ca. 30 Tage) in backups\.
    - Zweitkopie (dringend empfohlen): Datei BACKUP_ZIEL.txt im Live-Ordner anlegen und als erste

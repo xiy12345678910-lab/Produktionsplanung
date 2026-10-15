@@ -3,7 +3,8 @@
 # Alle Ausgaben (auch Fehler) landen in logs\server_<Datum>.log.
 param(
     [Parameter(Mandatory = $true)][string]$PythonExe,
-    [int]$Port = 8765
+    [int]$Port = 8765,
+    [int]$LanWaitSeconds = 600
 )
 $ErrorActionPreference = 'Stop'
 $Base = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -43,10 +44,21 @@ try {
 
     # V12.28.1: Zwischenschritte protokollieren, damit ein abgebrochener Start eingrenzbar ist.
     Write-Log 'Schritt: LAN-Erkennung ...'
+    # V12.29.0: Beim Hochfahren sind Netzwerkadapter, Standardroute und Netzwerkprofil (Domaene wird oft erst
+    # nach 1-3 Minuten erkannt, vorher "Oeffentlich") noch nicht bereit. Frueher endete der Start dann sofort -
+    # und die Aufgabenplanung startet bei Exitcode 1 nicht neu. Jetzt bis zu $LanWaitSeconds s warten.
     $lan = Get-MPLanInfo
+    $waited = 0
+    while (-not $lan -and $waited -lt $LanWaitSeconds) {
+        if ($waited -eq 0) { Write-Log "Noch kein LAN (Privat/Domaene) - warte bis $LanWaitSeconds s (Systemstart) ..." }
+        Start-Sleep -Seconds 10
+        $waited += 10
+        $lan = Get-MPLanInfo
+    }
     if (-not $lan) {
         throw 'Kein aktives physisches IPv4-LAN mit Netzwerkprofil Privat oder Domaene gefunden. Server wird aus Sicherheitsgruenden NICHT gestartet.'
     }
+    if ($waited -gt 0) { Write-Log "LAN nach $waited s bereit." }
     Write-Log ("Schritt: Subnetz fuer {0}/{1} ..." -f $lan.IP, $lan.PrefixLength)
     $Subnet = (& $PythonExe -I -c "import ipaddress; print(ipaddress.ip_network('$($lan.IP)/$($lan.PrefixLength)', strict=False))").Trim()
     if (-not $Subnet) { throw 'LAN-Subnetz konnte nicht ermittelt werden.' }

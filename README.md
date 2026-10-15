@@ -1,6 +1,6 @@
 # Produktionsplanung
 
-Maschinenplanung V12.28.4 – Wochen-/Ressourcenplanung je Bereich (Maschinen & Linien), Projekte,
+Maschinenplanung V12.29.0 – Wochen-/Ressourcenplanung je Bereich (Maschinen & Linien), Projekte,
 Formate (Tiefziehen), Personal und Nachrichten. Zentraler Windows-LAN-Server, Browser-Oberfläche.
 
 - `server.py` – Python-Server (nur Standardbibliothek, SQLite), `index.html` – Oberfläche, `mp_config.py` – Firmenkonfiguration, `mp_tls.py` – HTTPS (Zertifikate), `mp_rights.py` – Rollen & Rechte, `mp_demand.py` – Bedarf (Rahmenaufträge, Abrufe, Bestand), `mp_license.py` – Lizenzprüfung, `release_gates.py` – Freigabeprüfung, `app_updates.py` – allgemeine Releaseupdates

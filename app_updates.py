@@ -233,6 +233,7 @@ class UpdateManager:
         self.checked_at = 0
         self.error = ''
         self.checking = False
+        self.manual_at = 0
 
     @property
     def folder(self):
@@ -280,7 +281,30 @@ class UpdateManager:
         if due:
             threading.Thread(target=self.check, daemon=True).start()
         job = read_json(self.folder/'status.json', {}) or {}
-        return {'currentVersion': self.current, 'available': bool(self.available), 'version': (self.available or {}).get('version'), 'notes': (self.available or {}).get('notes', ''), 'job': {k: job.get(k) for k in ('jobId', 'version', 'stage', 'error', 'rolledBack')} if job else None, 'checkError': self.error, 'installSupported': os.name == 'nt'}
+        out = {k: job.get(k) for k in ('jobId', 'version', 'stage', 'error', 'rolledBack')} if job else None
+        if out:
+            out['stale'] = self.job_stale(job)
+        return {'currentVersion': self.current, 'available': bool(self.available), 'version': (self.available or {}).get('version'), 'notes': (self.available or {}).get('notes', ''), 'job': out, 'checkError': self.error, 'installSupported': os.name == 'nt', 'checkedAt': int(self.checked_at) if self.checked_at else None}
+
+    def job_stale(self, job):
+        """#91: Abgeschlossener Auftrag, den die installierte Version bereits ueberholt hat (z. B. fehlgeschlagenes
+        Button-Update 12.28.0, danach 12.28.1 per Skript installiert). Er wird nicht mehr als aktueller Fehler gezeigt."""
+        if job.get('stage') not in ('complete', 'failed') or (self.folder/'update.lock').exists():
+            return False
+        try:
+            target, installed = version(job.get('version')), version(self.current)
+        except ValueError:
+            return False
+        return target < installed or (job.get('stage') == 'failed' and target <= installed)
+
+    def recheck(self, min_interval=60):
+        """#91: "Jetzt nach Updates suchen" (Admin). Prueft sofort; hoechstens einmal je min_interval Sekunden."""
+        with self.guard:
+            if self.checking or time.time()-self.manual_at < min_interval:
+                return False
+            self.manual_at = time.time()
+        self.check()
+        return True
 
     def start(self, actor):
         with self.guard:
