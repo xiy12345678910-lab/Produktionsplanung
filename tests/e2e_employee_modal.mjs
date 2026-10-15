@@ -73,13 +73,13 @@ try {
   // Auswertung: Stunden, Abwesenheiten, Aufträge & Maschinen, Einsatz je Bereich
   const txt = () => page.evaluate(() => document.getElementById('empModalBody').innerText.replace(/\s+/g, ' '));
   let t = await txt();
-  check(/Soll \(Vertrag\) \d/.test(t) && /Geplant [\d,]+ h/.test(t), 'Auswertung: Soll und geplante Stunden');
+  check(/Soll \(Vertrag\) \d/.test(t) && /Geplant \d+:\d\d h/.test(t), 'Auswertung: Soll und geplante Stunden');
   check(/Urlaub \(Zeitraum\) 2 T/.test(t) && /Urlaub \d{4} 2 T/.test(t), `Auswertung: 2 Urlaubstage im Zeitraum und im Jahr`);
   check(t.includes('Einsatz je Bereich') && (t.includes('Stammbereich') || t.includes('Keine geplanten Einsätze')), 'Auswertung: Einsatz je Bereich');
   // Aufträge: gemeldete Laufzeit aus der Nachkalkulation (evalRecords) wird dem Mitarbeiter zugeordnet
   await ev(s => { const orig = evalRecords; window.__origEval = orig; evalRecords = () => [{ h: { fa: 'FA-4711', actualFinishedAt: new Date().toISOString() }, mid: s.mid, dep: s.dep, staff: { 'Popup Test': 3.5, 'Andere': 2 }, good: 120, scrap: 3 }]; renderEmpModal(); }, setup);
   t = await txt();
-  check(t.includes('FA-4711') && t.includes(setup.mname) && /Ist an Aufträgen 3,5 h/.test(t), `Auswertung: Auftrag, Maschine und 3,5 h Ist`);
+  check(t.includes('FA-4711') && t.includes(setup.mname) && /Ist an Aufträgen 3:30 h/.test(t), `Auswertung: Auftrag, Maschine und 3:30 h Ist (h:mm)`);
   await ev(() => { evalRecords = window.__origEval; });
 
   // Zeitraum: Jahr und ungültiger Zeitraum

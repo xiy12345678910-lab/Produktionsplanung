@@ -28,7 +28,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 MP_DEBUG_ABORTS = os.environ.get('MP_DEBUG_ABORTS') == '1'
-APP_VERSION = "12.28.4"
+APP_VERSION = "12.29.0"
 SERVER_STARTED = time.time()
 HOST = os.environ.get("MP_HOST", "0.0.0.0")
 PORT = int(os.environ.get("MP_PORT", "8765"))
@@ -302,7 +302,8 @@ def build_diagnostics(tls_on: bool = False) -> dict:
 # Pfaden in LICENSE_RO_ALLOWED. Daten werden nie gelöscht; Lesen, Backup und Diagnose bleiben möglich.
 # ---------------------------------------------------------------------------------------------
 LICENSE_RO_ALLOWED = {("POST", "/api/login"), ("POST", "/api/logout"), ("POST", "/api/password"), ("POST", "/api/client-log"),
-                      ("POST", "/api/license"), ("DELETE", "/api/license"), ("POST", "/api/updates/install")}
+                      ("POST", "/api/license"), ("DELETE", "/api/license"), ("POST", "/api/updates/install"),
+                      ("POST", "/api/updates/check")}
 LICENSE_RO_TEXT = "Lizenz abgelaufen/fehlt – nur Lesen. Daten bleiben erhalten; bitte den Admin bzw. den Lizenzgeber ansprechen."
 
 
@@ -4419,7 +4420,9 @@ class MPHTTPServer(ThreadingHTTPServer):
     # 30 gleichzeitige Browser + kurze Bursts bei Login/Reload/Long-Poll-Reconnect.
     request_queue_size = 128
     daemon_threads = True
-    allow_reuse_address = True
+    # V12.29.0: Unter Windows erlaubt SO_REUSEADDR einen ZWEITEN Server auf demselben Port (der alte bekam weiter
+    # Anfragen, z. B. HTTP statt HTTPS nach HTTPS_Einrichten.ps1). Dort deshalb aus: belegter Port = klarer Startfehler.
+    allow_reuse_address = os.name != "nt"
 
     def __init__(self, *args, ssl_context=None, **kwargs):
         self._conn_slots = threading.BoundedSemaphore(MAX_CONNECTIONS)
@@ -4444,6 +4447,13 @@ class MPHTTPServer(ThreadingHTTPServer):
                 # oder fehlerhafter Client die Annahme weiterer Verbindungen nicht blockiert.
                 try:
                     request.settimeout(15)
+                    # V12.29.0: Alte Lesezeichen/Verknüpfungen mit http:// bekamen nach HTTPS_Einrichten.ps1 nur
+                    # "Verbindung zurückgesetzt". Klartext-HTTP am HTTPS-Port wird jetzt auf https:// umgeleitet.
+                    first = request.recv(1, socket.MSG_PEEK)
+                    if first and first != b"\x16":
+                        self._redirect_plain_http(request, client_address)
+                        self.shutdown_request(request)
+                        return
                     request = self.ssl_context.wrap_socket(request, server_side=True)
                 except (OSError, ValueError):
                     self.shutdown_request(request)
@@ -4451,6 +4461,39 @@ class MPHTTPServer(ThreadingHTTPServer):
             super().process_request_thread(request, client_address)
         finally:
             self._conn_slots.release()
+
+    def _redirect_plain_http(self, request, client_address) -> None:
+        """Antwortet auf eine Klartext-HTTP-Anfrage am HTTPS-Port mit 301 auf dieselbe Adresse per https://.
+        Nur für das erlaubte LAN-Subnetz und erlaubte Hostnamen (wie Handler), sonst ohne Antwort schließen."""
+        if not client_ip_allowed(client_address[0]):
+            return
+        data = b""
+        while b"\r\n\r\n" not in data and len(data) < 8192:
+            chunk = request.recv(1024)
+            if not chunk:
+                break
+            data += chunk
+        lines = data.split(b"\r\n\r\n", 1)[0].decode("latin-1", "replace").split("\r\n")
+        parts = lines[0].split(" ")
+        path = parts[1] if len(parts) >= 2 and parts[1].startswith("/") else "/"
+        bind_ip, port = self.server_address[0], self.server_address[1]
+        host = ""
+        for line in lines[1:]:
+            name, _, value = line.partition(":")
+            if name.strip().lower() == "host":
+                host = split_host_port(value)[0]
+                break
+        if not host_name_allowed(host, bind_ip):
+            host = bind_ip
+        if ":" in host and not host.startswith("["):
+            host = f"[{host}]"
+        target = f"https://{host}:{port}{path}"
+        if any(c in target for c in "\r\n"):
+            return
+        body = f"Bitte HTTPS verwenden: {target}\n".encode("utf-8")
+        head = (f"HTTP/1.1 301 Moved Permanently\r\nLocation: {target}\r\nContent-Type: text/plain; charset=utf-8\r\n"
+                f"Content-Length: {len(body)}\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n").encode("latin-1")
+        request.sendall(head + body)
 
 
 # ---------------------------------------------------------------------------------------------
@@ -5201,6 +5244,14 @@ class Handler(BaseHTTPRequestHandler):
                               "where": str(body.get("where") or "")[:120], "role": user["role"],
                               "clientVersion": str(self.headers.get("X-MP-Client-Version", ""))[:20]})
             return self.json_response(200, {"ok": True})
+        if path == "/api/updates/check":
+            # #91: "Jetzt nach Updates suchen" – sofortige Prüfung statt bis zu 1 h Warten, höchstens 1× pro Minute.
+            user = self.require_user(["admin"])
+            if not user or not self.require_current_client():
+                return
+            if not update_manager().recheck():
+                return self.json_response(429, mp_error("MP-UPD-008", "Update-Suche läuft bereits oder wurde gerade erst ausgeführt – bitte eine Minute warten."))
+            return self.json_response(200, update_manager().poll())
         if path == "/api/updates/install":
             user = self.require_user(["admin"])
             if not user or not self.require_current_client():

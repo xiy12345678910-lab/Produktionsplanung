@@ -88,13 +88,13 @@ try {
   await ev(() => { switchView('orders'); renderAll(); }); await page.waitForTimeout(300);
   const row = page.locator('#ordersBody tr[data-id="ws_bat"]');
   const hIn = row.locator('input[data-f="hours"]');
-  check(await hIn.isDisabled() && Number(await hIn.inputValue()) === 6.5, `FA-Liste: Sollstunden 6,5 berechnet und gesperrt (${await hIn.inputValue()})`);
+  check(await hIn.isDisabled() && await hIn.inputValue() === '6:30', `FA-Liste: Sollstunden 6:30 berechnet und gesperrt (${await hIn.inputValue()})`);
   const chip = (await row.locator('[data-batch-chip]').innerText()).trim();
   check(chip === '3 Chargen × 2:00 + Reinigung 2 × 0:15 = 6:30 h', `FA-Liste: Erklärungs-Chip „${chip}“`);
   // Plantafel auf die Woche des Auftrags stellen (Start kann je nach Uhrzeit in der Folgewoche liegen)
   await ev(() => { const r = calcSchedule().ws_bat; if (r?.start) data.ui.week = dateKey(monday(r.start)); switchView('overview'); renderAll(); }); await page.waitForTimeout(300);
   const boardTxt = await page.locator('[data-board-order="ws_bat"]').first().innerText().catch(() => '');
-  check(boardTxt.includes('6,5 h · 3 Ch.'), `Plantafel zeigt Charge-Stunden („${boardTxt.replace(/\s+/g, ' ').slice(0, 120)}“)`);
+  check(boardTxt.includes('6:30 h · 3 Ch.'), `Plantafel zeigt Charge-Stunden („${boardTxt.replace(/\s+/g, ' ').slice(0, 120)}“)`);
 
   // (3) Vorrang und Varianten (Client = Server-Formel)
   const v = await ev(id => {
@@ -122,7 +122,7 @@ try {
   await ev(id => { const o = data.workSteps.find(x => x.id === 'ws_bat'); o.machineId = ''; window.__mid = id; openPlanPopup('ws_bat'); }, mid);
   await page.waitForSelector('#planModal.show');
   await page.selectOption('#planResource', mid); await page.waitForTimeout(200);
-  check(Number(await page.inputValue('#planHours')) === 6.5 && await page.locator('#planHours').isDisabled(), `Popup: Laufzeit 6,5 h aus Charge, gesperrt (${await page.inputValue('#planHours')})`);
+  check(await page.inputValue('#planHours') === '6:30' && await page.locator('#planHours').isDisabled(), `Popup: Laufzeit 6:30 h aus Charge, gesperrt (${await page.inputValue('#planHours')})`);
   check(!(await page.locator('#planTaktField').isVisible()), 'Popup: Takt-Auswahl bei Charge ausgeblendet (Charge > Takt)');
   check((await page.locator('#planBatchHint').innerText()).includes('3 Chargen × 2:00'), 'Popup: Erklärungs-Chip sichtbar');
   await page.click('#planOk'); await page.waitForSelector('#moveModal.show'); await page.click('#confirmMove'); await page.waitForTimeout(300);

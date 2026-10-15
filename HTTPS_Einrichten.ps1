@@ -19,14 +19,19 @@ $r = Install-MPTls $Base $PythonExe ([string]$c.lan_ip) $Name
 $public = $r.PublicCa
 Write-Host "Firmen-CA vertraut (Fingerabdruck $($r.Thumbprint)). Zum Verteilen: $public" -ForegroundColor Green
 
-Stop-ScheduledTask -TaskName $MP_TaskName -ErrorAction SilentlyContinue
+# V12.29.0: Task UND laufenden server.py beenden (Stop-MPServer). Vorher stoppte nur der Task; der alte
+# HTTP-Server lief oft weiter, hielt Port 8765 und der Health-Check per HTTPS schlug fehl ("HTTPS funktioniert nicht").
+try { Stop-MPServer $Base } catch { Write-Warning $_.Exception.Message }
 [void](Wait-MPTaskIdle $MP_TaskName 30)
 Start-ScheduledTask -TaskName $MP_TaskName
 $h = Wait-MPHealth $Base (Get-MPPackageVersion $Base) 180
 if ($h) {
     Write-Host "PASS - Server laeuft jetzt auf $($h.Url)" -ForegroundColor Green
+    Write-Host 'Alte http://-Adressen werden automatisch auf https:// umgeleitet.'
     Write-Host 'Arbeitsplaetze: Firmen-CA.crt einmal als vertrauenswuerdige Stammzertifizierungsstelle importieren (README_Windows.txt 2c).'
 } else {
-    Write-Host 'FEHLER - Server antwortet per HTTPS nicht. Log: logs\server_<Datum>.log. Zurueck auf HTTP: Ordner config\tls umbenennen und Neustart_Server.ps1.' -ForegroundColor Red
+    Write-Host 'FEHLER - Server antwortet per HTTPS nicht. Letzte Zeilen aus dem Server-Log:' -ForegroundColor Red
+    Write-Host (Get-MPLogTail $Base 25)
+    Write-Host 'Zurueck auf HTTP: Ordner config\tls umbenennen und Neustart_Server.ps1.' -ForegroundColor Red
     exit 1
 }

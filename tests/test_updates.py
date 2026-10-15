@@ -117,6 +117,25 @@ class UpdateTests(unittest.TestCase):
         self.assertIn('Migration fehlgeschlagen',result['error'])
         with sqlite3.connect(self.base/'data'/'maschinenplanung.sqlite3') as con:self.assertTrue(con.execute("SELECT 1 FROM server_audit WHERE action='Update fehlgeschlagen'").fetchone())
 
+    def test_stale_failed_job_and_manual_recheck(self):
+        # #91: fehlgeschlagener Button-Versuch 12.20.0, danach 12.20.1 per Skript installiert -> kein aktueller Fehler mehr.
+        m=self.manager('12.20.1');m.folder.mkdir(parents=True,exist_ok=True)
+        updates.atomic_json(m.folder/'status.json',{'jobId':'x','version':'12.20.0','stage':'failed','error':'Server antwortet nicht','rolledBack':True})
+        self.assertTrue(m.poll()['job']['stale'])
+        updates.atomic_json(m.folder/'status.json',{'jobId':'x','version':'12.20.1','stage':'failed','error':'x'})
+        self.assertTrue(m.poll()['job']['stale'],'gleiche Version fehlgeschlagen, aber installiert = ueberholt')
+        updates.atomic_json(m.folder/'status.json',{'jobId':'x','version':'12.20.1','stage':'complete'})
+        self.assertFalse(m.poll()['job']['stale'],'eben erfolgreich installierte Version bleibt sichtbar')
+        updates.atomic_json(m.folder/'status.json',{'jobId':'x','version':'12.21.0','stage':'failed','error':'x'})
+        self.assertFalse(m.poll()['job']['stale'],'Fehler fuer eine neuere Version bleibt ein echter Fehler')
+        updates.atomic_json(m.folder/'status.json',{'jobId':'x','version':'12.20.0','stage':'installing'})
+        self.assertFalse(m.poll()['job']['stale'],'laufender Auftrag ist nie ueberholt')
+        calls=[];fetch,_=source('12.21.0')
+        m2=self.manager('12.20.1',lambda u,limit=1024*1024:(calls.append(u),fetch(u,limit))[1])
+        self.assertTrue(m2.recheck());self.assertEqual(m2.poll()['version'],'12.21.0')
+        n=len(calls);self.assertFalse(m2.recheck(),'zweite Suche innerhalb einer Minute wird abgewiesen');self.assertEqual(len(calls),n)
+        m2.manual_at-=61;self.assertTrue(m2.recheck())
+
     def test_arbitrary_source_is_rejected(self):
         for repo in ['../../file','https://evil.example/path','owner/repo;run']:
             with self.assertRaises(ValueError):updates.release_info(repo,'12.19.0',lambda *a:self.fail('Network must not run'))

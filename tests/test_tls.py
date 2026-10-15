@@ -114,6 +114,17 @@ try:
         answer = b""
     plain.close()
     check(b"200 OK" not in answer, "Unverschlüsseltes HTTP erhält auf dem HTTPS-Port keine Daten")
+    check(answer.startswith(b"HTTP/1.1 301") and f"Location: https://127.0.0.1:{port}/api/health".encode() in answer,
+          "V12.29.0: Klartext-HTTP am HTTPS-Port wird auf https:// umgeleitet (alte http-Lesezeichen)")
+    plain = socket.create_connection(("127.0.0.1", port), timeout=5)
+    plain.sendall(b"GET /x HTTP/1.1\r\nHost: boese.example\r\n\r\n")
+    try:
+        answer = plain.recv(400)
+    except OSError:
+        answer = b""
+    plain.close()
+    check(f"Location: https://127.0.0.1:{port}/x".encode() in answer and b"boese" not in answer,
+          "Umleitung nutzt nie einen fremden Host-Namen (Schutz gegen DNS-Rebinding)")
     status, _, data, _ = req("GET", "/api/health")
     check(status == 200, "Server läuft nach fehlerhaften Handshakes weiter")
     origin = f"https://127.0.0.1:{port}"
@@ -177,6 +188,12 @@ check(not any(x in text for text in upd.values() for x in ("--tls-einrichten", "
       "Updatepfad (UPDATE_LIVE.ps1, Update_von_GitHub.ps1, app_updates.py) legt kein TLS an und entfernt keins")
 codes = (SRC / "FEHLERCODES.txt").read_text(encoding="utf-8")
 check("MP-TLS-002" in codes and "MP-TLS-003" in codes, "FEHLERCODES.txt nennt MP-TLS-002 und MP-TLS-003")
+
+
+# V12.29.0: HTTPS_Einrichten.ps1/Neustart_Server.ps1 beenden auch einen weiterlaufenden server.py; Autostart wartet aufs LAN.
+check("Stop-MPServer $Base" in https_ps and "Stop-MPServer $Base" in ps("Neustart_Server.ps1"), "HTTPS_Einrichten.ps1 und Neustart_Server.ps1 beenden Task und server.py (Stop-MPServer)")
+run_lan = ps("Run_Server_LAN.ps1")
+check("$LanWaitSeconds = 600" in run_lan and "while (-not $lan -and $waited -lt $LanWaitSeconds)" in run_lan, "Run_Server_LAN.ps1 wartet beim Systemstart bis zu 10 min auf das LAN")
 
 shutil.rmtree(TMP, ignore_errors=True)
 print(f"\n{sum(RESULTS)}/{len(RESULTS)} bestanden")

@@ -107,7 +107,7 @@ try {
   check(await production.locator(rowSelector).count() === 1 && (await production.locator(rowSelector).textContent()).includes('Gut 0') && (await production.locator(rowSelector).textContent()).includes('Rest 100'), 'FA-Zeile zeigt aktuelle Gut-/Ausschuss-/Restmengen');
   const planRowSelector = '[data-testid="project-production-row-fa_plan"]';
   await production.locator(planRowSelector + ' .fLine').click();
-  check((await production.locator(planRowSelector).textContent()).includes('8 h'), 'Offene Plan-FA zeigt Sollstunden');
+  check((await production.locator(planRowSelector).textContent()).includes('8:00 h'), 'Offene Plan-FA zeigt Sollstunden (h:mm)');
   check(await production.locator('#projectModalBody input:enabled, #projectModalBody select:enabled, #projectModalBody [data-project-go], #projectModalBody [data-proc-add], #projectModalBody [data-proc-del], #projectModalBody [data-proc-take], #projectModalBody [data-fshow]').count() === 0, 'Produktionsansicht im Projektmodal hat keine editierbaren Felder oder Aktionen');
   const initial = modalText;
   const planUpdated = await ev(admin, async () => {
@@ -118,7 +118,7 @@ try {
   if (!planUpdated.ok) throw new Error('Planstunden konnten nicht gespeichert: ' + planUpdated.error);
   await production.waitForFunction(() => {
     const row = document.querySelector('[data-testid="project-production-row-fa_plan"]');
-    return row?.textContent.includes('12 h');
+    return row?.textContent.includes('12:00 h');
   }, null, { timeout: 12000 });
   check(true, 'Offenes Projektmodal aktualisiert Planstunden ohne Reload');
   const response = await ev(admin, async () => {

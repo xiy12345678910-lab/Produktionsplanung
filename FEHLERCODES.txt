@@ -1,4 +1,4 @@
-MASCHINENPLANUNG V12.28.4 - FEHLERCODES
+MASCHINENPLANUNG V12.29.0 - FEHLERCODES
 ======================================
 
 Jeder Fehler wird dem Mitarbeiter als Klartext + Code angezeigt.
@@ -496,6 +496,7 @@ MP-UPD-004   Vorabtest/Backup unvollstaendig oder ungueltig; Live-Eingriff wird 
 MP-UPD-005   Rollback-Healthcheck fehlgeschlagen; Wartungssperre bleibt bestehen, Wiederherstellung durch IT erforderlich.
 MP-UPD-006   Ungueltiger Programmdateiname im Paket (nur Name oder eine Ordnerebene mit /, kein .., kein Laufwerk); nichts wird kopiert.
 MP-UPD-007   UPDATE_LIVE.ps1 -Paket nur zusammen mit -Rueckstufen bzw. Dateiliste des aelteren Pakets nicht lesbar. Nichts veraendert.
+MP-UPD-008   "Jetzt nach Updates suchen": Suche laeuft schon oder lief vor weniger als 1 Minute. Kurz warten.
              Rueckkehr zu einer aelteren Version: Update_von_GitHub.ps1 -Tag vALT -Rueckstufen (docs/ROLLBACK.md).
 
 V12.27.0 NEU (Lizenzschluessel, #52)
