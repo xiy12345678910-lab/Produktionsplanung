@@ -95,7 +95,8 @@ try {
   // Einplanen im Fenster direkt aus dem Vorrat (V9): Ressource + Laufzeit, Vorschau, dann Auswirkungsprüfung.
   await cnc.click(`#board [data-handoff-plan="${fa.id}"]`); await cnc.locator('#planModal.show').waitFor();
   check((await cnc.locator('#planFacts').innerText()).includes('FA-RA-1') && await cnc.locator('#planOk').isDisabled(), 'Einplanungsfenster zeigt FA-Daten; Übernehmen erst nach Ressource/Laufzeit');
-  await cnc.selectOption('#planResource', 'm1'); await cnc.fill('#planHours', '3'); await cnc.fill('#planDry', '2:30');
+  await cnc.selectOption('#planResource', 'm1'); await cnc.fill('#planHours', '3');
+  check(await cnc.locator('#planDryField').isHidden(), 'V12.29.0: Trocknung nur in Bereichen mit Standard-Trocknung (hier CNC: ausgeblendet)');
   await cnc.waitForFunction(() => /Start/.test(document.getElementById('planPreview').textContent));
   check(/Ende/.test(await cnc.locator('#planPreview').innerText()) && await cnc.locator('#planOk').isEnabled(), 'Vorschau zeigt Start und Ende');
   await cnc.click('#planOk'); await cnc.locator('#moveModal.show').waitFor(); await cnc.click('#confirmMove');
@@ -103,7 +104,7 @@ try {
   st = await getState(cnc);
   const planned = st.workSteps.find(x => x.id === fa.id);
   check(planned?.machineId === 'm1' && planned.handoffUnassigned === false && planned.targetQty === 200 && planned.callOffId === co.id, 'Bereich plant Ressource/Laufzeit, Menge und Abrufbezug bleiben');
-  check(planned?.dryingHours === 2.5, `Abteilungsleitung legt Trocknung im Einplanungsfenster als hh:mm fest (2:30 → ${planned?.dryingHours} h)`);
+  check(planned?.dryingHours == null, `Ohne Trocknungsfeld wird keine Trocknung gespeichert (${planned?.dryingHours})`);
 
   const konf = await login('konflead');
   const foreign = await getState(konf);

@@ -73,7 +73,7 @@ try {
   const pl = await ev(() => {
     const dep = deptOfMachine(data.machines.find(m => m.active !== false).id), ms = data.machines.filter(m => deptOfMachine(m.id) === dep && m.active !== false);
     ms.forEach(m => { delete m.takte }); ms[ms.length - 1].takte = [{ id: 't_std', name: 'Standard', sec: 36, parts: 1 }];
-    const o = { ...data.workSteps.find(x => x.id === 'a2'), id: 'pl1', fa: 'FA-PL1', departmentId: dep, machineId: '', targetQty: 500, hours: 0, handoffUnassigned: true, pos: 50 };
+    const o = { ...data.workSteps.find(x => x.id === 'a2'), id: 'pl1', fa: 'FA-PL1', departmentId: dep, machineId: '', targetQty: 500, hours: 0, handoffUnassigned: true, pos: 50, sequence: 50 };
     data.workSteps.push(o); save('Testdaten'); renderAll(); openPlanPopup('pl1');
     return { target: ms[ms.length - 1].id, res: document.getElementById('planResource').value, takt: document.getElementById('planTakt').value, hours: document.getElementById('planHours').value, ok: !document.getElementById('planOk').disabled };
   });
@@ -81,6 +81,37 @@ try {
   check(pl.res === pl.target && pl.takt === 't_std' && pl.hours === '5:00', `Einplanen: Ressource mit Takt, Takt und Laufzeit vorbelegt (${JSON.stringify(pl)})`);
   check(pl.ok, 'Einplanen: „Einplanung übernehmen“ sofort möglich');
   await page.click('#planCancel'); await page.waitForTimeout(150);
+
+  // (4) Umrüsten in der Belegung, Trocknung nur mit Standard-Trocknung, Termin direkt im Popup
+  const pc = await ev(() => {
+    const o = data.workSteps.find(x => x.id === 'pl1'), dep = departmentById(o.departmentId), m = machine('m3'); m.setupMinutes = 30; delete dep.dryingHours; renderAll(); openPlanPopup('pl1');
+    const r = { calc: document.getElementById('planCalc').textContent, dryHidden: document.getElementById('planDryField').style.display === 'none' };
+    document.getElementById('planCancel').click(); dep.dryingHours = 2; openPlanPopup('pl1'); r.dryShown = document.getElementById('planDryField').style.display === ''; delete dep.dryingHours; return r;
+  });
+  check(/Laufzeit 5:00 h/.test(pc.calc) && /Umrüsten 0:30 h/.test(pc.calc) && /Belegung 5:30 h/.test(pc.calc), `Laufzeit aus Takt × Menge + Umrüsten = Belegung (${pc.calc})`);
+  check(pc.dryHidden && pc.dryShown, 'Trocknung nur bei Bereich mit Standard-Trocknung (z. B. Siebdruck)');
+  const start = await ev(() => { const d = new Date(); d.setDate(d.getDate() + 7); while ([0, 6].includes(d.getDay())) d.setDate(d.getDate() + 1); return dateKey(d) + 'T10:00'; });
+  await page.selectOption('#planType', 'start-hard'); await page.fill('#planAnchor', start); await page.waitForTimeout(300);
+  const prevText = await page.locator('#planPreview').innerText();
+  check(await page.locator('#planOk').isEnabled() && /Start/.test(prevText), `Termin im Popup: Start fix ${start} in der Vorschau (${prevText.replace(/\s+/g, ' ')})`);
+  await page.click('#planOk'); await page.locator('#moveModal.show').waitFor(); await page.click('#confirmMove'); await page.waitForTimeout(400);
+  const saved = await ev(() => { const o = data.workSteps.find(x => x.id === 'pl1'); return { anchorMode: o.anchorMode, requiredStart: o.requiredStart, machineId: o.machineId, hours: o.hours, unassigned: o.handoffUnassigned }; });
+  check(saved.anchorMode === 'hard' && saved.requiredStart === start && saved.machineId === 'm3' && saved.hours === 5 && saved.unassigned === false, `Übernommen: Ressource, Laufzeit und fixer Start (${JSON.stringify(saved)})`);
+
+  // (5) Tiefziehen: mehrere FA per Mehrfachauswahl auf ein neues Format
+  const fm = await ev(() => {
+    const dep = (data.departments || []).find(d => d.formats === true && data.machines.some(m => deptOfMachine(m.id) === d.id)); if (!dep) return { skip: true };
+    const mid = data.machines.find(m => deptOfMachine(m.id) === dep.id).id, base = data.workSteps.find(x => x.id === 'a2');
+    const mk = (id, pos) => ({ ...base, id, fa: id.toUpperCase(), order: id, departmentId: dep.id, machineId: '', handoffUnassigned: true, pos, sequence: pos, targetQty: 300, hours: 0 });
+    data.formats = []; data.workSteps.push(mk('tz1', 60), mk('tz2', 70), mk('tz3', 80)); save('Testdaten'); renderAll(); openPlanPopup('tz1');
+    return { dep: dep.id, shown: document.getElementById('planFmtBox').style.display === '', rows: document.querySelectorAll('[data-plan-fmt]').length };
+  });
+  check(!fm.skip && fm.shown && fm.rows === 3, `Format-Bereich: Mehrfachauswahl mit allen offenen FA des Bereichs (${JSON.stringify(fm)})`);
+  await page.check('[data-plan-fmt="tz2"]'); await page.check('[data-plan-fmt="tz3"]');
+  check(/3 FA/.test(await page.locator('#planFmtGo').innerText()), 'Knopf zählt die ausgewählten FA');
+  await page.click('#planFmtGo'); await page.waitForTimeout(600);
+  const fr = await ev(() => { const f = (data.formats || [])[0]; return { n: (data.formats || []).length, steps: (f?.tools || []).map(t => t.stepId).sort(), open: document.getElementById('formatsModal').classList.contains('show') }; });
+  check(fr.n === 1 && fr.steps.join() === 'tz1,tz2,tz3' && fr.open, `Ein Format mit allen drei FA, Formateditor offen (${JSON.stringify(fr)})`);
 } catch (e) {
   check(false, 'Unerwarteter Fehler: ' + (e.stack || e.message));
 } finally {

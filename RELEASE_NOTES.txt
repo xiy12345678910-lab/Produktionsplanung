@@ -16,7 +16,10 @@ STUNDEN IMMER ALS h:mm
 
 EINPLANEN (TIEFZIEHEN UND ALLE BEREICHE)
 - "FA einplanen" waehlt die Ressource vor (bisherige Maschine bzw. einzige/erste mit Takt) und den Takt der Maschine (gespeicherter Takt, sonst der erste). Die Laufzeit wird aus Menge und Takt eingetragen - meist reicht "Einplanung uebernehmen".
-- Neuer Knopf "Auf Format legen ..." (Bereiche mit Formatplanung): oeffnet den Formateditor mit dem markierten Auftrag (auf vorhandenes Format oder neues Format).
+- Rechenzeile: Menge / Stk je Takt x Takt = Laufzeit + Umruesten (Maschine) = Belegung.
+- Termin direkt im Fenster: Auto, Startwunsch, Start fix, Fertig bis (Wunsch/fix) mit Datum und Uhrzeit; die Vorschau rechnet sofort mit.
+- Trocknung danach nur noch in Bereichen mit Standard-Trocknung (z. B. Siebdruck; System > Bereiche) oder wenn der FA schon eine hat.
+- Tiefziehen (Bereiche mit Formatplanung): "Mehrere FA auf ein Format" - offene FA des Bereichs per Haken auswaehlen und auf ein neues oder vorhandenes Format legen; der Formateditor oeffnet mit allen FA. Beim Einplanen des Formats ersetzt der Format-Auftrag die einzelnen FA.
 
 PRIO JE ABTEILUNG
 - Auftragsliste, Bereichsvorrat und CSV zeigen die Prio innerhalb der Abteilung (1, 2, 3 ...), nicht mehr ueber alle Bereiche. Ist Prio 1 fertig, rueckt der naechste Auftrag nach. Die gespeicherte Reihenfolge bleibt unveraendert.
