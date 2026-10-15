@@ -8,7 +8,7 @@ Genutzt von
 Nur Standardbibliothek. Kommandozeile (Ausgabe PASS/FAIL je Pruefung, Exitcode 0 nur wenn alles bestanden ist):
   python tests/update_button_lib.py lower-version --dir D --version V
   python tests/update_button_lib.py build   --root R --output O --commit SHA
-  python tests/update_button_lib.py serve   --dir O --port-file F [--log L]          (GitHub-Release-API-Nachbildung)
+  python tests/update_button_lib.py serve   --dir O --port-file F [--log L] [--gitea] (GitHub- bzw. Gitea-Release-API-Nachbildung)
   python tests/update_button_lib.py seed    --url U --admin-password P [--cafile C]
   python tests/update_button_lib.py trigger --url U --admin-password P --expect-version V --out job.json [--cafile C]
   python tests/update_button_lib.py wait    --url U --admin-password P --expect-version V --job-id J [--timeout S] [--cafile C]
@@ -17,6 +17,8 @@ Nur Standardbibliothek. Kommandozeile (Ausgabe PASS/FAIL je Pruefung, Exitcode 0
 Die Nachbildung (serve) liefert genau die Antworten, die app_updates.release_info von api.github.com erwartet
 (releases/latest, commits/<tag>, compare/main...<sha>, releases/assets/<id>). Der Updater spricht sie nur an, wenn
 server.py mit MP_UPDATE_TEST_API=http://127.0.0.1:<port>/repos/ gestartet wurde (siehe app_updates.api_root).
+Mit --gitea (V12.29.0) bildet sie stattdessen Gitea nach: /api/v1/repos/... (releases/latest, tags/<tag>,
+compare/main...<sha> mit total_commits) und Downloads unter /<konto>/<repo>/releases/download/<tag>/<name>.
 """
 from __future__ import annotations
 
@@ -99,8 +101,9 @@ def build_package(root: Path, output: Path, commit: str) -> dict:
 
 
 class MockGitHub:
-    def __init__(self, release_dir: Path, log: Path | None = None):
+    def __init__(self, release_dir: Path, log: Path | None = None, gitea: bool = False):
         self.dir = Path(release_dir)
+        self.gitea = gitea
         self.manifest = json.loads((self.dir / "update-manifest.json").read_text(encoding="utf-8"))
         self.version = self.manifest["version"]
         self.zip_name = f"produktionsplanung-v{self.version}.zip"
@@ -110,6 +113,8 @@ class MockGitHub:
         self.httpd = None
 
     def route(self, path: str):
+        if self.gitea:
+            return self.route_gitea(path)
         m = re.fullmatch(r"/repos/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/(.+)", path)
         if not m:
             return 404, "application/json", b'{"message":"Not Found"}'
@@ -126,6 +131,24 @@ class MockGitHub:
             return 200, "application/octet-stream", (self.dir / "update-manifest.json").read_bytes()
         if rest == f"releases/assets/{PACKAGE_ID}":
             return 200, "application/octet-stream", (self.dir / self.zip_name).read_bytes()
+        return 404, "application/json", b'{"message":"Not Found"}'
+
+    def route_gitea(self, path: str):
+        tag, sha = "v" + self.version, self.manifest["commit"]
+        files = {"update-manifest.json": self.dir / "update-manifest.json", self.zip_name: self.dir / self.zip_name}
+        m = re.fullmatch(r"/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/releases/download/([^/]+)/([^/]+)", path)
+        if m and m.group(1) == tag and m.group(2) in files:
+            return 200, "application/octet-stream", files[m.group(2)].read_bytes()
+        m = re.fullmatch(r"/api/v1/repos/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/(.+)", path)
+        rest = m.group(1) if m else ""
+        if rest == "releases/latest":
+            body = {"tag_name": tag, "draft": False, "prerelease": False, "body": f"Testrelease {tag} (Gitea-Nachbildung)",
+                    "assets": [{"name": "update-manifest.json", "id": MANIFEST_ID}, {"name": self.zip_name, "id": PACKAGE_ID}]}
+            return 200, "application/json", json.dumps(body).encode()
+        if rest == "tags/" + tag:
+            return 200, "application/json", json.dumps({"name": tag, "commit": {"sha": sha}}).encode()
+        if rest == "compare/main..." + sha:
+            return 200, "application/json", b'{"total_commits":0,"commits":[]}'
         return 404, "application/json", b'{"message":"Not Found"}'
 
     def record(self, entry: dict):
@@ -159,7 +182,7 @@ class MockGitHub:
 
     @property
     def api(self) -> str:
-        return f"http://127.0.0.1:{self.httpd.server_address[1]}/repos/"
+        return f"http://127.0.0.1:{self.httpd.server_address[1]}/" + ("api/v1/repos/" if self.gitea else "repos/")
 
     def stop(self):
         if self.httpd:
@@ -342,7 +365,7 @@ def verify(url: str, admin_pw: str, expect: str, job_id: str, mock_log: Path | N
     if mock_log:
         reqs = [json.loads(line) for line in Path(mock_log).read_text(encoding="utf-8").splitlines() if line.strip()]
         paths = [r["path"] for r in reqs]
-        check(any(p.endswith(f"/releases/assets/{PACKAGE_ID}") for p in paths), f"Paket wurde von der Testquelle geladen ({len(reqs)} Anfragen)")
+        check(any(p.endswith(f"/releases/assets/{PACKAGE_ID}") or (p.endswith(".zip") and "/releases/download/" in p) for p in paths), f"Paket wurde von der Testquelle geladen ({len(reqs)} Anfragen)")
         check(all(r["status"] == 200 for r in reqs), "Testquelle: alle Anfragen beantwortet (200)")
         check(not any(r["auth"] for r in reqs), "Testquelle bekam nie einen Authorization-Header")
 
@@ -352,7 +375,7 @@ def main(argv=None) -> int:
     sub = ap.add_subparsers(dest="cmd", required=True)
     p = sub.add_parser("lower-version"); p.add_argument("--dir", required=True); p.add_argument("--version")
     p = sub.add_parser("build"); p.add_argument("--root", required=True); p.add_argument("--output", required=True); p.add_argument("--commit", required=True)
-    p = sub.add_parser("serve"); p.add_argument("--dir", required=True); p.add_argument("--port-file", required=True); p.add_argument("--log")
+    p = sub.add_parser("serve"); p.add_argument("--dir", required=True); p.add_argument("--port-file", required=True); p.add_argument("--log"); p.add_argument("--gitea", action="store_true")
     for name in ("seed", "trigger", "wait", "verify"):
         p = sub.add_parser(name)
         p.add_argument("--url", required=True); p.add_argument("--admin-password", required=True); p.add_argument("--cafile")
@@ -380,12 +403,12 @@ def main(argv=None) -> int:
         print(f"Testrelease V{m['version']} gebaut: {len(m['files'])} Dateien, Commit {m['commit'][:12]}")
         return 0
     if a.cmd == "serve":
-        mock = MockGitHub(Path(a.dir), Path(a.log) if a.log else None)
+        mock = MockGitHub(Path(a.dir), Path(a.log) if a.log else None, a.gitea)
         port = mock.start(0)
         tmp = Path(a.port_file + ".tmp")
         tmp.write_text(str(port), encoding="ascii")
         tmp.replace(a.port_file)
-        print(f"GitHub-Nachbildung fuer V{mock.version} auf http://127.0.0.1:{port}/repos/", flush=True)
+        print(f"{'Gitea' if mock.gitea else 'GitHub'}-Nachbildung fuer V{mock.version} auf {mock.api}", flush=True)
         try:
             while True:
                 time.sleep(3600)

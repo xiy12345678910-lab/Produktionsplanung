@@ -278,6 +278,12 @@ check(used and all(re.search(rf"^{c}\s", codes, re.M) for c in used), f"alle MP-
 ci = (SRC / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
 check("Umzug.py" in ci and "tests/test_umzug.py" in ci, "CI kompiliert Umzug.py und startet tests/test_umzug.py")
 
+# V12.29.0: Gitea-Updatequelle wandert mit, unzulaessige Quellen nicht
+check(all(U.update_source_ok(r) for r in ("konto/repo", "https://git.firma.de/konto/repo", "https://git.firma.de:3000/sub/konto/repo")),
+      "UpdateRepo: GitHub konto/repo und Gitea-URL werden uebernommen")
+check(not any(U.update_source_ok(r) for r in ("http://git.firma.de/konto/repo", "https://git.firma.de/konto", "https://h/../repo", "../x", "konto/repo;x")),
+      "UpdateRepo: http, unvollstaendige Quelle und Punkt-Pfade werden verworfen")
+
 shutil.rmtree(TMP, ignore_errors=True)
 failed = [label for ok, label in RESULTS if not ok]
 print(f"\n{len(RESULTS) - len(failed)}/{len(RESULTS)} bestanden")

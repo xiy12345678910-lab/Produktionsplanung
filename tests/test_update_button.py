@@ -87,6 +87,14 @@ class TestSourceRules(unittest.TestCase):
         with self.assertRaises(ValueError):
             updates.request_bytes("https://api.github.com/repos/a/b/releases/latest")
 
+    def test_gitea_loopback_form(self):
+        os.environ[updates.TEST_API_ENV] = "http://127.0.0.1:8123/api/v1/repos/"
+        self.assertEqual(updates.endpoint("owner/repo"), ("gitea", "http://127.0.0.1:8123/api/v1/repos/owner/repo/", "http://127.0.0.1:8123/owner/repo/"))
+        for bad in ["http://127.0.0.1:8123/api/v2/repos/", "http://127.0.0.1:8123/api/repos/", "http://127.0.0.1:8123/x/api/v1/repos/"]:
+            os.environ[updates.TEST_API_ENV] = bad
+            with self.assertRaises(ValueError, msg=bad):
+                updates.api_root()
+
     def test_browser_cannot_select_source(self):
         # Die Quelle ist nur Prozessumgebung; die Install-Route verweigert jeden Inhalt (unveraendert).
         text = (ROOT / "server.py").read_text(encoding="utf-8")
@@ -214,6 +222,13 @@ class ButtonFlow(unittest.TestCase):
                 self.proc.kill()
 
     def test_button_flow(self):
+        self.button_flow(gitea=False)
+
+    def test_button_flow_gitea(self):
+        """V12.29.0: derselbe Ablauf gegen die Gitea-Nachbildung (Bruecke GitHub -> Gitea)."""
+        self.button_flow(gitea=True)
+
+    def button_flow(self, gitea):
         check = B.Checks()
         new = self.read_version()          # aktueller Stand = Version des Testreleases
         low = B.lower_of(new)              # installiert wird derselbe Code mit kuenstlich niedrigerer Version
@@ -227,7 +242,7 @@ class ButtonFlow(unittest.TestCase):
         release = self.tmp / "release"
         manifest = B.build_package(pkgsrc, release, head_commit())
         self.assertEqual(manifest["version"], new)
-        mock = B.MockGitHub(release, self.tmp / "mock.log")
+        mock = B.MockGitHub(release, self.tmp / "mock.log", gitea)
         mock.start(0)
         self.addCleanup(mock.stop)
         # 3. Server (alte Version) mit Testquelle starten, Aenderung anlegen, Button ausloesen

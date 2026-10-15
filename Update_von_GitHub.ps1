@@ -14,6 +14,10 @@
 #   powershell -ExecutionPolicy Bypass -File .\Update_von_GitHub.ps1 -Tag v12.26.0 -Rueckstufen   # zurueck zu aelterer Version
 #     (nur Programmcode; die Datenbank bleibt. Der INSTALLIERTE UPDATE_LIVE.ps1 installiert das alte Paket. docs/ROLLBACK.md)
 #   Nur zum Testen (ungeprueft): -Branch <name> -UnsicherBranch
+#
+# V12.29.0 (Bruecke GitHub -> Gitea): Quelle "konto/repo" = GitHub; "https://host[:port][/pfad]/konto/repo" = Gitea
+# (API api/v1, Paket = Quellarchiv des Commits). Privates Gitea: Lesetoken in config\update\token.txt (nur Administratoren
+# lesbar - das Skript dann in einer Administrator-PowerShell starten).
 param(
     [string]$Tag,
     [string]$Commit,
@@ -34,7 +38,7 @@ if (-not $Repo) {
         try {
             if (Test-Path -LiteralPath $cfgFile) {
                 $cfgRepo = [string](Get-Content -LiteralPath $cfgFile -Raw | ConvertFrom-Json).UpdateRepo
-                if ($cfgRepo -match '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$') { $Repo = $cfgRepo; break }
+                if ($cfgRepo) { $Repo = $cfgRepo; break }
             }
         } catch { }
     }
@@ -43,41 +47,44 @@ if (-not $Repo) {
 [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
 $ProgressPreference = 'SilentlyContinue'   # Fortschrittsbalken bremst Invoke-WebRequest stark
 
-if ($Repo -notmatch '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$') { throw "Ungueltiger Repo-Name: $Repo" }
+$Repo = $Repo.Trim().TrimEnd('/') -replace '\.git$', '' -replace '^https://github\.com/', ''
+$giteaBase = ''
+if ($Repo -cmatch '^(https://[A-Za-z0-9.-]+(:[1-9][0-9]{0,4})?(/[A-Za-z0-9_.-]+)*?)/([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)$') {
+    $giteaBase = $Matches[1]; $repoPath = $Matches[4]
+} elseif ($Repo -cmatch '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$') {
+    $repoPath = $Repo
+} else { throw "Ungueltige Updatequelle: $Repo (konto/repo oder https://gitea-host/konto/repo)" }
+if (@(($Repo -replace '^https://[^/]+', '').Split('/') | Where-Object { $_ -and -not $_.Trim('.') }).Count) { throw "Ungueltige Updatequelle: $Repo" }
+$tokenFile = ''
+if ($giteaBase) {
+    $tokenFile = @('C:\ProgramData\Maschinenplanung\config\update\token.txt', (Join-Path $PSScriptRoot 'config\update\token.txt')) |
+        Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+}
 if ($Sha256) { $Sha256 = $Sha256.Trim().ToLowerInvariant(); if ($Sha256 -notmatch '^[0-9a-f]{64}$') { throw 'SHA256 muss 64 Hex-Zeichen haben.' } }
 
 function Invoke-MPGitHubApi([string]$Path) {
+    if ($giteaBase) {
+        return Invoke-RestMethod -Uri "$giteaBase/api/v1/repos/$repoPath/$Path" -Headers (Get-MPUpdateHeaders $tokenFile) -UseBasicParsing
+    }
     $headers = @{ 'User-Agent' = 'Maschinenplanung-Update'; 'Accept' = 'application/vnd.github+json' }
     return Invoke-RestMethod -Uri "https://api.github.com/repos/$Repo/$Path" -Headers $headers -UseBasicParsing
 }
 
-# --- 1. Quelle auf einen festen Commit aufloesen ----------------------------------------------
-if ($Commit) {
-    $sha = $Commit.Trim().ToLowerInvariant()
-    if ($sha -notmatch '^[0-9a-f]{40}$') { throw '-Commit braucht den vollstaendigen 40-stelligen Hash.' }
-    $label = "Commit $sha"
-} elseif ($Branch) {
-    if (-not $UnsicherBranch) { throw 'Branch-Updates sind ungeprueft. Nur mit -UnsicherBranch (Test) - fuer Live ein Release verwenden.' }
-    $sha = [string](Invoke-MPGitHubApi ("commits/" + [uri]::EscapeDataString($Branch))).sha
-    $label = "Branch $Branch (UNGEPRUEFT)"
-} else {
-    if (-not $Tag) {
-        try { $Tag = [string](Invoke-MPGitHubApi 'releases/latest').tag_name }
-        catch { throw 'Kein veroeffentlichtes Release gefunden. Release nur ueber GitHub Actions "Release package" (Entwurf) anlegen und veroeffentlichen, siehe docs/RELEASE_REGELN.md.' }
-    }
-    try { $sha = [string](Invoke-MPGitHubApi ("commits/" + [uri]::EscapeDataString($Tag))).sha }
-    catch { throw "Tag $Tag nicht gefunden." }
-    # Releases nur aus main: der Tag-Commit muss in main enthalten sein (main gleich oder weiter).
-    $cmp = Invoke-MPGitHubApi ("compare/main..." + $sha)
-    if ([string]$cmp.status -notin @('identical', 'behind')) { throw "Abbruch: $Tag zeigt auf einen Commit ausserhalb von main ($sha)." }
-    $label = "Release $Tag"
-}
-if ($sha -notmatch '^[0-9a-f]{40}$') { throw "Commit konnte nicht ermittelt werden ($label)." }
-
 # --- 2. Download + Pruefung (laeuft im Benutzer- ODER im Administratorkontext) ------------------
 # Bewusst als Text: wird 1:1 im Administrator-Fenster ausgefuehrt (nur gepruefte Werte eingesetzt).
 $core = @'
-function Get-MPUpdatePackage([string]$Repo, [string]$Sha, [string]$Sha256, [string]$Dir, [bool]$Protect) {
+function Get-MPUpdateHeaders([string]$TokenFile) {
+    # Gitea-Lesetoken nur aus der Datei, nie ueber die Befehlszeile.
+    $h = @{ 'User-Agent' = 'Maschinenplanung-Update' }
+    if ($TokenFile -and (Test-Path -LiteralPath $TokenFile)) {
+        try { $t = ([string](Get-Content -LiteralPath $TokenFile -Raw)).Trim() }
+        catch { throw 'config\update\token.txt ist nicht lesbar - Skript in einer Administrator-PowerShell starten.' }
+        if ($t -notmatch '^[A-Za-z0-9_.-]{16,200}$') { throw 'Ungueltiger Token in config\update\token.txt.' }
+        $h['Authorization'] = "token $t"
+    }
+    return $h
+}
+function Get-MPUpdatePackage([string]$Url, [string]$Sha, [string]$Sha256, [string]$Dir, [bool]$Protect, [string]$TokenFile) {
     [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
     $ProgressPreference = 'SilentlyContinue'
     if ($Protect) {
@@ -107,30 +114,64 @@ function Get-MPUpdatePackage([string]$Repo, [string]$Sha, [string]$Sha256, [stri
     }
     New-Item -ItemType Directory -Path $Dir -Force | Out-Null
     $zip = Join-Path $Dir 'paket.zip'
-    $url = "https://codeload.github.com/$Repo/zip/$Sha"
-    try { Invoke-WebRequest -Uri $url -OutFile $zip -UseBasicParsing }
-    catch { throw "Download fehlgeschlagen ($url): $($_.Exception.Message)" }
+    try { Invoke-WebRequest -Uri $Url -OutFile $zip -UseBasicParsing -Headers (Get-MPUpdateHeaders $TokenFile) }
+    catch { throw "Download fehlgeschlagen ($Url): $($_.Exception.Message)" }
     $hash = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant()
     Write-Host "SHA256   : $hash"
     if ($Sha256 -and $hash -ne $Sha256) { Remove-Item -LiteralPath $zip -Force; throw "SHA256 stimmt nicht (erwartet $Sha256). Abbruch, nichts installiert." }
     Expand-Archive -LiteralPath $zip -DestinationPath $Dir -Force
     Remove-Item -LiteralPath $zip -Force
-    # GitHub legt den Inhalt in <repo>-<commit>/ ab: genau dieser Commit muss es sein.
-    $pkg = Get-ChildItem -LiteralPath $Dir -Directory | Where-Object { $_.Name -like "*-$Sha" -and (Test-Path (Join-Path $_.FullName 'UPDATE_LIVE.ps1')) } | Select-Object -First 1
+    $dirs = @(Get-ChildItem -LiteralPath $Dir -Directory | Where-Object { Test-Path (Join-Path $_.FullName 'UPDATE_LIVE.ps1') })
+    if ($Url -like 'https://codeload.github.com/*') {
+        # GitHub legt den Inhalt in <repo>-<commit>/ ab: genau dieser Commit muss es sein.
+        $pkg = $dirs | Where-Object { $_.Name -like "*-$Sha" } | Select-Object -First 1
+    } else {
+        # Gitea legt das Archiv von .../archive/<commit>.zip in <repo>/ ab (Commit steht in der URL): genau ein Ordner.
+        $pkg = if ($dirs.Count -eq 1) { $dirs[0] }
+    }
     if (-not $pkg) { throw "Paket passt nicht zu Commit $Sha oder UPDATE_LIVE.ps1 fehlt." }
     if ($IsWindows -ne $false) { Get-ChildItem -LiteralPath $pkg.FullName -Recurse -File | Unblock-File }
     return $pkg.FullName
 }
 '@
+. ([scriptblock]::Create($core))   # Get-MPUpdateHeaders wird schon fuer die API gebraucht
+
+# --- 1. Quelle auf einen festen Commit aufloesen ----------------------------------------------
+if ($Commit) {
+    $sha = $Commit.Trim().ToLowerInvariant()
+    if ($sha -notmatch '^[0-9a-f]{40}$') { throw '-Commit braucht den vollstaendigen 40-stelligen Hash.' }
+    $label = "Commit $sha"
+} elseif ($Branch) {
+    if (-not $UnsicherBranch) { throw 'Branch-Updates sind ungeprueft. Nur mit -UnsicherBranch (Test) - fuer Live ein Release verwenden.' }
+    $sha = if ($giteaBase) { [string](Invoke-MPGitHubApi ("branches/" + [uri]::EscapeDataString($Branch))).commit.id } else { [string](Invoke-MPGitHubApi ("commits/" + [uri]::EscapeDataString($Branch))).sha }
+    $label = "Branch $Branch (UNGEPRUEFT)"
+} else {
+    if (-not $Tag) {
+        try { $Tag = [string](Invoke-MPGitHubApi 'releases/latest').tag_name }
+        catch { throw 'Kein veroeffentlichtes Release gefunden. Release nur ueber den Workflow "Release package" (Entwurf) anlegen und veroeffentlichen, siehe docs/RELEASE_REGELN.md.' }
+    }
+    try {
+        $sha = if ($giteaBase) { [string](Invoke-MPGitHubApi ("tags/" + [uri]::EscapeDataString($Tag))).commit.sha } else { [string](Invoke-MPGitHubApi ("commits/" + [uri]::EscapeDataString($Tag))).sha }
+    } catch { throw "Tag $Tag nicht gefunden." }
+    if ($sha -notmatch '^[0-9a-f]{40}$') { throw "Commit zu $Tag konnte nicht ermittelt werden." }
+    # Releases nur aus main: der Tag-Commit muss in main enthalten sein (main gleich oder weiter).
+    $cmp = Invoke-MPGitHubApi ("compare/main..." + $sha)
+    $inMain = if ($giteaBase) { $cmp.total_commits -eq 0 } else { [string]$cmp.status -in @('identical', 'behind') }
+    if (-not $inMain) { throw "Abbruch: $Tag zeigt auf einen Commit ausserhalb von main ($sha)." }
+    $label = "Release $Tag"
+}
+if ($sha -notmatch '^[0-9a-f]{40}$') { throw "Commit konnte nicht ermittelt werden ($label)." }
+
+
+$pkgUrl = if ($giteaBase) { "$giteaBase/api/v1/repos/$repoPath/archive/$sha.zip" } else { "https://codeload.github.com/$Repo/zip/$sha" }
 
 Write-Host "Benutzer : $env:USERDOMAIN\$env:USERNAME"
 Write-Host "Quelle   : $Repo  ($label)"
 Write-Host "Commit   : $sha" -ForegroundColor Cyan
 
 if ($NurHerunterladen) {
-    . ([scriptblock]::Create($core))
     $work = Join-Path $Ziel (Get-Date -Format 'yyyy-MM-dd_HHmmss')
-    $pkg = Get-MPUpdatePackage -Repo $Repo -Sha $sha -Sha256 $Sha256 -Dir $work -Protect $false
+    $pkg = Get-MPUpdatePackage -Url $pkgUrl -Sha $sha -Sha256 $Sha256 -Dir $work -Protect $false -TokenFile $tokenFile
     Write-Host "Paket bereit: $pkg" -ForegroundColor Green
     Write-Host 'Installieren: Update ohne -NurHerunterladen starten (prueft und entpackt erneut im geschuetzten Ordner).'
     return
@@ -138,12 +179,13 @@ if ($NurHerunterladen) {
 
 # --- 3. Administrator-Fenster: Download/Pruefung im geschuetzten Ordner, dann UPDATE_LIVE.ps1 ----
 $shaArg = if ($Sha256) { $Sha256 } else { '' }
+$tokenArg = ([string]$tokenFile) -replace "'", "''"   # Pfad (nie der Token selbst) im Text des Administrator-Fensters
 $elevated = $core + @"
 
 `$ErrorActionPreference = 'Stop'
 try {
     `$dir = Join-Path `$env:ProgramData ('Maschinenplanung_Update\' + (Get-Date -Format 'yyyy-MM-dd_HHmmss'))
-    `$pkg = Get-MPUpdatePackage -Repo '$Repo' -Sha '$sha' -Sha256 '$shaArg' -Dir `$dir -Protect `$true
+    `$pkg = Get-MPUpdatePackage -Url '$pkgUrl' -Sha '$sha' -Sha256 '$shaArg' -Dir `$dir -Protect `$true -TokenFile '$tokenArg'
     Write-Host "Paket: `$pkg" -ForegroundColor Green
     Set-Location -LiteralPath `$pkg
     if (`$$([bool]$Rueckstufen)) {

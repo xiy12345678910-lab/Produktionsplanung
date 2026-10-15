@@ -197,8 +197,11 @@ function Protect-MPInstall([string]$Base) {
         Set-MPFolderAcl (Join-Path $Base $sub) $false
     }
     # V12.21.0: private HTTPS-Schluessel nur fuer SYSTEM und Administratoren (config\ selbst bleibt lesbar).
-    $tls = Join-Path (Join-Path $Base $MP_ConfigDir) 'tls'
-    if (Test-Path -LiteralPath $tls) { Set-MPFolderAcl $tls $false }
+    # V12.29.0: ebenso config\update (Lesetoken fuer eine private Gitea-Updatequelle).
+    foreach ($sub in @('tls', 'update')) {
+        $dir = Join-Path (Join-Path $Base $MP_ConfigDir) $sub
+        if (Test-Path -LiteralPath $dir) { Set-MPFolderAcl $dir $false }
+    }
 }
 
 function Get-MPTaskResultText([int64]$Result) {

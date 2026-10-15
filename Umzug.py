@@ -43,6 +43,13 @@ KIND = "maschinenplanung-umzug"
 MANIFEST = "umzug.json"
 DB_MEMBER = "data/maschinenplanung.sqlite3"
 EXTRA_FILES = ("BACKUP_ZIEL.txt",)
+# "konto/repo" (GitHub) oder V12.29.0 "https://gitea-host[:port][/pfad]/konto/repo" (wie app_updates.normalize_source).
+UPDATE_SOURCE_RE = re.compile(r"([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+|https://[A-Za-z0-9.-]+(:[1-9][0-9]{0,4})?(/[A-Za-z0-9_.-]+){2,})")
+
+
+def update_source_ok(repo: str) -> bool:
+    segments = repo.split("://", 1)[1].split("/")[1:] if "://" in repo else repo.split("/")
+    return bool(UPDATE_SOURCE_RE.fullmatch(repo)) and all(part.strip(".") for part in segments)
 MEMBER_RE = re.compile(r"\A(data/maschinenplanung\.sqlite3|config/[A-Za-z0-9 _.()+-]+(/[A-Za-z0-9 _.()+-]+)*|extra/BACKUP_ZIEL\.txt)\Z")
 
 
@@ -162,7 +169,7 @@ def export(base: Path, ziel: Path) -> dict:
         "firma": company,
         "tenantId": str(firma.get("tenantId") or ""),
         "dbRevision": revision,
-        "einstellungen": {"updateRepo": repo if re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repo) else ""},
+        "einstellungen": {"updateRepo": repo if update_source_ok(repo) else ""},
         "dateien": files,
     }
     ziel.mkdir(parents=True, exist_ok=True)

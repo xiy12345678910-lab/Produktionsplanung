@@ -31,6 +31,11 @@ SOFTWAREUPDATE (#91)
 - Ein frueherer, inzwischen ueberholter Fehlversuch (z. B. 12.28.0, danach 12.28.1 per Skript installiert) wird nicht mehr als aktueller Fehler angezeigt.
 - Knopf "Jetzt nach Updates suchen" (Admin, hoechstens 1x pro Minute, MP-UPD-008). Bisher erschien ein neues Release erst nach bis zu 1 Stunde.
 
+UPDATEQUELLE GITEA (BRUECKE GITHUB -> GITEA)
+- "Update installieren" und Update_von_GitHub.ps1 koennen Releases von einem Gitea-Server laden: in LAN_CONFIG.json "UpdateRepo": "https://gitea-host/konto/repo" eintragen. Ohne Eintrag bleibt GitHub die Quelle.
+- Privates Gitea: Lesetoken in config\update\token.txt (nur SYSTEM und Administratoren lesbar). Gleiche Pruefungen wie bei GitHub (Release aus main, SHA256 aus dem Manifest). Details: docs/ADMIN_UPDATES.md.
+- Der Umzug auf ein neues Geraet uebernimmt auch eine Gitea-Quelle.
+
 MASCHINENPLANUNG V12.28.4 - RELEASE NOTES
 =========================================
 Datum: 12.10.2026 · Basis: V12.28.3 · Update gemäß README_Windows.txt 2b, Daten bleiben erhalten

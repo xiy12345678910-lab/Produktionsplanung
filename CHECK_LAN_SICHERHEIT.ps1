@@ -70,6 +70,16 @@ if ((Get-MPScheme $Base) -eq 'https') {
     }
     if ($readers.Count) { Fail "config\tls (privater HTTPS-Schluessel) ist lesbar fuer: $($readers -join ', ')" } else { Pass 'HTTPS-Schluessel nur fuer SYSTEM und Administratoren lesbar.' }
 } else { Warn 'HTTPS nicht eingerichtet: Passwoerter gehen unverschluesselt durchs LAN (HTTPS_Einrichten.ps1, README_Windows.txt Abschnitt 2c).' }
+# V12.29.0: Lesetoken der Gitea-Updatequelle (falls vorhanden) nur fuer SYSTEM und Administratoren
+$updDir = Join-Path (Join-Path $Base $MP_ConfigDir) 'update'
+if (Test-Path -LiteralPath $updDir) {
+    $readers = @()
+    foreach ($ace in @((Get-Acl -LiteralPath $updDir).Access)) {
+        try { $sid = $ace.IdentityReference.Translate([Security.Principal.SecurityIdentifier]).Value } catch { $sid = [string]$ace.IdentityReference }
+        if ($ace.AccessControlType -eq 'Allow' -and @('S-1-5-32-545', 'S-1-1-0', 'S-1-5-11') -contains $sid) { $readers += [string]$ace.IdentityReference }
+    }
+    if ($readers.Count) { Fail "config\update (Update-Token) ist lesbar fuer: $($readers -join ', ') - Update_von_GitHub.ps1 oder Setup erneut ausfuehren setzt die Rechte." } else { Pass 'Update-Token nur fuer SYSTEM und Administratoren lesbar.' }
+}
 
 # --- Windows: Task, Ordnerrechte, Python ------------------------------------------------
 $task = Get-ScheduledTask -TaskName $MP_TaskName -ErrorAction SilentlyContinue
