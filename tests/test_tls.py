@@ -195,6 +195,32 @@ check("Stop-MPServer $Base" in https_ps and "Stop-MPServer $Base" in ps("Neustar
 run_lan = ps("Run_Server_LAN.ps1")
 check("$LanWaitSeconds = 600" in run_lan and "while (-not $lan -and $waited -lt $LanWaitSeconds)" in run_lan, "Run_Server_LAN.ps1 wartet beim Systemstart bis zu 10 min auf das LAN")
 
+# Audit: Schluessel/Zertifikat atomar als Paar schreiben
+import mp_tls  # noqa: E402
+pd = TMP / "paar"
+pd.mkdir()
+kp, cp = pd / "a.key", pd / "a.crt"
+mp_tls._write_pair(kp, "KEY1", cp, "CERT1")
+check(kp.read_text() == "KEY1" and cp.read_text() == "CERT1" and sorted(x.name for x in pd.iterdir()) == ["a.crt", "a.key"], "Schluessel+Zertifikat paarweise geschrieben, keine Temp-Reste")
+_orig_replace = mp_tls.os.replace
+_calls = []
+def _flaky(src, dst):
+    _calls.append(dst)
+    if len(_calls) == 2:
+        raise OSError("simuliert")
+    return _orig_replace(src, dst)
+mp_tls.os.replace = _flaky
+try:
+    try:
+        mp_tls._write_pair(kp, "KEY2", cp, "CERT2")
+        raised = False
+    except OSError:
+        raised = True
+finally:
+    mp_tls.os.replace = _orig_replace
+check(raised and kp.read_text() == "KEY1" and cp.read_text() == "CERT1" and sorted(x.name for x in pd.iterdir()) == ["a.crt", "a.key"],
+      "scheitert das Zertifikat, bleibt der alte Schluessel (konsistentes Paar), keine Temp-Reste")
+
 shutil.rmtree(TMP, ignore_errors=True)
 print(f"\n{sum(RESULTS)}/{len(RESULTS)} bestanden")
 sys.exit(0 if all(RESULTS) else 1)

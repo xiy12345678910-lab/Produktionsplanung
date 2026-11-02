@@ -208,12 +208,52 @@ def _rsa_private_load(path: Path) -> dict:
     return {"n": n, "e": e, "d": d, "p": p, "q": q}
 
 
+def _write_tmp(path: Path, text: str, private: bool) -> Path:
+    """Text in eine frische Temp-Datei neben path schreiben (privat: Modus 0600; unter Windows gilt die ACL von config\\tls)."""
+    tmp = path.with_name(path.name + f".tmp-{os.getpid()}")
+    tmp.unlink(missing_ok=True)
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600 if private else 0o644)
+    try:
+        with os.fdopen(fd, "w", encoding="ascii", newline="\n") as f:
+            f.write(text)
+            f.flush()
+            os.fsync(f.fileno())
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
+    return tmp
+
+
 def _write_private(path: Path, text: str) -> None:
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    with os.fdopen(fd, "w", encoding="ascii", newline="\n") as f:
-        f.write(text)
-    os.replace(tmp, path)
+    tmp = _write_tmp(path, text, True)
+    try:
+        os.replace(tmp, path)
+    finally:
+        tmp.unlink(missing_ok=True)
+
+
+def _write_pair(key_path: Path, key_text: str, cert_path: Path, cert_text: str) -> None:
+    """Schluessel und Zertifikat als zusammengehoeriges Paar schreiben: beide zuerst als Temp-Datei, dann umbenennen.
+    Scheitert das zweite Umbenennen, wird der alte Schluessel zurueckgesetzt (nie neuer Schluessel mit altem Zertifikat)."""
+    key_tmp = cert_tmp = None
+    old_key = key_path.read_bytes() if key_path.exists() else None
+    try:
+        key_tmp = _write_tmp(key_path, key_text, True)
+        cert_tmp = _write_tmp(cert_path, cert_text, False)
+        os.replace(key_tmp, key_path)
+        try:
+            os.replace(cert_tmp, cert_path)
+        except BaseException:
+            if old_key is not None:
+                restore = _write_tmp(key_path, old_key.decode("ascii"), True)
+                os.replace(restore, key_path)
+            else:
+                key_path.unlink(missing_ok=True)
+            raise
+    finally:
+        for t in (key_tmp, cert_tmp):
+            if t is not None:
+                t.unlink(missing_ok=True)
 
 
 def tls_setup(host_ip: str, extra_names: list[str] = ()) -> dict:
@@ -229,14 +269,13 @@ def tls_setup(host_ip: str, extra_names: list[str] = ()) -> dict:
         ca_key, created_ca = _rsa_private_load(TLS_CA_KEY), False
     else:
         ca_key, created_ca = rsa_generate(), True
-        _write_private(TLS_CA_KEY, _rsa_private_pem(ca_key))
-        TLS_CA_CERT.write_text(_pem("CERTIFICATE", x509_certificate(ca_key, ca_key, "Produktionsplanung Firmen-CA", "Produktionsplanung Firmen-CA", org, TLS_CA_DAYS, True)), encoding="ascii")
+        _write_pair(TLS_CA_KEY, _rsa_private_pem(ca_key), TLS_CA_CERT,
+                    _pem("CERTIFICATE", x509_certificate(ca_key, ca_key, "Produktionsplanung Firmen-CA", "Produktionsplanung Firmen-CA", org, TLS_CA_DAYS, True)))
     names = sorted({n for n in [*LOCAL_HOST_NAMES, *(x.strip().lower() for x in extra_names)] if n and re.fullmatch(r"[a-z0-9.-]{1,253}", n) and not re.fullmatch(r"[0-9.]+", n)})
     key = rsa_generate()
     cn = next((n for n in names if n != "localhost"), ip)
     cert = x509_certificate(key, ca_key, cn, "Produktionsplanung Firmen-CA", org, TLS_SERVER_DAYS, False, names, [ip])
-    _write_private(TLS_KEY, _rsa_private_pem(key))
-    TLS_CERT.write_text(_pem("CERTIFICATE", cert), encoding="ascii")
+    _write_pair(TLS_KEY, _rsa_private_pem(key), TLS_CERT, _pem("CERTIFICATE", cert))
     return {"ca": str(TLS_CA_CERT), "createdCa": created_ca, "names": names, "ip": ip, "days": TLS_SERVER_DAYS}
 
 

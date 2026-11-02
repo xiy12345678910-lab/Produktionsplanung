@@ -15,12 +15,14 @@ from __future__ import annotations
 import hashlib
 import importlib.util
 import json
+import os
 import re
 import shutil
 import sqlite3
 import subprocess
 import sys
 import tempfile
+import time
 import zipfile
 from pathlib import Path
 
@@ -191,7 +193,9 @@ check(con.execute("SELECT value FROM app_meta WHERE key='license_grace_start'").
 check(con.execute("PRAGMA integrity_check").fetchone()[0] == "ok", "integrity_check ok")
 con.close()
 check(not Path(str(DB2) + "-wal").exists() or Path(str(DB2) + "-wal").stat().st_size == 0, "kein fremdes -wal neben der eingespielten Datenbank")
-want = {k: v for k, v in tree(cfg1).items() if not k.endswith(".tmp")}
+want = {k: v for k, v in tree(cfg1).items() if not k.endswith(".tmp") and ".bak-" not in k}
+with zipfile.ZipFile(PKG) as _z:
+    check(not any(".bak-" in n or ".tmp" in n for n in _z.namelist()), "Export ohne .bak-*/.tmp*-Dateien")
 check(tree(dev2 / "config") == want, "config\\ byte-gleich (firma.json, Logo, lizenz.key, tls\\ mit Firmen-CA)")
 check(all((dev2 / "config" / "tls" / n).is_file() for n in ("server.crt", "server.key", "firmen-ca.crt", "firmen-ca.key")),
       "Firmen-CA mit Schluessel vorhanden: Server erneuert das Zertifikat fuer die neue IP selbst (mp_tls.tls_renew_reason, test_tls.py)")
@@ -283,6 +287,39 @@ check(all(U.update_source_ok(r) for r in ("konto/repo", "https://git.firma.de/ko
       "UpdateRepo: GitHub konto/repo und Gitea-URL werden uebernommen")
 check(not any(U.update_source_ok(r) for r in ("http://git.firma.de/konto/repo", "https://git.firma.de/konto", "https://h/../repo", "../x", "konto/repo;x")),
       "UpdateRepo: http, unvollstaendige Quelle und Punkt-Pfade werden verworfen")
+
+# Nachtrag: .bak-/.tmp-Filter, Aufbewahrung der vorher-Ordner, Groessenlimit, MP_CONFIG_DIR
+(cfg1 / "x.tmp-123").write_text("t", encoding="utf-8")
+names = [n for n, _ in U.config_members(cfg1)]
+check(not any(".bak-" in n or ".tmp" in n for n in names) and "config/firma.json" in names, "config_members ohne .bak-*, .tmp, .tmp-*")
+bk = TMP / "bk"
+old_dir, new_dir = bk / "umzug_2026-01-01_000000_abc", bk / "umzug_2026-10-01_000000_def"
+other = bk / "wichtig"
+for d in (old_dir / "vorher" / "config" / "tls", new_dir, other):
+    d.mkdir(parents=True)
+(old_dir / "vorher" / "config" / "tls" / "server.key").write_text("geheim", encoding="utf-8")
+ancient = time.time() - 100 * 86400
+for d in (old_dir, other):
+    os.utime(d, (ancient, ancient))
+removed = U.prune_umzug_work(bk)
+check(removed == [old_dir.name] and not old_dir.exists() and new_dir.exists() and other.exists(),
+      "umzug_*-Arbeitsordner (mit alten Schluesseln) nach Aufbewahrungsfrist entfernt, juengere und fremde Ordner bleiben")
+check(U.prune_umzug_work(bk, keep=new_dir) == [] and new_dir.exists(), "aktueller Arbeitsordner wird nie entfernt")
+old_limit = U.MAX_UNPACKED
+U.MAX_UNPACKED = 10
+try:
+    try:
+        U.verify(PKG)
+        limited = False
+    except U.UmzugError as e:
+        limited = e.code == "MP-UMZ-003" and "gross" in str(e)
+finally:
+    U.MAX_UNPACKED = old_limit
+check(limited, "Paket ueber dem Groessenlimit wird in verify() abgewiesen")
+os.environ["MP_CONFIG_DIR"] = str(TMP / "fremdconfig")
+check(U.config_dir(TMP / "x") == TMP / "fremdconfig", "MP_CONFIG_DIR wird respektiert")
+del os.environ["MP_CONFIG_DIR"]
+check(U.config_dir(TMP / "x") == TMP / "x" / "config", "ohne MP_CONFIG_DIR: <base>/config")
 
 shutil.rmtree(TMP, ignore_errors=True)
 failed = [label for ok, label in RESULTS if not ok]

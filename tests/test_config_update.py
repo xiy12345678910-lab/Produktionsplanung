@@ -193,5 +193,16 @@ except server.ConfigError as e:
     refused = e.code == "MP-CFG-002"
 check(refused, "Vorabtest: ungültige Config bricht ab (MP-CFG-002), bevor Live berührt wird")
 
+# Audit: Preflight-Kopie der Config unter <Live>\\updates statt %TEMP%, UMZUG-Sperre bleibt, Restore-Rollback
+pre_fn = common[common.index("function Invoke-MPPreflight"):]
+head = pre_fn.split("Start-Process")[0]
+check("Join-Path $LiveBase 'updates'" in head and "Set-MPFolderAcl $dir $false" in head and head.index("Set-MPFolderAcl $dir") < head.index("Copy-Item"),
+      "Invoke-MPPreflight: Arbeitsordner unter <Live>\\updates, vor dem Kopieren der Config gesperrt")
+upd_text = (SRC / "UPDATE_LIVE.ps1").read_text(encoding="utf-8-sig")
+check("Test-MPUmzugSperre" in upd_text and upd_text.count("-not $UmzugSperre") >= 4, "UPDATE_LIVE.ps1: UMZUG-Sperre wird weder ueberschrieben noch geloescht")
+rest_text = (SRC / "Restore_Datenbank.ps1").read_text(encoding="utf-8-sig")
+check(rest_text.index("$pre = Get-ChildItem") < rest_text.index("if ($MitConfig)") and "$codeR" in rest_text and "ROLLBACK FEHLGESCHLAGEN" in rest_text,
+      "Restore_Datenbank.ps1: $pre vor --restore-config ermittelt, Rollback-Exitcode wird geprueft")
+
 print(f"\n{sum(RESULTS)}/{len(RESULTS)} bestanden")
 sys.exit(0 if all(RESULTS) else 1)

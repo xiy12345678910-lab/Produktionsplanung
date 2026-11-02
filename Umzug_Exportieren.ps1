@@ -58,7 +58,8 @@ $code = $LASTEXITCODE
 $ErrorActionPreference = 'Stop'
 $out | ForEach-Object { Write-Host "    $_" }
 if ($code -ne 0 -or -not (Test-Path -LiteralPath $resultFile)) {
-    if ($LockedNow) { Remove-Item -LiteralPath $Lock -Force -ErrorAction SilentlyContinue }
+    # Nur die eigene Umzugssperre entfernen (Inhalt pruefen: ein Update hat u. U. inzwischen eine eigene Sperre gesetzt).
+    if ($LockedNow -and (Test-MPUmzugLock)) { Remove-Item -LiteralPath $Lock -Force -ErrorAction SilentlyContinue }
     throw 'Umzugspaket konnte nicht erstellt werden (Meldung oben). Dieses Geraet laeuft unveraendert weiter.'
 }
 $r = Get-Content -LiteralPath $resultFile -Raw | ConvertFrom-Json

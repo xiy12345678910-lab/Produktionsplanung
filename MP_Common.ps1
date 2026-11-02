@@ -444,7 +444,15 @@ function Get-MPLogTail([string]$Base, [int]$Lines = 40) {
 function Invoke-MPPreflight([string]$NewSource, [string]$PythonExe, [string]$DbCopySource, [object]$Config, [string]$ExpectedVersion, [string]$LiveBase = '') {
     # Startet die NEUE Version mit einer KOPIE der Datenbank auf einem Ersatzport.
     # Das Live-System wird dabei nicht beruehrt.
-    $dir = Join-Path $env:TEMP ('mp_preflight_' + [guid]::NewGuid().ToString('N').Substring(0, 8))
+    # Die Kopie der echten Config (private HTTPS-Schluessel, Lizenz, Update-Token) liegt NICHT in %TEMP% (benutzerlesbar),
+    # sondern unter <Live>\updates\ (nur SYSTEM/Administratoren); der Arbeitsordner selbst wird vor dem Kopieren gesperrt.
+    $tempRoot = $env:TEMP
+    if ($LiveBase) {
+        $tempRoot = Join-Path $LiveBase 'updates'
+        New-Item -ItemType Directory -Path $tempRoot -Force | Out-Null
+    }
+    $dir = Join-Path $tempRoot ('mp_preflight_' + [guid]::NewGuid().ToString('N').Substring(0, 8))
+    Set-MPFolderAcl $dir $false
     New-Item -ItemType Directory -Path (Join-Path $dir 'data') -Force | Out-Null
     foreach ($name in $MP_AppFiles) { Copy-MPAppFile $NewSource $dir $name }
     Copy-Item -LiteralPath $DbCopySource -Destination (Join-Path $dir 'data\maschinenplanung.sqlite3') -Force
