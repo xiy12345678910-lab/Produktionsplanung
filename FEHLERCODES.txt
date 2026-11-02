@@ -49,6 +49,7 @@ MP-AUTH-013  Benutzername existiert bereits.
 MP-AUTH-014  Benutzer nicht gefunden.
 MP-AUTH-015  Ungültige Rolle.
 MP-AUTH-016  Das eigene Konto wird in der Benutzerverwaltung nicht geändert; eigenes Passwort über „Passwort ändern“ (🔑) setzen.
+             (zusaetzlich) Mindestens ein aktiver Admin muss erhalten bleiben (auch beim Deaktivieren/Rollenwechsel).
 MP-AUTH-017  Passwort muss mindestens 10 Zeichen sowie Buchstaben und Ziffern enthalten (gilt für neue/geänderte Passwörter).
 MP-AUTH-018  Ansicht ist für die aktuelle Rolle nicht freigegeben.
 
@@ -148,7 +149,8 @@ MP-REQ-002  Ungültige Anfrage.
 MP-REQ-404  Nicht gefunden.
 MP-REQ-403  Anfrage ohne Client-Kennung oder von fremder Seite (Origin) abgelehnt.
 MP-REQ-421  Unbekannter Server-Name im Host-Header (Schutz gegen DNS-Rebinding). Adresse des Admins verwenden
-             oder Namen in der Umgebungsvariable MP_ALLOWED_HOSTS eintragen.
+             oder Namen (auch fremde DNS-Suffixe/Aliasse) in der Umgebungsvariable MP_ALLOWED_HOSTS eintragen.
+             PC-Name mit DNS-Suffix wird nur akzeptiert, wenn das Suffix zum eigenen Rechner gehoert.
 
 [SHIFT - Schicht-/Arbeitszeit]
 MP-SHIFT-003  Kontextbezogener Fehler; Klartext wird direkt in der Anwendung angezeigt.
@@ -228,6 +230,7 @@ SUPPORT-REGEL
 MP-AUTH-021  Diese Rolle darf im eigenen Bereich nur Stellvertretungen (Leitung) bzw. Lesende (Stellvertretung) anlegen. / Benutzerverwaltung ist auf untergeordnete Rollen im eigenen Bereich begrenzt.
 MP-AUTH-023  Aktuelles Passwort ist falsch.
 MP-AUTH-025  Konto ist gesperrt (Passwort war richtig). Admin aktiviert das Konto unter System > Benutzer.
+MP-AUTH-026  Das neue Passwort muss sich vom aktuellen unterscheiden.
 MP-AUTH-024  Die neuen Passwörter stimmen nicht überein.
 
 [DEPT - Produktionsbereiche und Bereichsrechte]
@@ -399,6 +402,7 @@ MP-CHAT-004  Gruppenname fehlt oder ist zu lang (max. 60).
 MP-CHAT-005  Nachricht leer oder zu lang (max. 2000 Zeichen).
 MP-CHAT-006  Mitglieder aendert nur, wer die Gruppe angelegt hat (oder Admin); nur bei Gruppen.
 MP-CHAT-007  Nachricht zum Behalten nicht gefunden (bereits nach 30 Tagen geloescht?).
+MP-CHAT-008  Behalten einer Nachricht hebt nur auf, wer es gesetzt hat (oder Admin).
 MP-CHAT-010  Verweis existiert nicht mehr (Auftrag/Projekt/Format geloescht oder archiviert).
 
 V12.14.0 NEU (Firmen-Config config\firma.json)
