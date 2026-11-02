@@ -355,5 +355,147 @@ class SecurityNegative(unittest.TestCase):
         self.assertEqual(r.getheader('X-Content-Type-Options'), 'nosniff')
 
 
+class RechteAudit(SecurityNegative):
+    """Audit Rechte/Validierung: falsy IDs, Groesse/Audit-Kuerzung, recordType, dayRules, faPlan, PM-areaId,
+    Anlegen ohne Feldpruefung, Typverwechslung, Bedarfs-FA-Guard. (Erbt nur die Hilfsmethoden.)"""
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        import copy
+        with server.db_session() as con:
+            base = json.loads(con.execute('SELECT json FROM state WHERE id=1').fetchone()[0])
+        cls.dep = base['machines'][0]['departmentId']
+        cls.mid = base['machines'][0]['id']
+        s = copy.deepcopy(base)
+        s['projects'] = [{'id': 'p1', 'number': 'P-1', 'phase': 'accepted', 'name': 'Projekt', 'customer': 'K', 'ab': 'AB-1', 'dueDate': '2026-11-30', 'log': [],
+                          'processes': [{'id': 'pp1', 'areaId': cls.dep, 'title': 'Fertigen', 'status': 'open', 'owner': '', 'note': ''},
+                                        {'id': 'pp2', 'areaId': cls.dep, 'title': 'Laeuft', 'status': 'in_progress', 'owner': '', 'note': ''}]}]
+        s['workSteps'] = [{'id': 'ws_k', 'sequence': 10, 'planningType': 'MACHINE', 'pos': 10, 'departmentId': cls.dep, 'projectId': 'p1', 'predecessorIds': [], 'fa': 'FA-K', 'faNumber': 'FA-K', 'order': 'FA-K', 'ab': 'AB-1', 'wt': '', 'machineId': '', 'altMachineId': '', 'allowAlternative': False, 'articleNo': '', 'description': '', 'targetQty': 5, 'dueDate': '2026-11-20', 'baselinePlan': None, 'hours': 2, 'goodQty': 0, 'scrapQty': 0, 'status': 'planned', 'direction': 'forward', 'anchorMode': 'none', 'requiredStart': '', 'requiredFinish': '', 'handoffUnassigned': True, 'sourceType': 'PROJECT', 'sourceId': 'p1'}]
+        s['employees'] = [{'id': 'e1', 'name': 'Anna', 'departmentId': cls.dep, 'skills': [], 'homeMachineId': '', 'homeShift': 'auto', 'weeklyHours': 40, 'active': True}]
+        s['history'] = []
+        s['dayRules'] = []
+        with server.db_session() as con:
+            con.execute('UPDATE state SET json=?,revision=revision+1 WHERE id=1', (json.dumps(s),))
+
+    def put(self, ck, mutate):
+        _, state, _ = self.req('GET', '/api/state', None, ck)
+        mutate(state['data'])
+        st, body, _ = self.req('PUT', '/api/state', state, ck)
+        return st, body
+
+    def role_user(self, name, role, base_role=None, actions=None, rights=None):
+        pid = ''
+        if actions is not None or rights is not None:
+            pid = 'pf-' + name
+            st, body, _ = self.req('PUT', '/api/roles/' + pid, {'name': name, 'baseRole': role, 'actions': actions or {}, 'rights': rights or {}}, self.admin)
+            self.assertEqual(st, 200, body)
+        st, body, _ = self.req('POST', '/api/users', {'username': name, 'password': PASS, 'role': role, 'departmentId': '', **({'profileId': pid} if pid else {})}, self.admin)
+        self.assertEqual(st, 201, body)
+        return self.login(name)
+
+    def test_audit_falsy_and_unsafe_ids_rejected(self):
+        for coll, rec in (('machines', {'name': 'X', 'departmentId': self.dep}), ('employees', {'name': 'Y', 'departmentId': self.dep, 'skills': []}),
+                          ('history', {'recordType': 'cancelled'}), ('machineBlocks', {'machineId': self.mid})):
+            for bad in (0, False, None, '', '<img src=x onerror=alert(1)>', 'a b', 'x' * 81, 5):
+                st, body = self.put(self.admin, lambda d: d[coll].append({**rec, 'id': bad}))
+                self.assertEqual((st, body.get('errorCode')), (400, 'MP-DATA-015'), (coll, bad, body))
+        st, body = self.put(self.admin, lambda d: d['employees'].extend([{'id': 'dup', 'name': 'A', 'departmentId': self.dep, 'skills': []}, {'id': 'dup', 'name': 'B', 'departmentId': self.dep, 'skills': []}]))
+        self.assertEqual((st, body.get('errorCode')), (400, 'MP-DATA-015'), body)
+
+    def test_audit_falsy_id_cannot_bypass_fa_rights(self):
+        ck = self.role_user('av-noanlegen', 'production_planning', actions={'faCreate': False, 'faPlan': False})
+        st, body = self.put(ck, lambda d: d['workSteps'].append({**d['workSteps'][0], 'id': 0, 'fa': 'X'}))
+        self.assertIn(st, (400, 403), body)
+        self.assertNotEqual(st, 200)
+
+    def test_audit_text_limits_and_audit_clip(self):
+        st, body = self.put(self.admin, lambda d: d['machines'][0].update(name='N' * 300))
+        self.assertEqual((st, body.get('errorCode')), (400, 'MP-DATA-018'), body)
+        st, body = self.put(self.admin, lambda d: d['employees'].append({'id': 'e_lang', 'name': 'N' * 201, 'departmentId': self.dep, 'skills': []}))
+        self.assertEqual((st, body.get('errorCode')), (400, 'MP-DATA-018'), body)
+        st, body = self.put(self.admin, lambda d: d['projects'][0]['log'].append({'id': 'l_lang', 'actor': 'admin', 'text': 'T' * 2500}))
+        self.assertEqual((st, body.get('errorCode')), (400, 'MP-DATA-018'), body)
+        st, body = self.put(self.admin, lambda d: d['projects'][0]['processes'][0].update(note='N' * 2500))
+        self.assertEqual((st, body.get('errorCode')), (400, 'MP-DATA-018'), body)
+        st, body = self.put(self.admin, lambda d: d['workSteps'][0].update(zusatz='z' * 15000))
+        self.assertEqual(st, 200, body)
+        with server.db_session() as con:
+            state = json.loads(con.execute('SELECT json FROM state WHERE id=1').fetchone()[0])
+        entry = next(a for a in state['audit'] if a.get('field') == 'zusatz')
+        self.assertLess(len(json.dumps(entry['new'])), 600)
+        self.assertIn('gekürzt', entry['new'])
+
+    def test_audit_size_after_audit_append_rejected_413(self):
+        _, state, _ = self.req('GET', '/api/state', None, self.admin)
+        data = state['data']
+        for i, k in enumerate(('hours', 'targetQty', 'dueDate', 'description', 'wt', 'articleNo')):
+            data['workSteps'][0][k] = {'hours': 3, 'targetQty': 7, 'dueDate': '2026-12-01', 'description': 'd' + str(i), 'wt': 'w', 'articleNo': 'A9'}[k]
+        limit = len(server.canonical(data).encode('utf-8')) + 200
+        old = server.MAX_BODY
+        server.MAX_BODY = limit
+        try:
+            st, body, _ = self.req('PUT', '/api/state', state, self.admin)
+        finally:
+            server.MAX_BODY = old
+        self.assertEqual((st, body.get('errorCode')), (413, 'MP-DATA-016'), body)
+
+    def test_audit_record_type_strict(self):
+        for bad in ('', None, 0, 'x', 'DONE'):
+            st, body = self.put(self.admin, lambda d: d['history'].append({'id': 'h_bad', 'originalOrderId': 'o9', 'recordType': bad, 'machineId': self.mid, 'goodQty': 0, 'scrapQty': 0}))
+            self.assertIn(st, (400, 403), (bad, body))
+
+    def test_audit_dayrules_follow_planning_right(self):
+        ck = self.role_user('av-planlesen', 'production_planning', rights={'planning': 'read'})
+        st, body = self.put(ck, lambda d: d['dayRules'].append({'id': 'dr1', 'machineId': self.mid, 'date': '2026-11-03'}))
+        self.assertEqual((st, body.get('errorCode')), (403, 'MP-ROLE-010'), body)
+
+    def test_audit_fa_plan_fields_and_delete(self):
+        ck = self.role_user('av-keinplan', 'production_planning', actions={'faPlan': False})
+        for field, value in (('hours', 9), ('status', 'released'), ('targetQty', 99), ('dueDate', '2026-12-24'), ('planningWeek', '2026-W50'), ('predecessorIds', ['x'])):
+            st, body = self.put(ck, lambda d: d['workSteps'][0].update({field: value}))
+            self.assertEqual((st, body.get('errorCode')), (403, 'MP-ROLE-010'), (field, body))
+        st, body = self.put(ck, lambda d: d['workSteps'].clear())
+        self.assertEqual((st, body.get('errorCode')), (403, 'MP-ROLE-010'), body)
+
+    def test_audit_pm_areaid_detour_and_create_checks(self):
+        ck = self.role_user('pm-audit', 'project_management')
+        proc = lambda d, pid: next(x for x in d['projects'][0]['processes'] if x['id'] == pid)
+        st, body = self.put(ck, lambda d: proc(d, 'pp1').update(areaId='engineering', status='done'))
+        self.assertEqual((st, body.get('errorCode')), (403, 'MP-PM-031'), body)
+        st, body = self.put(ck, lambda d: proc(d, 'pp2').update(areaId='engineering'))
+        self.assertEqual((st, body.get('errorCode')), (403, 'MP-PM-031'), body)
+        base = {'customer': 'K', 'name': 'N', 'processes': [], 'offer': {}, 'log': []}
+        new_proj = lambda extra, num: (lambda d: d['projects'].append({**base, 'id': 'p_' + num, 'number': num, 'phase': 'pm', **extra}))
+        st, body = self.put(ck, new_proj({'hack': 1}, 'N-1'))
+        self.assertEqual((st, body.get('errorCode')), (403, 'MP-PM-031'), body)
+        st, body = self.put(ck, new_proj({'processes': [{'id': 'np1', 'areaId': self.dep, 'title': 'T', 'status': 'done'}]}, 'N-2'))
+        self.assertEqual((st, body.get('errorCode')), (403, 'MP-PM-031'), body)
+        st, body = self.put(ck, new_proj({'processes': [{'id': 'np2', 'areaId': 'engineering', 'title': 'T', 'status': 'open', 'pmPlan': {'startDate': '2026-11-02', 'dueDate': '2026-11-03'}}]}, 'N-3'))
+        self.assertEqual((st, body.get('errorCode')), (403, 'MP-PM-031'), body)
+        st, body = self.put(ck, new_proj({'processes': [{'id': 'np3', 'areaId': 'engineering', 'title': 'T', 'status': 'open', 'owner': '', 'note': ''}]}, 'N-4'))
+        self.assertEqual(st, 200, body)
+        sck = self.role_user('sales-audit', 'sales')
+        st, body = self.put(sck, lambda d: d['projects'].append({**base, 'id': 'p_s1', 'number': 'S-1', 'phase': 'inquiry', 'productionOnly': True, 'offer': {'x': 1}}))
+        self.assertEqual((st, body.get('errorCode')), (403, 'MP-PM-031'), body)
+
+    def test_audit_root_type_confusion_is_400_not_500(self):
+        cases = (('workSteps', {}), ('history', 'x'), ('machines', ['x']), ('employees', {'a': 1}), ('projects', 5), ('formats', [{'id': 'f1', 'tools': 5}]),
+                 ('dayRules', 'x'), ('departments', [5]), ('personnelAssignments', {}), ('machineBlocks', 3), ('audit', 'x'), ('personnelGate', 'ja'))
+        for key, bad in cases:
+            st, body = self.put(self.admin, lambda d: d.__setitem__(key, bad))
+            self.assertEqual(st, 400, (key, st, body))
+            self.assertTrue(str(body.get('errorCode', '')).startswith('MP-'), (key, body))
+
+    def test_audit_demand_fa_guard_covers_reference_ids(self):
+        for ref in ('callOffId', 'frameOrderId', 'stockRequirementId'):
+            st, body = self.put(self.admin, lambda d: d['workSteps'].append({**d['workSteps'][0], 'id': 'ws_bed_' + ref, 'fa': 'FA-B', 'faNumber': 'FA-B', 'order': 'FA-B', ref: 'x1', 'sourceType': 'PROJECT'}))
+            self.assertEqual((st, body.get('errorCode')), (403, 'MP-DEM-041'), (ref, body))
+
+
+for _n in [n for n in vars(SecurityNegative) if n.startswith('test_')]:
+    setattr(RechteAudit, _n, None)
+
+
 if __name__ == '__main__':
     unittest.main(verbosity=2)

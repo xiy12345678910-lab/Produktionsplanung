@@ -77,7 +77,7 @@ from mp_tls import (  # noqa: E402,F401
 # mp_rights.py (#73 Phase 1, flaches Modul). Keine veränderlichen Werte dort, daher keine Umleitung nötig.
 import mp_rights  # noqa: E402,F401
 from mp_rights import (  # noqa: E402,F401
-    canonical, _record_map,
+    canonical, _record_map, valid_record_id,
     ROLES, WRITE_ROLES, DEPARTMENT_ROLES, SCOPED_ROLES, USER_MANAGER_ROLES, MANAGEABLE_ROLES,
     ROLE_FUNCTIONS, ROLE_ACTIONS, LEGACY_PRODUCTION_ACTION, FA_PLAN_FIELDS, effective_actions, ROLE_LEVELS,
     FUNCTION_DATA, GF_FUNCTION_KEYS, FUNCTION_HIDDEN, migrate_role_profiles, resolve_profile_id, role_risk_warnings,
@@ -745,7 +745,7 @@ FA_SOURCE_TYPES = {"PROJECT", "FRAME_ORDER", "STOCK_REQUIREMENT"}
 
 def normalize_fa_state(state: dict) -> None:
     """Add canonical references without deleting or renumbering legacy records."""
-    machine_dept = {str(m.get("id")): m.get("departmentId") for m in state.get("machines", [])}
+    machine_dept = {str(m.get("id")): m.get("departmentId") for m in state.get("machines") or [] if isinstance(m, dict)}
     def record(x):
         if not isinstance(x, dict):
             return
@@ -2362,10 +2362,143 @@ def _fa_key(step: dict) -> str:
     return str(step.get("fa") or step.get("order") or "").strip()
 
 
+# ---------------------------------------------------------------------------------------------
+# Audit Rechte/Validierung: Wurzel-Schema, strikte IDs, Textlängen, Größe
+# ---------------------------------------------------------------------------------------------
+ROOT_LISTS = ("machines", "workSteps", "departments", "projects", "yearRules", "weekRules", "dayRules", "exceptions", "employees",
+              "personnelAssignments", "personnelAbsences", "weeklyEmployeeDeployments", "departmentStaffNeeds", "history", "audit",
+              "planVersions", "processTemplates", "machineBlocks", "formats", "baseFormats", "productionEvents", "palletLabels",
+              "palletTemplates", "inventory", "frameOrders", "callOffs", "departmentPlans")
+ROOT_DICTS = ("meta", "ui", "shiftTemplates", "operatorCapacity", "ci")
+# Sammlungen, deren Datensätze eine eigene id tragen (strikte Prüfung, siehe record_id_error).
+ID_COLLECTIONS = ("machines", "workSteps", "departments", "projects", "employees", "history", "audit", "planVersions",
+                  "processTemplates", "machineBlocks", "formats", "baseFormats", "palletTemplates", "productionEvents",
+                  "palletLabels", "inventory", "frameOrders", "callOffs")
+ID_REQUIRED = ("machines", "workSteps", "employees", "history", "projects", "departments")
+MAX_COLLECTION_RECORD_BYTES = 256 * 1024
+MAX_STRING_CHARS = 20000
+MAX_PLAN_VERSIONS = 100
+AUDIT_VALUE_CHARS = 300
+TEXT_LIMITS = {
+    "machines": {"name": 200, "note": 2000, "description": 2000},
+    "employees": {"name": 200, "note": 2000, "role": 200, "position": 200},
+    "history": {"description": 2000, "abortReason": 2000, "articleNo": 200, "fa": 200, "ab": 200, "wt": 200, "order": 200, "actor": 80, "note": 2000},
+    "workSteps": {"description": 2000, "note": 2000, "articleNo": 200, "fa": 200, "ab": 200, "wt": 200, "order": 200, "owner": 200},
+    "machineBlocks": {"label": 200, "reason": 200, "note": 2000},
+    "formats": {"name": 200, "note": 2000},
+}
+
+
+def state_schema_error(state, _depth=0):
+    """Wurzel-Schema: Listen/Objekte je Schlüssel. Liefert Klartext oder ''. Verhindert Typverwechslung (sonst 500)."""
+    if not isinstance(state, dict):
+        return "Datenstand ist kein Objekt."
+    for key in ROOT_LISTS:
+        v = state.get(key)
+        if v is None:
+            continue
+        if not isinstance(v, list):
+            return f"Feld '{key}' muss eine Liste sein."
+        if any(not isinstance(x, dict) for x in v):
+            return f"Feld '{key}' darf nur Objekte enthalten."
+    for key in ROOT_DICTS:
+        if state.get(key) is not None and not isinstance(state.get(key), dict):
+            return f"Feld '{key}' muss ein Objekt sein."
+    if state.get("personnelGate") is not None and not isinstance(state.get("personnelGate"), bool):
+        return "Feld 'personnelGate' muss ein / aus sein."
+    for f in state.get("formats") or []:
+        tools = f.get("tools")
+        if tools is not None and (not isinstance(tools, list) or any(not isinstance(t, dict) for t in tools)):
+            return "Formatwerkzeuge sind ungültig."
+    if _depth < 2:
+        for v in state.get("planVersions") or []:
+            if v.get("payload") is not None and not isinstance(v.get("payload"), dict):
+                return "Planversion: Datenstand ist ungültig."
+            if isinstance(v.get("payload"), dict):
+                reason = state_schema_error(v["payload"], _depth + 1)
+                if reason:
+                    return "Planversion: " + reason
+    return ""
+
+
+def schema_error_code(reason: str) -> str:
+    """meta/ui/planVersions behalten den bisherigen Code MP-DATA-014, alles Weitere MP-DATA-017."""
+    return "MP-DATA-014" if re.match(r"(Feld '(meta|ui|planVersions)'|Planversion)", reason) else "MP-DATA-017"
+
+
+def record_id_error(old: dict, new: dict) -> str:
+    """Strikte, einheitliche ID-Prüfung (nur nicht-leere Strings [A-Za-z0-9_-]{1,80}, eindeutig je Sammlung).
+    Bereits gespeicherte IDs (Altdaten) bleiben gültig, solange sie unverändert sind; falsy/Nicht-Strings nie."""
+    for key in ID_COLLECTIONS:
+        legacy = {x.get("id") for x in (old.get(key) or []) if isinstance(x, dict) and isinstance(x.get("id"), str) and x.get("id")}
+        seen = set()
+        for x in new.get(key) or []:
+            if "id" not in x and key not in ID_REQUIRED:
+                continue
+            rid = x.get("id")
+            if not (valid_record_id(rid) or (isinstance(rid, str) and rid in legacy)):
+                return f"{key}: Datensatz ohne gültige ID (nur Buchstaben, Ziffern, _ und -, max. 80 Zeichen)."
+            if rid in seen:
+                return f"{key}: doppelte ID '{rid}'."
+            seen.add(rid)
+    return ""
+
+
+def text_limit_error(old: dict, new: dict) -> str:
+    """Längenlimits für neue/geänderte Datensätze (Altbestand bleibt unberührt)."""
+    for key in ID_COLLECTIONS:
+        before = {canonical(x) for x in (old.get(key) or []) if isinstance(x, dict)}
+        limits = TEXT_LIMITS.get(key, {})
+        for x in new.get(key) or []:
+            if canonical(x) in before:
+                continue
+            if key not in ("planVersions", "audit"):
+                if len(canonical(x).encode("utf-8")) > MAX_COLLECTION_RECORD_BYTES:
+                    return f"{key}: Datensatz '{x.get('id')}' ist zu groß."
+                for f, lim in limits.items():
+                    if isinstance(x.get(f), str) and len(x[f]) > lim:
+                        return f"{key}: Feld '{f}' ist zu lang (max. {lim} Zeichen)."
+                if any(isinstance(v, str) and len(v) > MAX_STRING_CHARS for v in x.values()):
+                    return f"{key}: Textfeld ist zu lang."
+            if key == "audit" and len(canonical(x).encode("utf-8")) > 8000:
+                return "Protokolleintrag ist zu groß."
+            if key == "projects":
+                for entry in x.get("log") or []:
+                    if isinstance(entry, dict) and any(isinstance(v, str) and len(v) > 2000 for v in entry.values()):
+                        return "Projektverlauf: Text ist zu lang (max. 2000 Zeichen)."
+                for pr in x.get("processes") or []:
+                    if isinstance(pr, dict) and (len(str(pr.get("owner") or "")) > 200 or len(str(pr.get("note") or "")) > 2000):
+                        return "Prozess: Verantwortlicher (max. 200) oder Notiz (max. 2000 Zeichen) ist zu lang."
+    if len(new.get("planVersions") or []) > max(MAX_PLAN_VERSIONS, len(old.get("planVersions") or [])):
+        return f"Zu viele Planversionen (max. {MAX_PLAN_VERSIONS})."
+    return ""
+
+
+def hist_record_type(h: dict) -> str:
+    """Historien-Typ: fehlend = Altbestand = 'done'; sonst exakt der gespeicherte Wert (Prüfung erfolgt strikt)."""
+    return h.get("recordType", "done") if isinstance(h, dict) else "done"
+
+
+def _audit_clip(v):
+    s = canonical(v)
+    if len(s) <= AUDIT_VALUE_CHARS:
+        return v
+    return f"{s[:AUDIT_VALUE_CHARS]}… (gekürzt, {len(s)} Zeichen)"
+
+
 def validate_state(old: dict, new: dict) -> tuple[bool, str, str]:
     """Server-side invariants. Browser checks are convenience only."""
     if not isinstance(new, dict):
         return False, "MP-DATA-010", "Datenstand ist kein Objekt."
+    reason = state_schema_error(new)
+    if reason:
+        return False, schema_error_code(reason), reason
+    reason = record_id_error(old if isinstance(old, dict) else {}, new)
+    if reason:
+        return False, "MP-DATA-015", reason
+    reason = text_limit_error(old if isinstance(old, dict) else {}, new)
+    if reason:
+        return False, "MP-DATA-018", reason
     machines = new.get("machines")
     work_steps = new.get("workSteps")
     departments = new.get("departments") or []
@@ -2888,7 +3021,7 @@ def validate_state(old: dict, new: dict) -> tuple[bool, str, str]:
     seen_orders = set()
     seen_pos = set()
     locked_by_machine: dict[str, set] = {}
-    old_orders = {str(o.get("id")): o for o in (old.get("workSteps") or []) if isinstance(o, dict) and o.get("id") and o.get("planningType") == "MACHINE"}
+    old_orders = {str(o.get("id")): o for o in (old.get("workSteps") or []) if isinstance(o, dict) and o.get("id") is not None and o.get("planningType") == "MACHINE"}
     planning_fields = (
         "projectId", "fa", "faNumber", "sourceType", "sourceId", "frameOrderId", "callOffId", "stockRequirementId", "ab", "wt", "sequence", "departmentId", "planningType", "predecessorIds", "pos", "machineId", "altMachineId", "allowAlternative", "order", "articleNo", "description",
         "targetQty", "hours", "direction", "anchorMode", "requiredStart", "requiredFinish", "createdAt", "baselinePlan"
@@ -3119,7 +3252,7 @@ def validate_state(old: dict, new: dict) -> tuple[bool, str, str]:
                 return False, "MP-PROD-032", f"Pausenbeginn von '{o.get('order') or oid}' darf während derselben Pause nicht verändert werden."
 
     # History is append-only on the server. This makes the displayed Ist-History a real invariant.
-    old_hist = {str(h.get("id")): h for h in (old.get("history") or []) if isinstance(h, dict) and h.get("id")}
+    old_hist = {str(h.get("id")): h for h in (old.get("history") or []) if isinstance(h, dict) and h.get("id") is not None}
     new_history = new.get("history") or []
     if not isinstance(new_history, list):
         return False, "MP-HIST-001", "Historie ist ungültig."
@@ -3133,7 +3266,7 @@ def validate_state(old: dict, new: dict) -> tuple[bool, str, str]:
             return False, "MP-HIST-001", f"Doppelte Historien-ID '{hid}'."
         seen_hist.add(hid)
         new_hist[hid] = h
-        if (h.get("recordType") or "done") not in {"done", "cancelled"}:
+        if hist_record_type(h) not in {"done", "cancelled"}:
             return False, "MP-HIST-002", f"Historieneintrag '{hid}' hat einen ungültigen Typ."
     for hid, h in old_hist.items():
         if hid not in new_hist or canonical(h) != canonical(new_hist[hid]):
@@ -3158,7 +3291,7 @@ def validate_state(old: dict, new: dict) -> tuple[bool, str, str]:
                 return False, "MP-HIST-006", f"Historieneintrag '{h.get('id')}' hat ungültige Ist-Start-/Endzeiten."
         if not _nonnegative_int(h.get("goodQty") or 0) or not _nonnegative_int(h.get("scrapQty") or 0):
             return False, "MP-HIST-006", f"Historieneintrag '{h.get('id')}' enthält ungültige Gut-/Ausschussmengen."
-        if (h.get("recordType") or "done") == "cancelled" and h.get("actualStartedAt") and not str(h.get("abortReason", "")).strip():
+        if hist_record_type(h) == "cancelled" and h.get("actualStartedAt") and not str(h.get("abortReason", "")).strip():
             return False, "MP-HIST-006", f"Produktionsabbruch '{h.get('id')}' benötigt einen Abbruchgrund."
         actual_segments = h.get("actualSegments") or []
         if actual_segments:
@@ -3181,7 +3314,7 @@ def validate_state(old: dict, new: dict) -> tuple[bool, str, str]:
         old_status = str(old_order.get("status", "planned"))
         linked = added_by_order.get(oid, [])
         if old_status in {"running", "paused"}:
-            if len(linked) != 1 or (linked[0].get("recordType") or "done") not in {"done", "cancelled"}:
+            if len(linked) != 1 or hist_record_type(linked[0]) not in {"done", "cancelled"}:
                 return False, "MP-PROD-017", f"Entfernter Produktionsauftrag '{old_order.get('order') or oid}' benötigt genau eine Fertig-/Abbruchhistorie."
             hist = linked[0]
             for field in history_copy_fields + ("actualStartedAt",):
@@ -3190,7 +3323,7 @@ def validate_state(old: dict, new: dict) -> tuple[bool, str, str]:
             if not _ordered_dt_pair(hist.get("actualStartedAt"), hist.get("actualFinishedAt")):
                 return False, "MP-HIST-007", f"Fertig-/Abbruchhistorie von '{old_order.get('order') or oid}' benötigt gültige Ist-Start-/Endzeit."
         elif old_status == "released":
-            if len(linked) != 1 or (linked[0].get("recordType") or "done") != "cancelled":
+            if len(linked) != 1 or hist_record_type(linked[0]) != "cancelled":
                 return False, "MP-PLAN-052", f"Freigegebener Auftrag '{old_order.get('order') or oid}' darf nur mit Stornohistorie entfernt werden."
             hist = linked[0]
             for field in history_copy_fields:
@@ -3332,6 +3465,44 @@ PROCESS_SELF_FIELDS = {"status", "note", "owner", "workStepId"}
 # PM und AV planen Termine und verwalten; Rückmeldungen (Status) kommen aus den Abteilungen.
 PROCESS_TIMING_FIELDS = {"startDate", "dueDate", "owner", "note", "workStepId"}
 PM_STATUS_AREAS = {"engineering", "calculation", "purchasing", "quality", "pm"}
+# Audit: Beim Anlegen gelten dieselben Feld-Whitelists wie beim Ändern.
+PROCESS_KEYS = {"id", "areaId", "title", "status", "owner", "note", "startDate", "dueDate", "workStepId", "internal", "pmPlan"}
+NEW_PROJECT_EXTRA_KEYS = {"id", "number", "createdAt", "createdBy", "productionOnly"}
+NEW_PROJECT_EMPTY_KEYS = {"offer", "development", "customerPlan"}
+
+
+def _new_process_error(y: dict, label: str) -> str:
+    """Neu angelegter Prozess: nur bekannte Felder, kein PM-Vorplan (nur die AV sichert ihn später), nicht übernommen."""
+    extra = set(y) - PROCESS_KEYS
+    if extra:
+        return f"Projekt {label}: Feld '{sorted(extra)[0]}' ist an einem neuen Prozess nicht erlaubt."
+    if y.get("pmPlan"):
+        return f"Projekt {label}: Den PM-Vorplan von „{y.get('title')}“ sichert nur die Arbeitsvorbereitung, nicht beim Anlegen."
+    if y.get("workStepId"):
+        return f"Projekt {label}: Ein neuer Prozess kann nicht schon einer FA zugeordnet sein."
+    return ""
+
+
+def _new_project_error(b: dict, role: str, fields: set, own_areas: set, label: str) -> str:
+    """Neues Projekt: nur Felder der Rolle (Angebot/Entwicklung/Kundenplan leer), Prozesse nach denselben Regeln wie beim Ändern."""
+    extra = {k for k in b if k not in fields | NEW_PROJECT_EXTRA_KEYS and not (k in NEW_PROJECT_EMPTY_KEYS and not b.get(k))}
+    if extra:
+        return f"Projekt {label}: Feld '{sorted(extra)[0]}' darf von dieser Rolle nicht angelegt werden."
+    if role == "project_management":
+        ok, reason = _pm_process_change({}, b, label)
+    elif role == "production_planning":
+        ok, reason = _av_process_change({}, b, own_areas, label)
+    else:
+        ok, reason = True, ""
+        for y in b.get("processes") or []:
+            if not isinstance(y, dict) or str(y.get("areaId")) not in own_areas or str(y.get("status") or "open") != "open":
+                ok, reason = False, f"Projekt {label}: Neue Prozesse nur im eigenen Bereich und mit Status „Offen“."
+                break
+            reason = _new_process_error(y, label)
+            if reason:
+                ok = False
+                break
+    return "" if ok else reason
 
 
 def project_changes_allowed(old: dict, new: dict, role: str, username: str, department_id: str = "") -> tuple[bool, str]:
@@ -3365,6 +3536,9 @@ def project_changes_allowed(old: dict, new: dict, role: str, username: str, depa
                 return False, f"Diese Rolle darf kein Projekt in dieser Phase anlegen ({label})."
             if any(str(x.get("actor") or "") != username for x in (b.get("log") or [])):
                 return False, f"Projekt {label}: Verlaufseinträge müssen den angemeldeten Benutzer tragen."
+            reason = _new_project_error(b, role, fields, own_areas, label)
+            if reason:
+                return False, reason
             continue
         if b is None:
             if role != "project_management" or str(a.get("phase")) not in {"inquiry", "pm", "offer_sent", "lost"}:
@@ -3410,6 +3584,18 @@ def _pm_process_change(a: dict, b: dict, label: str) -> tuple[bool, str]:
         x = pa.get(pid)
         before = str((x or {}).get("status") or "open")
         after = str(y.get("status") or "open")
+        if x is None:
+            reason = _new_process_error(y, label)
+            if reason:
+                return False, reason
+        else:
+            # Audit: areaId-Umweg (Bereich wechseln, dann Status setzen) – Bereichswechsel nur für offene, nicht übernommene
+            # Prozesse ohne Vorplan, nie zugleich mit einer Statusänderung; Statusprüfung gegen alten UND neuen Bereich.
+            if str(x.get("areaId")) != str(y.get("areaId")):
+                if before != "open" or after != "open" or x.get("workStepId") or x.get("pmPlan"):
+                    return False, f"Projekt {label}: Der Bereich von „{y.get('title')}“ kann nur bei offenen, nicht übernommenen Prozessen geändert werden."
+            if before != after and (str(x.get("areaId")) not in PM_STATUS_AREAS or str(y.get("areaId")) not in PM_STATUS_AREAS):
+                return False, f"Projekt {label}: Den Status von „{y.get('title')}“ meldet die zuständige Abteilung, nicht das Projektmanagement."
         if before != after and str(y.get("areaId")) not in PM_STATUS_AREAS:
             return False, f"Projekt {label}: Den Status von „{y.get('title')}“ meldet die zuständige Abteilung, nicht das Projektmanagement."
         if x is None and after != "open" and str(y.get("areaId")) not in PM_STATUS_AREAS:
@@ -3449,6 +3635,9 @@ def _av_process_change(a: dict, b: dict, own_areas: set, label: str) -> tuple[bo
         if x is None:
             if str(y.get("status") or "open") != "open":
                 return False, f"Projekt {label}: Neue Prozesse starten mit Status „Offen“."
+            reason = _new_process_error(y, label)
+            if reason:
+                return False, reason
             continue
         if y is None:
             if str(x.get("status") or "open") != "open" or x.get("workStepId"):
@@ -4190,7 +4379,7 @@ def append_change_audit(old, new, user, revision, stamp):
                     ids = {i for i in set(left) | set(right) if canonical(left.get(i)) != canonical(right.get(i))}
                     previous = [left[i] for i in sorted(ids) if i in left]
                     current = [right[i] for i in sorted(ids) if i in right]
-                changes.append({"id": "a_"+secrets.token_hex(10), "ts": stamp, "actor": user["username"], "role": user["role"], "departmentId": rec.get("departmentId") or machine_depts.get(str(rec.get("machineId"))) or employee_depts.get(str(rec.get("employeeId"))) or user.get("department_id") or "", "collection": collection, "recordId": rid, "fa": rec.get("fa", ""), "projectId": rec.get("projectId") or (rid if collection == "projects" else ""), "field": field, "old": previous, "new": current, "action": "Feld geändert", "detail": f"{collection}/{rid}: {field}", "revision": revision})
+                changes.append({"id": "a_"+secrets.token_hex(10), "ts": stamp, "actor": user["username"], "role": user["role"], "departmentId": rec.get("departmentId") or machine_depts.get(str(rec.get("machineId"))) or employee_depts.get(str(rec.get("employeeId"))) or user.get("department_id") or "", "collection": collection, "recordId": rid, "fa": rec.get("fa", ""), "projectId": rec.get("projectId") or (rid if collection == "projects" else ""), "field": field, "old": _audit_clip(previous), "new": _audit_clip(current), "action": "Feld geändert", "detail": f"{collection}/{rid}: {field}", "revision": revision})
     new["audit"] = [*reversed(changes), *(new.get("audit") or [])][:AUDIT_CAP]
     return changes
 
@@ -5716,6 +5905,13 @@ class Handler(BaseHTTPRequestHandler):
                 con.execute("ROLLBACK")
                 return self.json_response(409, mp_error("MP-SYNC-001", "Revision veraltet.", revision=row["revision"]))
             old = json.loads(row["json"])
+            # Audit: Schema und strikte IDs zuerst (vor Normalisierung und Rechteprüfung), sonst 500 bzw. Umgehung über falsy IDs.
+            reason = state_schema_error(incoming)
+            code = schema_error_code(reason) if reason else "MP-DATA-015"
+            reason = reason or record_id_error(old, incoming)
+            if reason:
+                con.execute("ROLLBACK")
+                return self.json_response(400, mp_error(code, reason))
             normalize_fa_state(old)
             normalize_fa_state(incoming)
             unredact_incoming(old, incoming, user)
@@ -5736,7 +5932,7 @@ class Handler(BaseHTTPRequestHandler):
             # Block E: Bedarfs-FA entstehen, ändern Menge/Quelle und entfallen nur über /api/demand.
             for oid in set(before_steps) | set(after_steps):
                 before, after = before_steps.get(oid), after_steps.get(oid)
-                if not any(x and x.get("sourceType") in DEMAND_SOURCES for x in (before, after)):
+                if not any(x and (x.get("sourceType") in DEMAND_SOURCES or any(x.get(k) for k in ("callOffId", "frameOrderId", "stockRequirementId"))) for x in (before, after)):
                     continue
                 if before is None or (after is None and before.get("status") in {"planned", "released"}) or (after and any(canonical(before.get(f)) != canonical(after.get(f)) for f in DEMAND_LOCKED_FIELDS)):
                     return self.json_response(403, mp_error("MP-DEM-041", "Bedarfs-FA (Abruf/Bestand) werden über Rahmenaufträge & Bestand angelegt, geändert und storniert."))
@@ -5751,7 +5947,7 @@ class Handler(BaseHTTPRequestHandler):
                 if oid not in before_steps and (after.get("status") in {"running", "paused", "done"} or after.get("productionPhases")):
                     return self.json_response(403, mp_error("MP-PROD-041", "Neue FA beginnen im Planungsstatus."))
             old_hist_ids = {str(h.get("id")) for h in old.get("history") or []}
-            if any(str(h.get("id")) not in old_hist_ids and h.get("recordType", "done") == "done" for h in incoming.get("history") or []):
+            if any(str(h.get("id")) not in old_hist_ids and hist_record_type(h) != "cancelled" for h in incoming.get("history") or []):
                 return self.json_response(403, mp_error("MP-PROD-041", "Ist-Historie entsteht durch die Fertigmeldung."))
             # Legacy-Schattenkopie (V12.4.3 und älter) nie wieder in den Live-State übernehmen.
             incoming.pop("orders", None)
@@ -5821,6 +6017,13 @@ class Handler(BaseHTTPRequestHandler):
             changes = append_change_audit(old, incoming, user, new_revision, ts)
             archived_ids = archive_excess_history(con, incoming)
             raw = json.dumps(incoming, ensure_ascii=False, separators=(",", ":"))
+            # Audit: Das Protokoll wächst durch das Speichern; Gesamtgröße nach dem Anhängen prüfen, sonst Sackgasse (nichts mehr speicherbar).
+            while len(raw.encode("utf-8")) > MAX_BODY and len(incoming.get("audit") or []) > 50:
+                incoming["audit"] = incoming["audit"][:max(50, len(incoming["audit"]) // 2)]
+                raw = json.dumps(incoming, ensure_ascii=False, separators=(",", ":"))
+            if len(raw.encode("utf-8")) > MAX_BODY:
+                con.execute("ROLLBACK")
+                return self.json_response(413, mp_error("MP-DATA-016", "Datenstand wäre nach dem Speichern zu groß (Protokoll eingerechnet)."))
             con.execute("UPDATE state SET revision=?,json=?,updated_at=?,updated_by=? WHERE id=1", (new_revision, raw, ts, user["username"]))
             con.execute("INSERT INTO server_audit(ts,username,action,detail,revision) VALUES(?,?,?,?,?)", (ts, user["username"], action, json.dumps({"detail": detail, "role": user["role"], "departmentId": user.get("department_id") or "", "changes": changes}, ensure_ascii=False), new_revision))
             con.execute("COMMIT")

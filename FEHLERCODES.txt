@@ -555,3 +555,18 @@ MP-DEM-000   Unbekannte Bedarfsaktion (Rahmenauftraege/Abrufe).
 MP-PM-040    Kundenplan: Aufgaben/Termine ungueltig bzw. keine Aufgaben mit Terminen fuer den Kundenplan.
 MP-REP-010   Report: keine fertig gemeldeten Auftraege fuer diese Auswahl.
 MP-REP-011   Report: Popup blockiert - Popups fuer diese Seite erlauben.
+
+RECHTE-/VALIDIERUNGS-AUDIT (Gitea PR claude/fix-rechte-validierung)
+MP-DATA-015  Datensatz ohne gueltige ID (nur nicht-leere Texte aus Buchstaben, Ziffern, _ und -, max. 80 Zeichen; 0/false/null
+             sind ungueltig) oder doppelte ID in einer Sammlung. Bereits gespeicherte Alt-IDs bleiben unveraendert gueltig.
+MP-DATA-016  Datenstand waere nach dem Speichern (inkl. Aenderungsprotokoll) groesser als das Limit (HTTP 413). Abhilfe: Datenmenge
+             verkleinern oder Admin informieren.
+MP-DATA-017  Datenstand hat falsche Typen (Sammlung ist keine Liste von Objekten, Objektfeld ist keine Struktur, personnelGate kein ja/nein).
+MP-DATA-018  Textfeld bzw. Datensatz zu lang (Namen/Bezeichnungen 200, Notizen/Beschreibungen/Verlauf 2000 Zeichen, Datensatz 256 KB,
+             max. 100 Planversionen).
+MP-HIST-002  (geaendert) recordType fehlt (Altbestand = Fertig) oder ist exakt "done"/"cancelled"; "", null, 0 u. a. werden abgewiesen.
+MP-ROLE-010  (erweitert) Auch dayRules (Planung) und ci (System) folgen dem Funktionsrecht; FA einplanen umfasst zusaetzlich Stunden,
+             Status, Menge, Termine, Vorgaenger, Reihenfolge und das Loeschen von FA.
+MP-PM-031    (erweitert) Neue Projekte/Prozesse: nur Felder der Rolle, Angebots-/Entwicklungsdaten leer, neue Prozesse ohne PM-Vorplan;
+             Bereichswechsel eines Prozesses nur bei offenen, nicht uebernommenen Prozessen und nie zusammen mit einer Statusaenderung.
+MP-DEM-041   (erweitert) Auch FA mit callOffId/frameOrderId/stockRequirementId gelten als Bedarfs-FA.
