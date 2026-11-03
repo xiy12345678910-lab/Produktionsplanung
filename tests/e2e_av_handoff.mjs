@@ -5,6 +5,8 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+// Datumswerte relativ zu heute (feste Daten laufen ab und liessen den Test haengen)
+const D=n=>new Date(Date.now()+n*864e5).toISOString().slice(0,10);
 const SRC=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..'),PORT=18798,BASE=`http://127.0.0.1:${PORT}/`,PASS='E2E-Handoff-1234';
 const tmp=mkdtempSync(path.join(tmpdir(),'mp-av-handoff-'));
 const py=`
@@ -23,7 +25,7 @@ with server.DB_LOCK,server.db_session() as con:
  new['workSteps']=[]
  new['machines'].append({**new['machines'][0],'id':'foreign_resource','name':'Fremder Bereich','departmentId':'thermoforming'})
  new['workSteps'].append({'id':'legacy-manual-cnc','sequence':1,'planningType':'MACHINE','pos':1,'departmentId':'cnc','projectId':'','predecessorIds':[],'fa':'FA-MANUAL-1001','faNumber':'FA-MANUAL-1001','ab':'','wt':'','machineId':'m1','altMachineId':'','allowAlternative':False,'order':'FA-MANUAL-1001','articleNo':'','description':'Manueller Legacy-Auftrag','targetQty':10,'dueDate':'','baselinePlan':None,'hours':3,'goodQty':0,'scrapQty':0,'status':'planned','direction':'forward','anchorMode':'none','requiredStart':'','requiredFinish':'','createdAt':server.now_iso(),'lockedStart':'','lockedSegments':[],'actualStartedAt':'','runningSince':'','pausedAt':'','pauseIntervals':[],'remainingHours':None,'lastStatusCheckAt':''})
- new['projects']=[{'id':'p1','number':'P-2026-001','phase':'accepted','name':'Gehäuse','customer':'Kunde A','ab':'AB-500','dueDate':'2026-11-30','log':[],'processes':[]}]
+ new['projects']=[{'id':'p1','number':'P-2026-001','phase':'accepted','name':'Gehäuse','customer':'Kunde A','ab':'AB-500','dueDate':'2030-11-30','log':[],'processes':[]}]
  ok,code,reason=server.validate_state(old,new)
  if not ok: print('SEED-ERROR',code,reason,flush=True);sys.exit(1)
  con.execute('UPDATE state SET json=?,revision=revision+1 WHERE id=1',(json.dumps(new,ensure_ascii=False),))
@@ -49,14 +51,14 @@ try{
  check(!(await av.locator('#qCalcBox').isVisible()),'machine cycle calculator is hidden for AV');
  check((await av.locator('#qFAField label').innerText()).includes('FA · Fertigungsauftrag'),'FA identity is explicit in the AV header');
  check(Number.parseFloat(await av.locator('#qFA').evaluate(e=>getComputedStyle(e).fontSize))>20,'FA field is prominent in the order header');
- await av.fill('#qFA','FA-AV-5701');await av.selectOption('#qProject','p1');await av.fill('#qQty','120');await av.fill('#qDue','2026-10-30');
+ await av.fill('#qFA','FA-AV-5701');await av.selectOption('#qProject','p1');await av.fill('#qQty','120');await av.fill('#qDue',D(15));
  await av.selectOption('[data-av-department="0"]','cnc');await av.click('#qAvAddDepartment');await av.selectOption('[data-av-department="1"]','konf1');await av.click('#qAvAddDepartment');await av.selectOption('[data-av-department="2"]','konf2');
  check(await av.locator('[data-av-hours="0"]').count()===0,'non-confection row has no editable hours');
  check(await av.locator('[data-av-hours="1"]').isVisible()&&await av.locator('[data-av-hours="2"]').isVisible(),'each confection row has its own editable AV hours');
  const predDep=i=>av.locator(`[data-av-predecessor="${i}"]`).evaluate(s=>s.selectedOptions[0]?.dataset.dep||'');
  const setPred=(i,dep)=>av.locator(`[data-av-predecessor="${i}"]`).evaluate((s,d)=>{s.value=[...s.options].find(o=>o.dataset.dep===d)?.value||'';s.dispatchEvent(new Event('change',{bubbles:true}))},dep);
  check(await predDep(1)==='cnc','predecessor is linked to the previous area row');
- await av.locator('[data-av-due="0"]').fill('2026-10-22');await av.locator('[data-av-due="1"]').fill('2026-10-26');await av.locator('[data-av-due="2"]').fill('2026-10-30');
+ await av.locator('[data-av-due="0"]').fill(D(7));await av.locator('[data-av-due="1"]').fill(D(11));await av.locator('[data-av-due="2"]').fill(D(15));
  await av.locator('[data-av-hours="1"]').fill('3.5');await av.locator('[data-av-hours="2"]').fill('5.25');
  await av.screenshot({path:'/tmp/av-handoff-dialog-desktop.png'});
  await av.setViewportSize({width:390,height:844});
@@ -71,27 +73,27 @@ try{
  check(rows.length===3,'one stable work step per selected department');
  check(rows[0]?.departmentId==='cnc'&&rows[1]?.departmentId==='konf1'&&rows[2]?.departmentId==='konf2'&&rows[1]?.predecessorIds?.[0]===rows[0]?.id&&rows[2]?.predecessorIds?.[0]===rows[1]?.id,'ordered stable predecessor references');
  check(rows.every(x=>x.machineId==='')&&rows[0]?.hours===0&&rows[1]?.hours===3.5&&rows[2]?.hours===5.25,'no resource assigned; distinct hours only on confection rows');
- check(rows[0]?.dueDate==='2026-10-22'&&rows[1]?.dueDate==='2026-10-26'&&rows[2]?.dueDate==='2026-10-30','per department deadlines saved');
- await av.click('#quickAdd');await av.fill('#qFA','FA-AV-INTEGRITY');await av.selectOption('#qProject','p1');await av.fill('#qQty','3');await av.fill('#qDue','2026-11-05');
+ check(rows[0]?.dueDate===D(7)&&rows[1]?.dueDate===D(11)&&rows[2]?.dueDate===D(15),'per department deadlines saved');
+ await av.click('#quickAdd');await av.fill('#qFA','FA-AV-INTEGRITY');await av.selectOption('#qProject','p1');await av.fill('#qQty','3');await av.fill('#qDue',D(21));
  await av.selectOption('[data-av-department="0"]','cnc');await av.click('#qAvAddDepartment');await av.selectOption('[data-av-department="1"]','konf1');await av.click('#qAvAddDepartment');await av.selectOption('[data-av-department="2"]','konf2');
- await av.locator('[data-av-due="0"]').fill('2026-11-01');await av.locator('[data-av-due="1"]').fill('2026-11-03');await av.locator('[data-av-due="2"]').fill('2026-11-05');await av.locator('[data-av-hours="1"]').fill('2.25');await av.locator('[data-av-hours="2"]').fill('6.5');
+ await av.locator('[data-av-due="0"]').fill(D(17));await av.locator('[data-av-due="1"]').fill(D(19));await av.locator('[data-av-due="2"]').fill(D(21));await av.locator('[data-av-hours="1"]').fill('2.25');await av.locator('[data-av-hours="2"]').fill('6.5');
  await av.locator('[data-av-move="2|-1"]').click();
- check(await av.locator('[data-av-department="1"]').inputValue()==='konf2'&&await av.locator('[data-av-hours="1"]').inputValue()==='6.5'&&await av.locator('[data-av-due="1"]').inputValue()==='2026-11-05'&&await predDep(1)==='konf1','reorder keeps department hours, deadline, and predecessor together');
- check(await av.locator('[data-av-department="2"]').inputValue()==='konf1'&&await av.locator('[data-av-hours="2"]').inputValue()==='2.25'&&await av.locator('[data-av-due="2"]').inputValue()==='2026-11-03'&&await predDep(2)==='cnc','reorder preserves the second department row data');
+ check(await av.locator('[data-av-department="1"]').inputValue()==='konf2'&&await av.locator('[data-av-hours="1"]').inputValue()==='6.5'&&await av.locator('[data-av-due="1"]').inputValue()===D(21)&&await predDep(1)==='konf1','reorder keeps department hours, deadline, and predecessor together');
+ check(await av.locator('[data-av-department="2"]').inputValue()==='konf1'&&await av.locator('[data-av-hours="2"]').inputValue()==='2.25'&&await av.locator('[data-av-due="2"]').inputValue()===D(19)&&await predDep(2)==='cnc','reorder preserves the second department row data');
  await av.locator('[data-av-remove="0"]').click();
  check(await av.locator('[data-av-department]').count()===2&&await av.locator('[data-av-predecessor]').evaluateAll(xs=>xs.every(x=>!x.selectedOptions[0]?.dataset.dep||x.selectedOptions[0].dataset.dep!=='cnc')),'removing predecessor clears all dependent selections without stale references');
  await setPred(0,'konf1');await setPred(1,'konf2');await av.click('#createOrder');await av.locator('#errorModal.show').waitFor();
  check((await av.locator('#errorMessage').innerText()).includes('Abhängigkeitsschleife'),'dependency cycle is clearly rejected');await av.click('#closeError');
  st=await getState(av);check(!st.workSteps.some(x=>x.fa==='FA-AV-INTEGRITY'),'rejected dependency cycle does not save partial orders');await av.click('#cancelModal');
  // V12.23.0: derselbe Bereich mehrfach – je Zeile eigener Arbeitsgang mit Vorgänger, Termin und AV-Notiz (mehrere Maschinen).
- await av.click('#quickAdd');await av.fill('#qFA','FA-AV-MULTI');await av.selectOption('#qProject','p1');await av.fill('#qQty','240');await av.fill('#qDue','2026-11-20');
+ await av.click('#quickAdd');await av.fill('#qFA','FA-AV-MULTI');await av.selectOption('#qProject','p1');await av.fill('#qQty','240');await av.fill('#qDue',D(36));
  await av.selectOption('[data-av-department="0"]','konf1');await av.click('#qAvAddDepartment');await av.selectOption('[data-av-department="1"]','cnc');await av.click('#qAvAddDepartment');await av.selectOption('[data-av-department="2"]','cnc');
  check(await av.locator('[data-av-department="2"] option[value="cnc"]').count()===1&&await av.locator('[data-av-department="2"]').inputValue()==='cnc','same area can be selected a second time');
- await av.locator('[data-av-predecessor="2"]').selectOption({index:1});await av.locator('[data-av-due="2"]').fill('2026-11-12');await av.fill('[data-av-note="2"]','Teil B auf zweiter Maschine');check(await av.locator('[data-av-dry]').count()===0,'AV dialog has no drying field (department lead decides)');
+ await av.locator('[data-av-predecessor="2"]').selectOption({index:1});await av.locator('[data-av-due="2"]').fill(D(28));await av.fill('[data-av-note="2"]','Teil B auf zweiter Maschine');check(await av.locator('[data-av-dry]').count()===0,'AV dialog has no drying field (department lead decides)');
  await av.click('#createOrder');await av.waitForTimeout(900);
  st=await getState(av);const multi=st.workSteps.filter(x=>x.fa==='FA-AV-MULTI'),cncSteps=multi.filter(x=>x.departmentId==='cnc');
  check(multi.length===3&&cncSteps.length===2&&cncSteps[0].id!==cncSteps[1].id,`two separate work steps of the same FA for the repeated area (${multi.length})`);
- check(cncSteps[0].predecessorIds?.[0]===multi[0].id&&cncSteps[1].predecessorIds?.[0]===multi[0].id&&cncSteps[1].dueDate==='2026-11-12'&&cncSteps[1].avNote==='Teil B auf zweiter Maschine'&&!('avNote' in cncSteps[0])&&!multi.some(x=>'dryingHours' in x),'each repeated row keeps its own predecessor, deadline and AV note');
+ check(cncSteps[0].predecessorIds?.[0]===multi[0].id&&cncSteps[1].predecessorIds?.[0]===multi[0].id&&cncSteps[1].dueDate===D(28)&&cncSteps[1].avNote==='Teil B auf zweiter Maschine'&&!('avNote' in cncSteps[0])&&!multi.some(x=>'dryingHours' in x),'each repeated row keeps its own predecessor, deadline and AV note');
  await av.setViewportSize({width:1440,height:950});
 const denied=async(patch,id)=>av.evaluate(async([stepId,changes])=>{const state=await(await fetch('/api/state')).json();Object.assign(state.data.workSteps.find(x=>x.id===stepId),changes);const health=await(await fetch('/api/health')).json();const response=await fetch('/api/state',{method:'PUT',headers:{'Content-Type':'application/json','X-MP-Client-Version':health.version},body:JSON.stringify({revision:state.revision,data:state.data,action:'Unauthorized AV edit'})});return response.status},[id,patch]);
 const denyMachine=await denied({machineId:'m1',handoffUnassigned:false,hours:4},rows[0]?.id);check(denyMachine===403,`server rejects AV resource assignment (${denyMachine})`);
@@ -109,15 +111,15 @@ const denyHours=await denied({hours:6},rows[0]?.id);check(denyHours===403,`serve
  await av.click('#createOrder');await av.locator('#errorModal.show').waitFor({timeout:5000}).catch(()=>{});
  check(/MP-PM-009/.test(await av.locator('#errorModal').innerText().catch(()=>'')),'neue AB ohne Liefertermin: Hinweis MP-PM-009');
  await av.keyboard.press('Escape');await av.locator('#errorModal').evaluate(e=>e.classList.remove('show')).catch(()=>{});
- await av.fill('#qDue','2026-11-25');await av.click('#createOrder');await av.waitForTimeout(900);
+ await av.fill('#qDue',D(41));await av.click('#createOrder');await av.waitForTimeout(900);
  st=await getState(av);const abP=st.projects.filter(x=>x.ab==='50500'),abO=st.workSteps.find(x=>x.fa==='FA-AV-ABNEU');
- check(abP.length===1&&abP[0].productionOnly===true&&abP[0].phase==='accepted'&&abP[0].dueDate==='2026-11-25'&&abO?.projectId===abP[0].id&&abO?.ab==='50500',`neue AB 50500: Projekt "Nur Produktion" angelegt und verknuepft (${JSON.stringify({p:abP.map(x=>({id:x.id,phase:x.phase,po:x.productionOnly})),o:abO&&{pid:abO.projectId,ab:abO.ab}})})`);
+ check(abP.length===1&&abP[0].productionOnly===true&&abP[0].phase==='accepted'&&abP[0].dueDate===D(41)&&abO?.projectId===abP[0].id&&abO?.ab==='50500',`neue AB 50500: Projekt "Nur Produktion" angelegt und verknuepft (${JSON.stringify({p:abP.map(x=>({id:x.id,phase:x.phase,po:x.productionOnly})),o:abO&&{pid:abO.projectId,ab:abO.ab}})})`);
  await av.click('#quickAdd');check(await av.locator('#qAbNew').inputValue()==='','AB-Feld ist beim naechsten Dialog leer (keine stehen gebliebene AB)');await av.fill('#qFA','FA-AV-ABALT');await av.fill('#qAbNew','AB-500');await av.selectOption('[data-av-department="0"]','cnc');await av.waitForTimeout(150);await av.click('#createOrder');await av.waitForTimeout(900);
  st=await getState(av);const altO=st.workSteps.find(x=>x.fa==='FA-AV-ABALT');
  check(altO?.projectId==='p1'&&altO?.ab==='AB-500'&&st.projects.filter(x=>x.ab==='AB-500').length===1,`vorhandene AB AB-500: mit Projekt p1 verknuepft, kein Doppel (${altO?.projectId})`);
  // V12.28.3: dieselbe neue AB parallel angelegt -> Server 400 MP-PM-003 -> klare Meldung statt "Ungueltige Aenderung".
  let fakeLeft=1;const fakeRoute=async route=>{if(route.request().method()==='PUT'&&fakeLeft>0){fakeLeft--;return route.fulfill({status:400,contentType:'application/json',body:JSON.stringify({errorCode:'MP-PM-003',error:"Projekt 'P-X': AB ist zu lang oder bereits vergeben."})})}return route.continue()};await av.route('**/api/state',fakeRoute);
- await av.click('#quickAdd');await av.fill('#qFA','FA-AV-PARALLEL');await av.fill('#qAbNew','50777');await av.fill('#qDue','2026-11-25');await av.selectOption('[data-av-department="0"]','cnc');await av.waitForTimeout(150);await av.click('#createOrder');
+ await av.click('#quickAdd');await av.fill('#qFA','FA-AV-PARALLEL');await av.fill('#qAbNew','50777');await av.fill('#qDue',D(41));await av.selectOption('[data-av-department="0"]','cnc');await av.waitForTimeout(150);await av.click('#createOrder');
  await av.locator('#errorModal.show').waitFor({timeout:8000}).catch(()=>{});
  check(/Dialog neu öffnen und die vorhandene AB auswählen/.test(await av.locator('#errorModal').innerText().catch(()=>'')),'parallel angelegte AB: klare Meldung (Dialog neu oeffnen, vorhandene AB waehlen)');
  check(fakeLeft===0,'simulierte Ablehnung wurde genau einmal ausgeliefert');await av.locator('#errorModal').evaluate(e=>e.classList.remove('show')).catch(()=>{});await av.waitForFunction(()=>document.getElementById('saveState')?.textContent.includes('Server gespeichert'),null,{timeout:8000}).catch(()=>{});await av.waitForTimeout(400);await av.unroute('**/api/state',fakeRoute);
@@ -165,7 +167,7 @@ const leadDenied=await cnc.evaluate(async id=>{const s=await(await fetch('/api/s
  check(!(await admin.locator('#qAvDepartmentsField').isVisible()),'AV handoff editor stays hidden from admin quick orders');
  await admin.click('#cancelModal');await admin.click('#navOrders');await admin.locator('[data-project-open="p1"]').click();await admin.locator('#projectNewOrder').click();
  check(await admin.locator('#qAvDepartmentsField').isVisible()&&!(await admin.locator('#qMachine').isVisible())&&!(await admin.locator('#qHours').isVisible()),'admin project FA opens the resource-free department handoff dialog');
- await admin.fill('#qFA','FA-ADMIN-PROJECT');await admin.fill('#qQty','12');await admin.fill('#qDue','2026-11-30');await admin.selectOption('[data-av-department="0"]','cnc');
+ await admin.fill('#qFA','FA-ADMIN-PROJECT');await admin.fill('#qQty','12');await admin.fill('#qDue',D(46));await admin.selectOption('[data-av-department="0"]','cnc');
  check(await admin.locator('[data-av-hours="0"]').count()===0,'admin handoff does not offer hours for CNC');await admin.selectOption('[data-av-department="0"]','konf1');
  check(await admin.locator('[data-av-hours="0"]').isVisible(),'admin handoff exposes editable hours only for confection');await admin.fill('[data-av-hours="0"]','2.5');await admin.click('#createOrder');
  for(let i=0;i<50&&!(await getState(admin)).workSteps.some(x=>x.fa==='FA-ADMIN-PROJECT');i++)await admin.waitForTimeout(200);
