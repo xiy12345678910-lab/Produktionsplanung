@@ -1,6 +1,7 @@
 """Generic release updates. Standard library; browser input never selects files or commands."""
 from __future__ import annotations
 import argparse
+import contextlib
 import hashlib
 import json
 import os
@@ -310,8 +311,75 @@ def unpack_package(blob, manifest, target):
 
 def audit(base, job, action):
     db = base/'data'/'maschinenplanung.sqlite3'
-    with sqlite3.connect(db, timeout=30) as con:
-        con.execute('INSERT INTO server_audit(ts,username,action,detail,revision) VALUES(?,?,?,?,NULL)', (time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()), job.get('actor', 'System'), action, json.dumps({'role': 'admin', 'jobId': job['jobId'], 'version': job.get('version'), 'stage': job.get('stage'), 'error': job.get('error', '')}, ensure_ascii=False)))
+    # contextlib.closing: "with sqlite3.connect()" schliesst die Verbindung nicht (Dateisperre unter Windows).
+    with contextlib.closing(sqlite3.connect(db, timeout=30)) as con:
+        with con:
+            con.execute('INSERT INTO server_audit(ts,username,action,detail,revision) VALUES(?,?,?,?,NULL)', (time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()), job.get('actor', 'System'), action, json.dumps({'role': 'admin', 'jobId': job['jobId'], 'version': job.get('version'), 'stage': job.get('stage'), 'error': job.get('error', '')}, ensure_ascii=False)))
+
+
+LOCK_MAX_AGE = 3*3600   # Updates dauern Minuten; eine aeltere update.lock stammt von einem abgebrochenen Lauf
+LOCK_PID_GRACE = 120    # Sekunden: so lange gilt ein frisches Lock auch bei unbekanntem/totem Prozess (Worker uebernimmt es noch)
+
+
+def pid_alive(pid):
+    try:
+        pid = int(pid)
+    except (TypeError, ValueError):
+        return False
+    if pid <= 0:
+        return False
+    if os.name == 'nt':
+        import ctypes
+        kernel = ctypes.windll.kernel32
+        handle = kernel.OpenProcess(0x1000, False, pid)   # PROCESS_QUERY_LIMITED_INFORMATION
+        if not handle:
+            return kernel.GetLastError() == 5   # Zugriff verweigert = Prozess existiert
+        try:
+            code = ctypes.c_ulong()
+            return bool(kernel.GetExitCodeProcess(handle, ctypes.byref(code))) and code.value == 259   # STILL_ACTIVE
+        finally:
+            kernel.CloseHandle(handle)
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    except OSError:
+        return False
+    return True
+
+
+def write_lock(path, job_id, pid=None):
+    """update.lock = JSON mit Auftrag, PID des Besitzers und Zeitstempel (Stale-Erkennung)."""
+    path.write_text(json.dumps({'jobId': job_id, 'pid': pid or os.getpid(), 'ts': int(time.time())}), encoding='utf-8')
+
+
+def read_lock(path):
+    """Lock lesen. Altformat (nur die Job-ID als Text) wird mit dem Aenderungszeitpunkt der Datei bewertet."""
+    try:
+        text = path.read_text(encoding='utf-8-sig')
+        mtime = path.stat().st_mtime
+    except OSError:
+        return None
+    try:
+        data = json.loads(text)
+        if isinstance(data, dict):
+            return {'jobId': str(data.get('jobId') or ''), 'pid': data.get('pid'), 'ts': float(data.get('ts') or mtime)}
+    except (ValueError, TypeError):
+        pass
+    return {'jobId': text.strip(), 'pid': None, 'ts': mtime}
+
+
+def lock_stale(path, now=None):
+    """True, wenn die Sperre verwaist ist: aelter als LOCK_MAX_AGE, oder Besitzerprozess tot (nach kurzer Karenzzeit)."""
+    info = read_lock(path)
+    if info is None:
+        return False
+    age = (now or time.time()) - info['ts']
+    if age > LOCK_MAX_AGE:
+        return True
+    return info['pid'] is not None and age > LOCK_PID_GRACE and not pid_alive(info['pid'])
 
 
 class UpdateManager:
@@ -395,7 +463,14 @@ class UpdateManager:
     def start(self, actor):
         with self.guard:
             existing = read_json(self.folder/'status.json', {}) or {}
-            if (self.folder/'update.lock').exists():
+            lock = self.folder/'update.lock'
+            if lock.exists() and lock_stale(lock):
+                # Verwaiste Sperre (Absturz/Stromausfall waehrend eines Updates): verwerfen und Auftrag als fehlgeschlagen markieren.
+                lock.unlink(missing_ok=True)
+                if existing.get('stage') not in (None, 'complete', 'failed'):
+                    existing.update(stage='failed', error='Update abgebrochen (verwaiste Sperre verworfen).')
+                    atomic_json(self.folder/'status.json', existing)
+            if lock.exists():
                 return existing, False
             if not self.available:
                 raise ValueError('Kein freigegebenes Update verfügbar.')
@@ -406,7 +481,7 @@ class UpdateManager:
             except FileExistsError:
                 return read_json(self.folder/'status.json', {}), False
             with os.fdopen(fd, 'w') as f:
-                f.write(job_id)
+                f.write(json.dumps({'jobId': job_id, 'pid': os.getpid(), 'ts': int(time.time())}))
             job = {'jobId': job_id, 'version': self.available['version'], 'actor': actor, 'stage': 'checking', 'currentVersion': self.current, 'repository': self.available['repository']}
             atomic_json(self.folder/'status.json', job)
         # V12.28.3: Start ausserhalb der Sperre (launch_worker kann PowerShell bis 120 s warten lassen; poll/check
@@ -442,8 +517,10 @@ def run_job(base, job_id, fetch=None, installer=None):
     base = Path(base)
     folder = base/'updates'
     job = read_json(folder/'status.json')
-    if not job or job.get('jobId') != job_id or (folder/'update.lock').read_text() != job_id:
+    lock = read_lock(folder/'update.lock')
+    if not job or job.get('jobId') != job_id or not lock or lock['jobId'] != job_id:
         raise ValueError('Updateauftrag ist ungültig.')
+    write_lock(folder/'update.lock', job_id)   # Worker uebernimmt die Sperre (eigene PID, frischer Zeitstempel)
     def stage(value):
         job['stage'] = value
         atomic_json(folder/'status.json', job)
@@ -455,7 +532,12 @@ def run_job(base, job_id, fetch=None, installer=None):
         if not info or info['version'] != job['version']:
             raise ValueError('Freigegebenes Release hat sich geändert; Update erneut starten.')
         stage('download')
-        package = unpack_package(fetch(info['packageUrl'], MAX_PACKAGE), info['manifest'], folder/'staging'/job_id/'package')
+        staging = folder/'staging'/job_id
+        try:
+            package = unpack_package(fetch(info['packageUrl'], MAX_PACKAGE), info['manifest'], staging/'package')
+        except Exception:
+            shutil.rmtree(staging, ignore_errors=True)   # halb entpacktes Paket nicht liegen lassen
+            raise
         stage('preflight')
         if shutil.disk_usage(base).free < 3*MAX_PACKAGE+3*(base/'data'/'maschinenplanung.sqlite3').stat().st_size:
             raise ValueError('Zu wenig freier Speicher für Backup und Rollback.')

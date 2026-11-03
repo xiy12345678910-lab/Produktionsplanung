@@ -136,6 +136,51 @@ class UpdateTests(unittest.TestCase):
         n=len(calls);self.assertFalse(m2.recheck(),'zweite Suche innerhalb einer Minute wird abgewiesen');self.assertEqual(len(calls),n)
         m2.manual_at-=61;self.assertTrue(m2.recheck())
 
+    def test_stale_lock_is_discarded(self):
+        import os,time,subprocess
+        fetch,_=source();m=self.manager(fetch=fetch);m.check()
+        job,started=m.start('admin');self.assertTrue(started)
+        lock=m.folder/'update.lock'
+        info=updates.read_lock(lock);self.assertEqual((info['jobId'],info['pid']),(job['jobId'],os.getpid()))
+        self.assertFalse(updates.lock_stale(lock),'frisches Lock mit lebendem Prozess ist nicht stale')
+        self.assertFalse(m.start('admin')[1],'zweiter Start bei gueltigem Lock abgewiesen')
+        # zu alt (> 3 h)
+        updates.atomic_json(lock,{'jobId':job['jobId'],'pid':os.getpid(),'ts':int(time.time())-4*3600})
+        self.assertTrue(updates.lock_stale(lock))
+        job2,started2=m.start('admin')
+        self.assertTrue(started2 and job2['jobId']!=job['jobId'],'altes Lock verworfen, neuer Auftrag gestartet')
+        # toter Prozess (nach Karenzzeit)
+        dead=subprocess.Popen([sys.executable,'-c','pass']);dead.wait()
+        updates.atomic_json(lock,{'jobId':'x','pid':dead.pid,'ts':int(time.time())-600})
+        self.assertTrue(updates.lock_stale(lock),'Lock eines toten Prozesses ist stale')
+        updates.atomic_json(lock,{'jobId':'x','pid':dead.pid,'ts':int(time.time())})
+        self.assertFalse(updates.lock_stale(lock),'ganz frisches Lock bleibt (Karenzzeit)')
+        # Altformat (nur Job-ID) wird ueber den Zeitstempel der Datei bewertet
+        lock.write_text('abc');old=time.time()-5*3600;os.utime(lock,(old,old))
+        self.assertTrue(updates.lock_stale(lock))
+        lock.unlink()
+
+    def test_stale_lock_marks_running_job_failed(self):
+        import os,time
+        fetch,_=source();m=self.manager(fetch=fetch);m.check()
+        job,_=m.start('admin')
+        updates.atomic_json(m.folder/'update.lock',{'jobId':job['jobId'],'pid':os.getpid(),'ts':int(time.time())-4*3600})
+        job2,started=m.start('admin')
+        self.assertTrue(started)
+        self.assertEqual(updates.read_json(m.folder/'status.json')['jobId'],job2['jobId'])
+
+    def test_unpack_failure_cleans_staging(self):
+        fetch,manifest=source();manifest['sha256']='0'*64;m=self.manager(fetch=fetch);m.check()
+        job,_=m.start('admin')
+        updates.run_job(self.base,job['jobId'],fetch,lambda *a:None)
+        self.assertFalse((m.folder/'staging'/job['jobId']).exists(),'Staging-Ordner nach Fehler entfernt')
+
+    def test_audit_closes_connection(self):
+        import gc
+        updates.audit(self.base,{'jobId':'j','version':'1','stage':'x'},'Test')
+        (self.base/'data'/'maschinenplanung.sqlite3').rename(self.base/'data'/'moved.sqlite3')   # waere unter Windows bei offener Verbindung blockiert
+        with sqlite3.connect(self.base/'data'/'moved.sqlite3') as con:self.assertTrue(con.execute("SELECT 1 FROM server_audit WHERE action='Test'").fetchone())
+
     def test_arbitrary_source_is_rejected(self):
         for repo in ['../../file','https://evil.example/path','owner/repo;run']:
             with self.assertRaises(ValueError):updates.release_info(repo,'12.19.0',lambda *a:self.fail('Network must not run'))

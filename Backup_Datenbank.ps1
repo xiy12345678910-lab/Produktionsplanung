@@ -5,5 +5,6 @@ $Base = Split-Path -Parent $MyInvocation.MyCommand.Path
 $PythonExe = Get-MPPython
 & $PythonExe -I "$Base\Backup_Datenbank.py"
 if ($LASTEXITCODE -eq 2) { Write-Warning 'Lokales Backup OK, Zweitkopie (BACKUP_ZIEL.txt) fehlgeschlagen.'; exit 2 }
+if ($LASTEXITCODE -eq 3) { throw 'Datenbank gesichert, aber die Config-Sicherung (firma_*.zip) ist fehlgeschlagen (Exitcode 3).' }
 if ($LASTEXITCODE -ne 0) { throw 'Backup fehlgeschlagen.' }
 Write-Host 'Backup abgeschlossen und geprueft.' -ForegroundColor Green

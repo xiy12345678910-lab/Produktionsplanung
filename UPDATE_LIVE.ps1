@@ -88,6 +88,9 @@ $LiveTouched = $false
 $NewStarted = $false   # ab hier kann die neue Version die Datenbank migriert haben
 $Committed = $false    # Health- und Sicherheitscheck bestanden: ab hier nie mehr zurueckrollen
 $Maintenance = Join-Path $TargetBase 'updates\installing'
+# Eine Umzugssperre (Umzug_Exportieren.ps1, Inhalt "UMZUG ...") gehoert dem Umzug: das Update ueberschreibt und loescht sie nie.
+function Test-MPUmzugSperre { return ((Test-Path -LiteralPath $Maintenance) -and ([IO.File]::ReadAllText($Maintenance) -match '^UMZUG')) }
+$UmzugSperre = $false
 $UpdateMutex = New-Object Threading.Mutex($false, 'Global\MaschinenplanungUpdate')
 $HaveMutex = $false
 try {
@@ -123,7 +126,8 @@ try {
     Write-Host '3/9 Live-Server stoppen ...'
     New-Item -ItemType Directory -Path (Split-Path -Parent $Maintenance) -Force | Out-Null
     Set-MPFolderAcl (Split-Path -Parent $Maintenance) $false
-    [IO.File]::WriteAllText($Maintenance, $NewVersion)
+    $UmzugSperre = Test-MPUmzugSperre
+    if (-not $UmzugSperre) { [IO.File]::WriteAllText($Maintenance, $NewVersion) }
     $LiveTouched = $true
     Set-MPUpdateStage 'backup'
     Stop-MPServer $OldBase
@@ -236,14 +240,14 @@ try {
     Write-Host "Live-Ordner:     $TargetBase"
     Write-Host "Rollback-Stand:  $RollbackCode"
     if ($migrating) { Write-Host "Alter Ordner bleibt unveraendert: $OldBase (vorerst nicht loeschen)" -ForegroundColor Yellow }
-    Remove-Item -LiteralPath $Maintenance -Force -ErrorAction SilentlyContinue
+    if (-not $UmzugSperre -and -not (Test-MPUmzugSperre)) { Remove-Item -LiteralPath $Maintenance -Force -ErrorAction SilentlyContinue }
     Set-MPUpdateStage 'complete'
     Write-Host 'Alle Browser-Tabs einmal mit Strg+F5 neu laden. Danach CHECK_LAN_SICHERHEIT.ps1 ausfuehren.' -ForegroundColor Cyan
 }
 catch {
     $err = $_
     if ($Committed) {
-        Remove-Item -LiteralPath $Maintenance -Force -ErrorAction SilentlyContinue
+        if (-not $UmzugSperre -and -not (Test-MPUmzugSperre)) { Remove-Item -LiteralPath $Maintenance -Force -ErrorAction SilentlyContinue }
         Write-Warning "Update auf V$NewVersion ist installiert und geprueft; nur ein Abschlussschritt meldete einen Fehler: $($err.Exception.Message)"
         try { Set-MPUpdateStage 'complete' } catch { Write-Warning "Updatestatus nicht geschrieben: $($_.Exception.Message)" }
         return
@@ -313,7 +317,7 @@ catch {
     $oldVersion = Get-MPPackageVersion $OldBase
     $restored = Wait-MPHealth $OldBase $oldVersion 90
     if ($restored) {
-        Remove-Item -LiteralPath $Maintenance -Force -ErrorAction SilentlyContinue
+        if (-not $UmzugSperre -and -not (Test-MPUmzugSperre)) { Remove-Item -LiteralPath $Maintenance -Force -ErrorAction SilentlyContinue }
         Set-MPUpdateStage 'failed' $err.Exception.Message $true
     } else {
         Set-MPUpdateStage 'failed' ('Rollback-Healthcheck fehlgeschlagen. ' + $err.Exception.Message) $false

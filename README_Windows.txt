@@ -100,6 +100,16 @@ MASCHINENPLANUNG V12.29.0 - WINDOWS-SERVER (LAN ONLY)
    - Zweitkopie (dringend empfohlen): Datei BACKUP_ZIEL.txt im Live-Ordner anlegen und als erste
      Zeile das Ziel eintragen, z. B.  \\NAS\Sicherung\Maschinenplanung
      Der Computer (SYSTEM-Konto, im Netz als <Rechnername>$) braucht dort Schreibrechte.
+     Das Zweitziel ist unverschluesselt: Die Config-Sicherung dort (firma_*.zip) enthaelt KEINE privaten
+     HTTPS-Schluessel (config\tls\*.key) und keinen Update-Token (config\update\token.txt). Die lokale
+     Sicherung in backups\ (nur SYSTEM/Administratoren) behaelt sie. Wiederherstellung nur aus dem
+     Zweitziel: HTTPS danach neu einrichten (HTTPS_Einrichten.ps1), Update-Token neu eintragen.
+     Zweitziel selbst gegen Ransomware schuetzen (versionierte/Offline-Kopie, Zugriff nur fuer den Server).
+   - Exitcodes von Backup_Datenbank.py: 0 ok, 1 Fehler, 2 Zweitkopie fehlgeschlagen, 3 Datenbank
+     gesichert, aber Config-Sicherung fehlgeschlagen (der Task zeigt dann einen Fehler).
+   - Sicherungen mit Zusatz (_vor_restore, _umzug, _vor_umzug) zaehlen getrennt (je 10) und
+     verdraengen keine der 60 regulaeren. backups\umzug_*\ (alte Config samt Schluesseln) wird nach
+     30 Tagen automatisch geloescht.
 
 5. VERWALTUNG (PowerShell im Live-Ordner C:\ProgramData\Maschinenplanung)
    .\Server_Status.ps1          Status, Version, letztes Backup (rot bei Fehler/>26 h), Firewall
@@ -120,7 +130,10 @@ MASCHINENPLANUNG V12.29.0 - WINDOWS-SERVER (LAN ONLY)
    .\Restore_Datenbank.ps1 -Datei <pfad>   bestimmte Sicherung (z. B. von der Zweitkopie)
    Prueft die Sicherung, stoppt den Server, sichert den aktuellen Stand (*_vor_restore), spielt
    zurueck (inkl. -wal/-shm), startet und prueft den Server. Startet er nicht, wird der Stand vor
-   dem Restore automatisch zurueckgespielt.
+   dem Restore automatisch zurueckgespielt (auch wenn -MitConfig scheitert); scheitert dieser Rollback,
+   meldet das Skript das deutlich mit dem Befehl fuer die manuelle Wiederherstellung.
+   Die gewaehlte Sicherung wird vorab kopiert, auch die aelteste der 60 laesst sich daher einspielen.
+   Sicherungen einer neueren Programmversion (Schema) werden abgelehnt.
    update_backups\ behaelt die letzten 5 Update-Staende.
    Ein fehlgeschlagenes Update rollt nur den Programmcode zurueck. Neuere Daten werden nie verworfen
    (docs/ROLLBACK.md).

@@ -6,7 +6,8 @@
 #
 # Ablauf: Sicherung pruefen -> Server stoppen (mit Nachfassen) -> aktuellen Stand sichern (*_vor_restore)
 #         -> zurueckspielen (-wal/-shm entfernt, integrity_check) -> Server starten -> Health-Check.
-# Startet der Server danach nicht, wird der Stand vor dem Restore automatisch zurueckgespielt.
+# Startet der Server danach nicht (oder schlaegt -MitConfig fehl), wird der Stand vor dem Restore automatisch
+# zurueckgespielt; scheitert auch das, wird dies deutlich gemeldet. Zusatz-Sicherungen (_vor_restore) werden getrennt aufbewahrt.
 param([string]$Datei, [switch]$MitConfig)
 $ErrorActionPreference = 'Stop'
 $Base = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -47,6 +48,9 @@ try {
     $ErrorActionPreference = 'Stop'
     $out | ForEach-Object { Write-Host "    $_" }
     if ($code -ne 0) { throw 'Wiederherstellung fehlgeschlagen - Live-Datenbank unveraendert.' }
+    # Sofort nach dem Zurueckspielen ermitteln: schlaegt danach z. B. --restore-config fehl, wird die DB zurueckgerollt.
+    $pre = Get-ChildItem -LiteralPath $Backups -File -Filter 'maschinenplanung_*_vor_restore.sqlite3' |
+        Where-Object { $_.LastWriteTime -ge $start.AddSeconds(-2) } | Sort-Object LastWriteTime -Descending | Select-Object -First 1
     if ($MitConfig) {
         $zip = Join-Path (Split-Path -Parent $Datei) (([IO.Path]::GetFileName($Datei) -replace '^maschinenplanung_', 'firma_' -replace '\.sqlite3$', '.zip'))
         if (-not (Test-Path -LiteralPath $zip)) { throw "Config-Sicherung fehlt: $zip (Datenbank ist bereits zurueckgespielt)." }
@@ -57,8 +61,6 @@ try {
         $outC | ForEach-Object { Write-Host "    $_" }
         if ($codeC -ne 0) { throw 'Config-Wiederherstellung fehlgeschlagen.' }
     }
-    $pre = Get-ChildItem -LiteralPath $Backups -File -Filter 'maschinenplanung_*_vor_restore.sqlite3' |
-        Where-Object { $_.LastWriteTime -ge $start.AddSeconds(-2) } | Sort-Object LastWriteTime -Descending | Select-Object -First 1
 
     Write-Host '3/4 Server starten ...'
     Start-ScheduledTask -TaskName $MP_TaskName
@@ -74,7 +76,17 @@ catch {
     if ($pre) {
         Write-Host 'Stand vor dem Restore wird zurueckgespielt ...' -ForegroundColor Yellow
         try { Stop-MPServer $Base } catch { }
-        & $PythonExe -I (Join-Path $Base 'Backup_Datenbank.py') --restore $pre.FullName | Out-Null
+        $ErrorActionPreference = 'Continue'
+        $outR = & $PythonExe -I (Join-Path $Base 'Backup_Datenbank.py') --restore $pre.FullName 2>&1
+        $codeR = $LASTEXITCODE
+        $ErrorActionPreference = 'Stop'
+        $outR | ForEach-Object { Write-Host "    $_" }
+        if ($codeR -ne 0) {
+            Write-Host "ROLLBACK FEHLGESCHLAGEN (Exitcode $codeR): Die Datenbank ist moeglicherweise NICHT im Zustand vor dem Restore." -ForegroundColor Red
+            Write-Host "Manuell zurueckspielen: .\Restore_Datenbank.ps1 -Datei `"$($pre.FullName)`"" -ForegroundColor Red
+        } else {
+            Write-Host 'Rollback erfolgreich: Stand vor dem Restore ist wieder eingespielt.' -ForegroundColor Yellow
+        }
     }
     Start-ScheduledTask -TaskName $MP_TaskName -ErrorAction SilentlyContinue
     throw $err

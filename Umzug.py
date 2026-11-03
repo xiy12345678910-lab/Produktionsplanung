@@ -43,6 +43,9 @@ KIND = "maschinenplanung-umzug"
 MANIFEST = "umzug.json"
 DB_MEMBER = "data/maschinenplanung.sqlite3"
 EXTRA_FILES = ("BACKUP_ZIEL.txt",)
+MAX_UNPACKED = 8 * 1024 ** 3   # Gesamtgroesse aller Dateien eines Pakets (Schutz vor ZIP-Bomben / vollem Datentraeger)
+UMZUG_KEEP_DAYS = 30           # backups\umzug_*\vorher (alte Config inkl. privater Schluessel) so lange aufbewahren
+UMZUG_WORK_RE = re.compile(r"\Aumzug_\d{4}-\d{2}-\d{2}_\d{6}_")
 # "konto/repo" (GitHub) oder V12.29.0 "https://gitea-host[:port][/pfad]/konto/repo" (wie app_updates.normalize_source).
 UPDATE_SOURCE_RE = re.compile(r"([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+|https://[A-Za-z0-9.-]+(:[1-9][0-9]{0,4})?(/[A-Za-z0-9_.-]+){2,})")
 
@@ -74,12 +77,37 @@ def _quiet(fn, *args):
         return fn(*args)
 
 
+def config_dir(base: Path) -> Path:
+    """Wie Backup_Datenbank.py / mp_config.py: MP_CONFIG_DIR hat Vorrang, sonst <Programmordner>\\config."""
+    return Path(os.environ.get("MP_CONFIG_DIR") or (base / "config"))
+
+
 def _bind(bd, base: Path):
     bd.base = base
     bd.db = base / "data" / "maschinenplanung.sqlite3"
     bd.out = base / "backups"
-    bd.cfg_dir = base / "config"
+    bd.cfg_dir = config_dir(base)
     return bd
+
+
+def prune_umzug_work(backups: Path, keep: Path | None = None, days: int = UMZUG_KEEP_DAYS) -> list[str]:
+    """Alte Arbeitsordner backups\\umzug_*\\ (enthalten die frueheren Schluessel) nach der Aufbewahrungsfrist loeschen."""
+    removed: list[str] = []
+    limit = datetime.datetime.now().timestamp() - days * 86400
+    try:
+        entries = list(backups.iterdir())
+    except OSError:
+        return removed
+    for p in entries:
+        if not p.is_dir() or p.is_symlink() or not UMZUG_WORK_RE.match(p.name) or (keep is not None and p == keep):
+            continue
+        try:
+            if p.stat().st_mtime < limit:
+                shutil.rmtree(p, ignore_errors=True)
+                removed.append(p.name)
+        except OSError:
+            pass
+    return removed
 
 
 def app_version(base: Path) -> str:
@@ -126,12 +154,13 @@ def read_json(path: Path) -> dict:
 
 
 def config_members(cfg: Path) -> list[tuple[str, Path]]:
-    """Alle Dateien in config\\ (auch tls\\ mit privaten Schluesseln, lizenz.key); keine .tmp, keine Links."""
+    """Alle Dateien in config\\ (auch tls\\ mit privaten Schluesseln, lizenz.key); keine .tmp, .tmp-*, .bak-*, keine Links
+    (gleiche Filter wie config_files() in Backup_Datenbank.py)."""
     if not cfg.is_dir():
         return []
     out = []
     for p in sorted(cfg.rglob("*")):
-        if p.is_symlink() or not p.is_file() or p.name.endswith(".tmp"):
+        if p.is_symlink() or not p.is_file() or p.name.endswith(".tmp") or ".tmp-" in p.name or ".bak-" in p.name:
             continue
         name = "config/" + p.relative_to(cfg).as_posix()
         if not MEMBER_RE.match(name):
@@ -150,7 +179,7 @@ def export(base: Path, ziel: Path) -> dict:
     # 1. Frisches, geprueftes Backup (bleibt auch als normale Sicherung in backups\ liegen).
     backup = _quiet(bd.backup, "_umzug")
     revision = bd.verify(backup)
-    cfg = base / "config"
+    cfg = config_dir(base)
     firma = read_json(cfg / "firma.json")
     company = str((firma.get("company") or {}).get("name") or "")
     lan = read_json(base / "LAN_CONFIG.json")
@@ -223,6 +252,9 @@ def verify(path: Path, expected_sha256: str = "") -> dict:
             raise UmzugError("MP-UMZ-002", "umzug.json: Dateiliste fehlt oder ohne Datenbank.")
         if set(names) - {MANIFEST} != set(files):
             raise UmzugError("MP-UMZ-003", "Paketinhalt passt nicht zur Dateiliste in umzug.json.")
+        if sum(i.file_size for i in infos) > MAX_UNPACKED:
+            raise UmzugError("MP-UMZ-003", f"Paket zu gross (entpackt mehr als {MAX_UNPACKED // 1024 ** 3} GB).")
+        total = 0
         for info in infos:
             if info.filename == MANIFEST:
                 continue
@@ -238,6 +270,9 @@ def verify(path: Path, expected_sha256: str = "") -> dict:
                 for chunk in iter(lambda: f.read(1024 * 1024), b""):
                     h.update(chunk)
                     size += len(chunk)
+                    total += len(chunk)
+                    if total > MAX_UNPACKED:
+                        raise UmzugError("MP-UMZ-003", "Paket zu gross (entpackte Daten uebersteigen das Limit).")
             if h.hexdigest() != entry.get("sha256") or size != entry.get("groesse"):
                 raise UmzugError("MP-UMZ-003", f"Pruefsumme stimmt nicht: {name}")
     return manifest
@@ -275,23 +310,29 @@ def import_package(path: Path, base: Path, overwrite: bool = False, expected_sha
     bd = _bind(_backup_module(), base)
     (base / "backups").mkdir(parents=True, exist_ok=True)
     stamp = datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S")
+    prune_umzug_work(base / "backups")   # abgelaufene fruehere Umzugs-Sicherungen (mit alten Schluesseln) entfernen
     work = Path(tempfile.mkdtemp(prefix=f"umzug_{stamp}_", dir=base / "backups"))
     staged = work / "paket"
     previous = work / "vorher"
     result = _summary(manifest)
     result.update(zielVersion=target_version, vorherDb="", vorherConfig="")
-    cfg = base / "config"
+    cfg = config_dir(base)
     # Ein leerer, vom Importskript vorab gesperrter config\\tls zaehlt nicht als vorhandene Konfiguration.
     cfg_existed = cfg.is_dir() and any(p.is_file() for p in cfg.rglob("*"))
     replaced = False
     try:
         # 1. Paket entpacken (nur gepruefte Namen) und Datenbank pruefen, bevor irgendetwas ersetzt wird.
         with zipfile.ZipFile(path) as z:
+            written = 0
             for name in manifest["dateien"]:
                 dest = staged.joinpath(*name.split("/"))
                 dest.parent.mkdir(parents=True, exist_ok=True)
                 with z.open(name) as src, open(dest, "xb") as out:
-                    shutil.copyfileobj(src, out)
+                    for chunk in iter(lambda: src.read(1024 * 1024), b""):
+                        written += len(chunk)
+                        if written > MAX_UNPACKED:
+                            raise UmzugError("MP-UMZ-003", "Paket zu gross (entpackte Daten uebersteigen das Limit).")
+                        out.write(chunk)
         for name, entry in manifest["dateien"].items():
             if sha256_file(staged.joinpath(*name.split("/"))) != entry["sha256"]:
                 raise UmzugError("MP-UMZ-003", f"Pruefsumme nach dem Entpacken falsch: {name}")
@@ -320,9 +361,7 @@ def import_package(path: Path, base: Path, overwrite: bool = False, expected_sha
         # 3. Datenbank einspielen: alte -wal/-shm nie neben der neuen Datei liegen lassen (wie Restore).
         db.parent.mkdir(parents=True, exist_ok=True)
         replaced = True
-        for ext in ("-wal", "-shm"):
-            Path(str(db) + ext).unlink(missing_ok=True)
-        bd.sqlite_copy(staged / "data" / "maschinenplanung.sqlite3", db)
+        bd.sqlite_copy(staged / "data" / "maschinenplanung.sqlite3", db, clear_dst_sidecars=True)
         # 4. config\ vollstaendig ersetzen (Firmenprofil, Logo, Lizenz, tls\ mit Firmen-CA).
         replace_tree(staged / "config", cfg)
         # 5. Zusatzdateien
@@ -364,12 +403,12 @@ def replace_tree(src: Path | None, dst: Path) -> None:
 def _undo(bd, base: Path, pre_db: str, previous: Path, cfg_existed: bool) -> None:
     """Fehler mitten im Einspielen: vorherigen Stand wiederherstellen (bzw. Ziel wieder leeren)."""
     db = base / "data" / "maschinenplanung.sqlite3"
-    cfg = base / "config"
-    for ext in ("-wal", "-shm"):
-        Path(str(db) + ext).unlink(missing_ok=True)
+    cfg = config_dir(base)
     if pre_db:
-        bd.sqlite_copy(Path(pre_db), db)
+        bd.sqlite_copy(Path(pre_db), db, clear_dst_sidecars=True)
     else:
+        for ext in ("-wal", "-shm"):
+            Path(str(db) + ext).unlink(missing_ok=True)
         db.unlink(missing_ok=True)
     replace_tree(previous / "config" if cfg_existed else None, cfg)
     for name in EXTRA_FILES:
