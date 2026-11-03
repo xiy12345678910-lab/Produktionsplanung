@@ -509,6 +509,23 @@ def db_session():
         con.close()
 
 
+@contextmanager
+def immediate_tx(con: sqlite3.Connection):
+    """Eine Schreibtransaktion (db() laeuft im Autocommit): BEGIN IMMEDIATE, bei Fehler ROLLBACK, sonst COMMIT.
+    Fruehes ``return`` im with-Block committet (dann wurde nichts geschrieben)."""
+    con.execute("BEGIN IMMEDIATE")
+    try:
+        yield con
+    except BaseException:
+        try:
+            con.execute("ROLLBACK")
+        except sqlite3.Error:
+            pass
+        raise
+    else:
+        con.execute("COMMIT")
+
+
 def migrate_users_schema(con: sqlite3.Connection) -> None:
     """Migrate an existing V11 users table without changing users or privileges.
 
@@ -1235,11 +1252,11 @@ def password_policy_error(password: str) -> str:
 def create_or_reset_admin(username: str, password: str) -> None:
     if len(username.strip()) < 2:
         raise ValueError("Benutzername zu kurz")
-    if len(password) < 8:
-        raise ValueError("Passwort muss mindestens 8 Zeichen haben")
+    if password_policy_error(password):
+        raise ValueError(password_policy_error(password))
     salt, digest = hash_password(password)
     ts = now_iso()
-    with DB_LOCK, db_session() as con:
+    with DB_LOCK, db_session() as con, immediate_tx(con):
         row = con.execute("SELECT id FROM users WHERE username=?", (username.strip(),)).fetchone()
         if row:
             con.execute("UPDATE users SET salt=?,password_hash=?,role='admin',active=1,updated_at=? WHERE id=?", (salt, digest, ts, row["id"]))
@@ -1347,10 +1364,16 @@ def chat_get(con, user: dict, path: str, qs: dict) -> tuple[int, dict]:
     return 404, mp_error("MP-REQ-404", "Nicht gefunden.")
 
 
-def _chat_members(con, raw, me: str) -> tuple[list | None, str]:
+def _chat_members(con, raw, me: str, existing=()) -> tuple[list | None, str]:
+    """``existing``: bereits eingetragene Mitglieder; sie werden nicht erneut auf active=1 geprueft
+    (inaktive Mitglieder bleiben bei Gruppenaenderungen erhalten), muessen aber noch als Konto existieren."""
     if not isinstance(raw, list) or len(raw) > CHAT_MAX_MEMBERS:
         return None, "Mitgliederliste ist ungültig."
     known = {r["username"].casefold(): r["username"] for r in con.execute("SELECT username FROM users WHERE active=1").fetchall()}
+    keep = {str(x).casefold() for x in existing}
+    for r in con.execute("SELECT username FROM users WHERE active=0").fetchall():
+        if r["username"].casefold() in keep:
+            known[r["username"].casefold()] = r["username"]
     out = []
     for name in [me, *raw]:
         key = str(name or "").strip().casefold()
@@ -1413,6 +1436,8 @@ def chat_post(con, user: dict, path: str, body: dict) -> tuple[int, dict]:
         if not msg:
             return 404, mp_error("MP-CHAT-007", "Nachricht nicht gefunden (bereits gelöscht?).")
         keep = bool(body.get("keep"))
+        if not keep and msg["keep"] and str(msg["kept_by"] or "").casefold() != username.casefold() and user["role"] != "admin":
+            return 403, mp_error("MP-CHAT-008", "Das Behalten hebt nur auf, wer es gesetzt hat (oder Admin).")
         con.execute("UPDATE chat_messages SET keep=?, kept_by=? WHERE id=?", (1 if keep else 0, username if keep else "", mid))
         return 200, {"message": _chat_msg(con.execute(f"SELECT {CHAT_MSG_COLS} FROM chat_messages WHERE id=?", (mid,)).fetchone())}
     if path == "/api/chat/read":
@@ -1430,7 +1455,7 @@ def chat_post(con, user: dict, path: str, body: dict) -> tuple[int, dict]:
         if row["created_by"].casefold() != username.casefold() and user["role"] != "admin":
             return 403, mp_error("MP-CHAT-006", "Mitglieder ändert, wer die Gruppe angelegt hat (oder Admin).")
         current = json.loads(row["members"])
-        members, err = _chat_members(con, [*current, *(body.get("add") or [])], row["created_by"])
+        members, err = _chat_members(con, [*current, *(body.get("add") or [])], row["created_by"], existing=[*current, row["created_by"]])
         if members is None:
             return 400, mp_error("MP-CHAT-003", err)
         remove = {str(x).casefold() for x in (body.get("remove") or [])} - {row["created_by"].casefold()}
@@ -4397,8 +4422,13 @@ def host_name_allowed(host: str, bind_ip: str) -> bool:
             return ipaddress.ip_address(bind_ip).is_loopback
         except ValueError:
             return False
-    # PC-Name mit beliebigem DNS-Suffix (pc01.firma.local), sofern der erste Teil der eigene Name ist.
-    return h.split(".", 1)[0] in LOCAL_HOST_NAMES and "." in h
+    # PC-Name mit DNS-Suffix (pc01.firma.local): nur, wenn das Suffix zu einem lokalen FQDN dieses Rechners
+    # gehoert (z. B. Domaenen-Suffix aus getfqdn). Fremde Domains (pc01.angreifer.de) = DNS-Rebinding -> nein;
+    # weitere Aliasse ausdruecklich ueber MP_ALLOWED_HOSTS freigeben.
+    first, _, rest = h.partition(".")
+    if not rest or first not in LOCAL_HOST_NAMES:
+        return False
+    return rest in {n.partition(".")[2] for n in LOCAL_HOST_NAMES if "." in n}
 
 
 def split_host_port(value: str) -> tuple[str, int | None]:
@@ -4682,7 +4712,9 @@ class Handler(BaseHTTPRequestHandler):
             return
 
     def log_message(self, fmt, *args):
-        sys.stdout.write("%s - %s\n" % (self.address_string(), fmt % args))
+        # Steuerzeichen (Log-Injection ueber Pfad/Header) maskieren.
+        msg = "%s - %s" % (self.address_string(), fmt % args)
+        sys.stdout.write(re.sub(r"[\x00-\x1f\x7f]", lambda m: "\\x%02x" % ord(m.group()), msg) + "\n")
 
     def log_request(self, code="-", size="-"):
         # Nur Fehlerantworten protokollieren; normale Anfragen würden das Server-Log fluten.
@@ -5301,7 +5333,7 @@ class Handler(BaseHTTPRequestHandler):
                 return
             if not module_on("chat"):
                 return self.json_response(403, module_error("chat"))
-            with DB_LOCK, db_session() as con:
+            with DB_LOCK, db_session() as con, immediate_tx(con):
                 status, payload = chat_post(con, user, path, body if isinstance(body, dict) else {})
             if status in (200, 201):
                 with REVISION_CONDITION:
@@ -5445,7 +5477,7 @@ class Handler(BaseHTTPRequestHandler):
             salt, digest = hash_password(password)
             ts = now_iso()
             try:
-                with DB_LOCK, db_session() as con:
+                with DB_LOCK, db_session() as con, immediate_tx(con):
                     if con.execute("SELECT 1 FROM retired_usernames WHERE username=?", (username,)).fetchone():
                         return self.json_response(409, mp_error("MP-AUTH-013", "Dieser Benutzername bleibt für historische Nachweise reserviert. Bitte einen neuen Namen wählen."))
                     try:
@@ -5483,10 +5515,12 @@ class Handler(BaseHTTPRequestHandler):
         if not row or not verify_password(current, row["salt"], row["password_hash"]):
             return self.json_response(403, mp_error("MP-AUTH-023", "Aktuelles Passwort ist falsch."))
         login_attempt_succeeded(ip, user["username"], stamp)
+        if new_pw == current:
+            return self.json_response(400, mp_error("MP-AUTH-026", "Das neue Passwort muss sich vom aktuellen unterscheiden."))
         salt, digest = hash_password(new_pw)
         c = SimpleCookie(self.headers.get("Cookie", ""))
         keep = hashlib.sha256(c["mp_session"].value.encode()).hexdigest()
-        with DB_LOCK, db_session() as con:
+        with DB_LOCK, db_session() as con, immediate_tx(con):
             con.execute("UPDATE users SET salt=?,password_hash=?,updated_at=? WHERE id=?", (salt, digest, now_iso(), user["id"]))
             # Andere Sitzungen dieses Kontos beenden, die aktuelle bleibt gültig.
             con.execute("DELETE FROM sessions WHERE user_id=? AND token_hash<>?", (user["id"], keep))
@@ -5568,8 +5602,7 @@ class Handler(BaseHTTPRequestHandler):
         uid = int(match[1])
         if uid == user["id"]:
             return self.json_response(400, mp_error("MP-AUTH-016", "Das eigene Konto darf nicht gelöscht werden."))
-        with DB_LOCK, db_session() as con:
-            con.execute("BEGIN IMMEDIATE")
+        with DB_LOCK, db_session() as con, immediate_tx(con):
             target = con.execute("SELECT * FROM users WHERE id=?", (uid,)).fetchone()
             if not target:
                 return self.json_response(404, mp_error("MP-AUTH-014", "Benutzer nicht gefunden."))
@@ -5592,7 +5625,6 @@ class Handler(BaseHTTPRequestHandler):
             con.execute("INSERT OR IGNORE INTO retired_usernames VALUES(?,?)", (target["username"], now_iso()))
             con.execute("DELETE FROM users WHERE id=?", (uid,))
             con.execute("INSERT INTO server_audit(ts,username,action,detail,revision) VALUES(?,?,?,?,NULL)", (now_iso(), user["username"], "Benutzer gelöscht", json.dumps({"id": uid, "username": target["username"], "role": target["role"]})))
-            con.execute("COMMIT")
         return self.json_response(200, {"ok": True})
     do_OPTIONS = _method_not_allowed
 
@@ -5614,7 +5646,7 @@ class Handler(BaseHTTPRequestHandler):
             return self.json_response(413, mp_error("MP-DATA-014", str(e)))
         except Exception:
             return self.json_response(400, mp_error("MP-REQ-002", "Ungültige Anfrage."))
-        with DB_LOCK, db_session() as con:
+        with DB_LOCK, db_session() as con, immediate_tx(con):
             target = con.execute("SELECT * FROM users WHERE id=?", (uid,)).fetchone()
             if not target:
                 return self.json_response(404, mp_error("MP-AUTH-014", "Benutzer nicht gefunden."))
@@ -5635,6 +5667,9 @@ class Handler(BaseHTTPRequestHandler):
                 return self.json_response(400, mp_error("MP-AUTH-015", "Ungültige Rolle oder Bereich fehlt."))
             if role not in SCOPED_ROLES:
                 department_id = ""
+            if target["role"] == "admin" and target["active"] and (role != "admin" or not active) \
+                    and con.execute("SELECT count(*) FROM users WHERE role='admin' AND active=1").fetchone()[0] <= 1:
+                return self.json_response(400, mp_error("MP-AUTH-016", "Mindestens ein aktiver Admin muss erhalten bleiben."))
             state = json.loads(con.execute("SELECT json FROM state WHERE id=1").fetchone()[0])
             if department_id and department_id not in {str(d.get("id")) for d in state.get("departments") or []}:
                 return self.json_response(400, mp_error("MP-AUTH-015", "Bereich ist ungültig."))
