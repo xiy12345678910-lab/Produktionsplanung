@@ -6,6 +6,8 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+// Datumswerte relativ zu heute (feste Daten laufen ab und liessen den Test haengen)
+const D=n=>new Date(Date.now()+n*864e5).toISOString().slice(0,10);
 
 const SRC = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const PORT = 18981, BASE = `http://127.0.0.1:${PORT}/`, PASS = 'E2E-Demand-1234';
@@ -63,14 +65,14 @@ try {
   check(await av.locator('#navDemand').isVisible() && (await av.locator('#navDemand').innerText()).includes('Rahmenaufträge'), 'AV sieht den Menüpunkt „Rahmenaufträge“');
   await av.click('#navDemand'); await av.locator('#demand.view.active').waitFor();
   await av.click('#demandFrameNew');
-  await form(av, { number: 'RA-500', customer: 'Kunde Rahmen', articleId: 'SCHILD-9', description: 'Schild 9', departmentId: 'cnc', totalQty: 1000, validTo: '2026-12-31' });
+  await form(av, { number: 'RA-500', customer: 'Kunde Rahmen', articleId: 'SCHILD-9', description: 'Schild 9', departmentId: 'cnc', totalQty: 1000, validTo: D(77) });
   check((await av.locator('#demandBody').innerText()).includes('RA-500'), 'Rahmenauftrag über die Oberfläche angelegt');
   await av.click('#demandStockNew');
   await form(av, { articleId: 'SCHILD-9', departmentId: 'cnc', physicalQty: 300, targetQty: 0, description: 'Schild 9' });
   let st = await getState(av);
   check(st.inventory.some(i => i.articleId === 'SCHILD-9' && i.departmentId === 'cnc' && i.physicalQty === 300), `Bestand 300 SCHILD-9/cnc gespeichert (${JSON.stringify(st.inventory.map(i => [i.articleId, i.departmentId, i.physicalQty, i.reservedQty]))})`);
   await av.click('[data-frame-calloff]');
-  await form(av, { qty: 500, dueDate: '2026-10-30' });
+  await form(av, { qty: 500, dueDate: D(15) });
   st = await getState(av);
   const co = st.callOffs[0];
   check(co?.qty === 500 && co.status === 'open', `Abruf 500 angelegt (reserviert ${co?.reservedQty})`);
