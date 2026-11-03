@@ -18,8 +18,19 @@ def canonical(obj) -> str:
     return json.dumps(obj, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
 
 
+# Audit Rechte/Validierung: Datensatz-IDs sind nicht-leere Strings aus [A-Za-z0-9_-] (max. 80). Das schließt auch
+# HTML-/Skript-Zeichen in IDs aus (Frontend setzt IDs teils in Attribute). Alle erzeugten IDs (uid(), Vorlagen) passen.
+SAFE_ID_RE = re.compile(r"[A-Za-z0-9_-]{1,80}")
+
+
+def valid_record_id(value) -> bool:
+    """Strikte ID-Prüfung: nur echte Strings (nie 0/false/null/Zahlen) im erlaubten Zeichensatz."""
+    return isinstance(value, str) and SAFE_ID_RE.fullmatch(value) is not None
+
+
 def _record_map(items):
-    return {str(x.get("id")): x for x in (items or []) if isinstance(x, dict) and x.get("id")}
+    # `is not None` statt Wahrheitswert: Datensätze mit id 0/false/"" dürfen die Rechteprüfung nicht umgehen.
+    return {str(x.get("id")): x for x in (items or []) if isinstance(x, dict) and x.get("id") is not None}
 
 
 # ---------------------------------------------------------------------------------------------
@@ -54,7 +65,12 @@ ROLE_ACTIONS = (("faCreate", "FA anlegen"), ("faPlan", "FA einplanen"), ("prodSt
                 ("userAdmin", "Benutzer verwalten"), ("updates", "Updates installieren"))
 LEGACY_PRODUCTION_ACTION = "production"
 FA_PLAN_FIELDS = ("machineId", "altMachineId", "allowAlternative", "laneIndex", "pos", "direction", "anchorMode",
-                  "requiredStart", "requiredFinish", "dryingHours", "taktId")
+                  "requiredStart", "requiredFinish", "dryingHours", "taktId",
+                  # Audit: Termine, Mengen, Stunden, Status und Reihenfolge sind ebenfalls Einplanung.
+                  "hours", "requiredHours", "status", "targetQty", "dueDate", "planningWeek", "predecessorIds", "sequence",
+                  "departmentId", "planningType", "setupMinutes", "staffRequired", "cycleSeconds", "partsPerCycle")
+# Stundenfelder von Konfektions-/AV-Stunden-FA regelt stattdessen das Recht „Konfektionsstunden vorgeben“.
+FA_HOURS_FIELDS = ("hours", "requiredHours")
 
 
 def effective_actions(actions) -> dict:
@@ -69,12 +85,12 @@ def effective_actions(actions) -> dict:
 ROLE_LEVELS = ("none", "read", "edit")
 # Bei „Lesen" unveränderlich, bei „Kein Zugriff" zusätzlich ausgeblendet (FUNCTION_HIDDEN).
 FUNCTION_DATA = {
-    "planning": ("workSteps", "machineBlocks", "planVersions"),
+    "planning": ("workSteps", "machineBlocks", "planVersions", "dayRules"),
     "projects": ("projects", "processTemplates"),
     "personnel": ("employees", "personnelAssignments", "personnelAbsences", "weeklyEmployeeDeployments", "departmentStaffNeeds"),
     "formats": ("formats", "baseFormats"),
     "history": ("history",),
-    "system": ("machines", "departments", "shiftTemplates", "yearRules", "weekRules", "exceptions", "operatorCapacity", "personnelGate", "palletTemplates"),
+    "system": ("machines", "departments", "shiftTemplates", "yearRules", "weekRules", "exceptions", "operatorCapacity", "personnelGate", "palletTemplates", "ci"),
 }
 # Planung und System bleiben sichtbar: Scheduler und Projekt-Liveansicht brauchen Ressourcen und FA.
 # V12.27.0 (Rechte-Audit): Schreibbare Schlüssel der GF-Rolle (siehe gf_change_allowed); gilt nur für Benutzer der Rolle gf.
@@ -222,11 +238,15 @@ def rights_change_error(old: dict, incoming: dict, user: dict) -> str:
     if not user_action(user, "faCreate") and any(rid not in before_ws for rid in after_ws):
         return "FA anlegen ist für diese Rolle gesperrt."
     if not user_action(user, "faPlan"):
+        if any(rid not in after_ws for rid in before_ws):
+            return "FA einplanen ist für diese Rolle gesperrt (auch Löschen)."
         for rid, after in after_ws.items():
             prev = before_ws.get(rid)
             if prev is None:
                 continue
-            if any(canonical(prev.get(f)) != canonical(after.get(f)) for f in FA_PLAN_FIELDS) or \
+            confection_step = av_hours_department(old, str(after.get("departmentId") or "")) or after.get("planningType") == "LABOR_HOURS"
+            plan_fields = [f for f in FA_PLAN_FIELDS if not (f in FA_HOURS_FIELDS and confection_step and user_action(user, "confectionHours"))]
+            if any(canonical(prev.get(f)) != canonical(after.get(f)) for f in plan_fields) or \
                     (canonical(prev.get("handoffUnassigned")) != canonical(after.get("handoffUnassigned")) and prev.get("handoffUnassigned") and not after.get("handoffUnassigned")):
                 return "FA einplanen ist für diese Rolle gesperrt."
     if not user_action(user, "confectionHours"):
