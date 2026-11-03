@@ -28,7 +28,7 @@ const check = (ok, label) => { results.push([!!ok, label]); console.log((ok ? 'P
 
 const dataDir = mkdtempSync(path.join(tmpdir(), 'mp-theme-'));
 const py = `
-import ipaddress, json, sys
+import datetime, ipaddress, json, sys
 from pathlib import Path
 sys.path.insert(0, ${JSON.stringify(SRC)})
 import server
@@ -42,14 +42,14 @@ with server.DB_LOCK, server.db_session() as con:
     new = json.loads(json.dumps(old))
     def step(i, dep, mid, **kw):
         fa = f"FA 70{i:02d}"
-        x = {"id": f"ws_r{i}", "sequence": i * 10, "planningType": "MACHINE", "pos": i * 10, "departmentId": dep, "projectId": "", "predecessorIds": [], "fa": fa, "ab": "AB-500", "wt": "", "machineId": mid, "altMachineId": "", "allowAlternative": False, "order": fa, "articleNo": "A-1", "description": "Rundgang", "targetQty": 20, "dueDate": "2026-10-23", "baselinePlan": None, "hours": 5, "goodQty": 0, "scrapQty": 0, "status": "planned", "direction": "forward", "anchorMode": "none", "requiredStart": "", "requiredFinish": "", "createdAt": "2026-10-01T08:00:00Z", "lockedStart": "", "lockedSegments": [], "actualStartedAt": "", "runningSince": "", "pausedAt": "", "pauseIntervals": [], "remainingHours": None, "lastStatusCheckAt": ""}
+        x = {"id": f"ws_r{i}", "sequence": i * 10, "planningType": "MACHINE", "pos": i * 10, "departmentId": dep, "projectId": "", "predecessorIds": [], "fa": fa, "ab": "AB-500", "wt": "", "machineId": mid, "altMachineId": "", "allowAlternative": False, "order": fa, "articleNo": "A-1", "description": "Rundgang", "targetQty": 20, "dueDate": (datetime.date.today() + datetime.timedelta(days=21)).isoformat(), "baselinePlan": None, "hours": 5, "goodQty": 0, "scrapQty": 0, "status": "planned", "direction": "forward", "anchorMode": "none", "requiredStart": "", "requiredFinish": "", "createdAt": "2026-10-01T08:00:00Z", "lockedStart": "", "lockedSegments": [], "actualStartedAt": "", "runningSince": "", "pausedAt": "", "pauseIntervals": [], "remainingHours": None, "lastStatusCheckAt": ""}
         x.update(kw)
         return x
     tf = next(m["id"] for m in new["machines"] if m["departmentId"] == "thermoforming")
     new["workSteps"] += [step(1, "cnc", "m1"), step(2, "cnc", "m2"), step(3, "thermoforming", tf)]
     new["employees"] = [{"id": "e1", "name": "Max Fräser", "departmentId": "cnc", "active": True, "skills": ["m1"]}, {"id": "e2", "name": "Ute Zieher", "departmentId": "thermoforming", "active": True, "skills": []}]
-    new["projects"] = [{"id": "p1", "number": "P-2026-001", "phase": "accepted", "name": "Gehäuse", "customer": "Kunde A", "ab": "AB-500", "dueDate": "2026-11-30", "log": [],
-                        "processes": [{"id": "pr1", "areaId": "cnc", "title": "Fräsen", "status": "open", "startDate": "2026-10-12", "dueDate": "2026-10-16"}]},
+    new["projects"] = [{"id": "p1", "number": "P-2026-001", "phase": "accepted", "name": "Gehäuse", "customer": "Kunde A", "ab": "AB-500", "dueDate": "2030-11-30", "log": [],
+                        "processes": [{"id": "pr1", "areaId": "cnc", "title": "Fräsen", "status": "open", "startDate": "2030-10-12", "dueDate": "2030-10-16"}]},
                        {"id": "p2", "number": "P-2026-002", "phase": "inquiry", "name": "Anfrage Schale", "customer": "Kunde B", "ab": "", "dueDate": "", "log": [], "processes": []}]
     ok, code, reason = server.validate_state(old, new)
     if not ok:
